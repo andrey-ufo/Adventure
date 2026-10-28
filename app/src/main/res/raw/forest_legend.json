@@ -1,0 +1,154 @@
+{
+  "title": "Лесная легенда",
+  "author": "Хранитель леса",
+  "description": "Таинственный лес скрывает древнюю магию и опасности. Ваше здоровье – 100 единиц. Каждая глава требует шагов, сцены внутри главы переключаются мгновенно.",
+  "initial_state": {
+    "stats": {
+      "health": 100
+    }
+  },
+  "chapters": [
+    {
+      "id": "chapter_1",
+      "title": "Опушка леса",
+      "required_steps": 0,
+      "scenes": [
+        {
+          "id": "start",
+          "text": "Вы стоите на краю густого леса. Ветви старых дубов переплетаются над головой. Вдалеке слышится странный шорох.",
+          "choices": [
+            {
+              "text": "Пойти по тропе",
+              "next_scene": "forest_path"
+            },
+            {
+              "text": "Обойти лес стороной",
+              "next_scene": "around_forest"
+            }
+          ]
+        },
+        {
+          "id": "forest_path",
+          "text": "Тропа приводит вас к старому колодцу. На срубе лежит ржавый меч. Возможно, он ещё пригодится.",
+          "choices": [
+            {
+              "text": "Взять меч и идти дальше",
+              "next_scene": "wolf_encounter",
+              "set_flags": ["found_weapon"]
+            },
+            {
+              "text": "Не брать меч, идти налегке",
+              "next_scene": "wolf_encounter"
+            }
+          ]
+        },
+        {
+          "id": "wolf_encounter",
+          "text": "Из кустов выскакивает волк! Он рычит и скалит зубы.",
+          "modify_stats": {"health": -15},
+          "choices": [
+            {
+              "text": "Драться мечом",
+              "next_scene": "victory",
+              "condition": "has_weapon"
+            },
+            {
+              "text": "Попытаться убежать",
+              "next_scene": "escape",
+              "remove_flags": ["found_weapon"]
+            },
+            {
+              "text": "Прикинуться мёртвым",
+              "next_scene": "play_dead"
+            }
+          ]
+        },
+        {
+          "id": "victory",
+          "text": "Вы выхватываете ржавый меч и наносите точный удар. Волк, взвизгнув, убегает в чащу.",
+          "modify_stats": {"health": -10},
+          "choices": [
+            {
+              "text": "Идти к ручью",
+              "next_scene": "stream"
+            }
+          ]
+        },
+        {
+          "id": "escape",
+          "text": "Вы бросаетесь наутёк, волк цапает вас за ногу. Вы хромаете дальше.",
+          "modify_stats": {"health": -25},
+          "choices": [
+            {
+              "text": "Идти к ручью",
+              "next_scene": "stream"
+            }
+          ]
+        },
+        {
+          "id": "play_dead",
+          "text": "Вы падаете и притворяетесь мёртвым. Волк теряет интерес и уходит.",
+          "choices": [
+            {
+              "text": "Идти к ручью",
+              "next_scene": "stream"
+            }
+          ]
+        },
+        {
+          "id": "around_forest",
+          "text": "Вы обходите лес стороной. Дорога безопасна, но длинна.",
+          "choices": [
+            {
+              "text": "Подойти к ручью",
+              "next_scene": "stream"
+            }
+          ]
+        },
+        {
+          "id": "stream",
+          "text": "Лесной ручей. Кристальная вода придаёт сил.",
+          "modify_stats": {"health": 20},
+          "choices": []
+        }
+      ]
+    },
+    {
+      "id": "chapter_2",
+      "title": "Сердце Леса",
+      "required_steps": 4000,
+      "scenes": [
+        {
+          "id": "cave_entrance",
+          "text": "В склоне холма темнеет вход в пещеру. Оттуда веет холодом и магией. Ваше здоровье: {health}.",
+          "choices": [
+            {
+              "text": "Войти в пещеру",
+              "next_scene": "heart_of_forest",
+              "condition": "health >= 50"
+            },
+            {
+              "text": "Войти в пещеру (рискнуть)",
+              "next_scene": "heart_of_forest",
+              "condition": "health < 50"
+            },
+            {
+              "text": "Повернуть назад",
+              "next_scene": "turn_back"
+            }
+          ]
+        },
+        {
+          "id": "heart_of_forest",
+          "text": "Вы входите в огромный грот. В центре парит кристалл – Сердце Леса. Вы прикасаетесь к нему, и магия наполняет вас. Поздравляем!",
+          "choices": []
+        },
+        {
+          "id": "turn_back",
+          "text": "Вы решаете не рисковать. Приключение окончено.",
+          "choices": []
+        }
+      ]
+    }
+  ]
+}
