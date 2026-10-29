@@ -88,11 +88,11 @@
                 android:layout_marginBottom="12dp" />
 
             <!-- Список сцен -->
-            <LinearLayout
-                android:id="@+id/scenes_container"
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_scenes"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:nestedScrollingEnabled="false" />
 
             <!-- Кнопка добавления сцены -->
             <Button

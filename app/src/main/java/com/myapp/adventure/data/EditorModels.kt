@@ -1,7 +1,10 @@
 package com.myapp.adventure.data
 
+import java.util.UUID
+
 data class EditorScene(
-    var id: String = "",            // теперь можно изменять
+    val uid: String = UUID.randomUUID().toString(),
+    var id: String = "",
     var title: String = "",
     var text: String = "",
     var isChapterEnd: Boolean = false,
@@ -20,4 +23,9 @@ data class EditorTag(
     var name: String = "",
     var value: Int = 0,
     var isStatModifier: Boolean = false
+)
+
+fun EditorScene.deepCopy(): EditorScene = copy(
+    tags = tags.map { it.copy() }.toMutableList(),
+    choices = choices.map { it.copy() }.toMutableList()
 )
