@@ -53,6 +53,9 @@ class AdventureReaderFragment : Fragment() {
     private var previewStartSceneId = ""
     private var previewStartChapterIndex = 0
 
+    /** Активен ли сейчас экран шагового шлюза (только в preview-режиме). */
+    private var isWaitingForSteps = false
+
     private val flags = mutableSetOf<String>()
     private val stats = mutableMapOf<String, Int>()
     private val appliedSceneEffects = mutableSetOf<String>()
@@ -114,6 +117,7 @@ class AdventureReaderFragment : Fragment() {
         goalAbsoluteSteps = -1
         startAbsoluteSteps = 0
         currentStepsDone = 0
+        isWaitingForSteps = false
 
         Logger.log(
             requireContext(),
@@ -259,8 +263,14 @@ class AdventureReaderFragment : Fragment() {
         if (choices.isEmpty()) {
             if (currentChapterIndex < chapters.size - 1) {
                 val nextChapter = chapters[currentChapterIndex + 1]
-                if (!previewMode && nextChapter.requiredSteps > 0) {
-                    startChapterSteps(nextChapter)
+                if (nextChapter.requiredSteps > 0) {
+                    // В preview показываем реальный экран шлюза,
+                    // чтобы автор видел UI и цифры как в обычной читалке
+                    if (previewMode) {
+                        startChapterStepsInPreview(nextChapter)
+                    } else {
+                        startChapterSteps(nextChapter)
+                    }
                 } else {
                     advanceToNextChapter(nextChapter)
                 }
@@ -276,6 +286,7 @@ class AdventureReaderFragment : Fragment() {
         try {
             currentChapterIndex++
             currentSceneId = nextChapter.scenes?.firstOrNull()?.id ?: ""
+            isWaitingForSteps = false
             goalAbsoluteSteps = -1
             startAbsoluteSteps = 0
             currentStepsDone = 0
@@ -300,24 +311,42 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    /**
+     * Обновляет список кнопок-выборов.
+     *
+     * В обычной читалке: выборы с невыполненными условиями скрываются.
+     * В предпросмотре: показываются все, но невыполненные — серые, неактивные,
+     * с пометкой 🔒 и текстом условия.
+     */
     private fun updateChoices(choices: List<Choice>) {
         val container = binding.choicesContainer
         container.removeAllViews()
 
         for (choice in choices) {
-            if (!isConditionMet(choice.condition)) {
+            val conditionMet = isConditionMet(choice.condition)
+
+            if (!previewMode && !conditionMet) {
                 Logger.log(requireContext(), "Вариант '${choice.text}' скрыт (условие ${choice.condition})")
                 continue
             }
 
             val button = Button(requireContext()).apply {
-                text = choice.text
-                setOnClickListener {
-                    applyEffects(choice.setFlags, choice.removeFlags, choice.modifyStats)
-                    Logger.log(requireContext(), "Выбран вариант '${choice.text}', переход на ${choice.nextScene}")
-                    currentSceneId = choice.nextScene
-                    saveProgress()
-                    loadCurrentScene()
+                if (previewMode && !conditionMet) {
+                    val conditionLabel = choice.condition ?: ""
+                    text = "${choice.text}  🔒 ($conditionLabel)"
+                    isEnabled = false
+                    setTextColor(Color.parseColor("#808080"))
+                    alpha = 0.6f
+                    Logger.log(requireContext(), "Вариант '${choice.text}' показан как неактивный (условие '$conditionLabel' не выполнено)")
+                } else {
+                    text = choice.text
+                    setOnClickListener {
+                        applyEffects(choice.setFlags, choice.removeFlags, choice.modifyStats)
+                        Logger.log(requireContext(), "Выбран вариант '${choice.text}', переход на ${choice.nextScene}")
+                        currentSceneId = choice.nextScene
+                        saveProgress()
+                        loadCurrentScene()
+                    }
                 }
             }
             container.addView(button)
@@ -356,6 +385,9 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    // ---------- Шаговые шлюзы ----------
+
+    /** Обычная читалка: реальный шагомер, абсолютные значения. */
     private fun startChapterSteps(nextChapter: com.myapp.adventure.data.Chapter) {
         val absolute = StepCounterService.absoluteSteps
         goalAbsoluteSteps = absolute + nextChapter.requiredSteps
@@ -367,6 +399,25 @@ class AdventureReaderFragment : Fragment() {
         Logger.log(requireContext(), "Установлена цель: +${nextChapter.requiredSteps} шагов (абсолютная цель: $goalAbsoluteSteps)")
     }
 
+    /** Preview: шагомера нет, показываем экран шлюза с нулём. */
+    private fun startChapterStepsInPreview(nextChapter: com.myapp.adventure.data.Chapter) {
+        isWaitingForSteps = true
+        goalAbsoluteSteps = -1
+        startAbsoluteSteps = 0
+        currentStepsDone = 0
+        showStepsGate(nextChapter)
+        Logger.log(requireContext(), "Preview-шлюз: глава «${nextChapter.title}», требуется ${nextChapter.requiredSteps} шагов")
+    }
+
+    /** Рисует текст шлюза и скрывает кнопки выборов. */
+    private fun showStepsGate(nextChapter: com.myapp.adventure.data.Chapter) {
+        binding.tvStepsRequired.text =
+            "Чтобы открыть главу «${nextChapter.title}», пройдите ${nextChapter.requiredSteps} шагов (пройдено $currentStepsDone)."
+        binding.tvStepsRequired.visibility = View.VISIBLE
+        binding.choicesContainer.removeAllViews()
+    }
+
+    /** Обычная читалка: обновляет текст шлюза по мере поступления шагов. */
     private fun updateStepsProgress() {
         val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
         binding.tvStepsRequired.text = "Чтобы открыть главу «${nextChapter.title}», пройдите ${nextChapter.requiredSteps} шагов (пройдено $currentStepsDone)."
@@ -376,12 +427,31 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    /** Preview: симулирует ввод шагов из отладочной панели. */
+    private fun setDebugSteps(value: Int) {
+        currentStepsDone = value.coerceAtLeast(0)
+        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
+        val required = nextChapter.requiredSteps
+        if (required == 0) return
+
+        Logger.log(requireContext(), "Симуляция шагов: пройдено $currentStepsDone из $required")
+
+        if (currentStepsDone >= required) {
+            onStepsCompleted(nextChapter)
+        } else {
+            showStepsGate(nextChapter)
+        }
+    }
+
     private fun onStepsCompleted(nextChapter: com.myapp.adventure.data.Chapter?) {
         if (nextChapter == null) return
-        Logger.log(requireContext(), "Цель достигнута в реальном времени, открытие главы '${nextChapter.title}'")
+        Logger.log(requireContext(), "Цель достигнута, открытие главы '${nextChapter.title}'")
+        isWaitingForSteps = false
         binding.tvStepsRequired.visibility = View.GONE
         advanceToNextChapter(nextChapter)
     }
+
+    // ---------- Конец истории ----------
 
     private fun showEnd(message: String) {
         binding.tvChapterTitle.text = if (previewMode) "▶ Конец предпросмотра" else "Конец"
@@ -428,6 +498,7 @@ class AdventureReaderFragment : Fragment() {
         goalAbsoluteSteps = -1
         startAbsoluteSteps = 0
         currentStepsDone = 0
+        isWaitingForSteps = false
         saveProgress()
         loadCurrentScene()
         Toast.makeText(requireContext(), "Приключение начато заново", Toast.LENGTH_SHORT).show()
@@ -487,11 +558,35 @@ class AdventureReaderFragment : Fragment() {
         val btnAddFlag = dialogView.findViewById<Button>(R.id.btn_add_flag)
         val btnReset = dialogView.findViewById<Button>(R.id.btn_reset)
 
+        val sectionSteps = dialogView.findViewById<LinearLayout>(R.id.section_steps)
+        val tvStepsStatus = dialogView.findViewById<TextView>(R.id.tv_steps_status)
+        val etStepsValue = dialogView.findViewById<EditText>(R.id.et_steps_value)
+        val btnApplySteps = dialogView.findViewById<Button>(R.id.btn_apply_steps)
+        val btnOpenChapterNow = dialogView.findViewById<Button>(R.id.btn_open_chapter_now)
+
         val dialog = AlertDialog.Builder(requireContext())
             .setTitle("🐞 Отладка")
             .setView(dialogView)
             .setPositiveButton("Закрыть", null)
             .create()
+
+        // Первичное заполнение поля шагов (только при первом открытии панели,
+        // чтобы не перезаписывать ручной ввод при каждом refresh)
+        val nextChapterInitial = adventure.chapters?.getOrNull(currentChapterIndex + 1)
+        if (isWaitingForSteps && nextChapterInitial != null && nextChapterInitial.requiredSteps > 0) {
+            etStepsValue.setText(currentStepsDone.toString())
+        }
+
+        fun refreshStepsSection() {
+            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
+            if (isWaitingForSteps && nextChapter != null && nextChapter.requiredSteps > 0) {
+                sectionSteps.visibility = View.VISIBLE
+                tvStepsStatus.text =
+                    "Глава «${nextChapter.title}»: пройдено $currentStepsDone из ${nextChapter.requiredSteps}"
+            } else {
+                sectionSteps.visibility = View.GONE
+            }
+        }
 
         fun refresh() {
             tvSceneInfo.text = "Текущая сцена: $currentSceneId"
@@ -559,6 +654,8 @@ class AdventureReaderFragment : Fragment() {
                     containerFlags.addView(rowView)
                 }
             }
+
+            refreshStepsSection()
         }
 
         btnAddStat.setOnClickListener {
@@ -575,6 +672,26 @@ class AdventureReaderFragment : Fragment() {
                 loadCurrentScene()
                 refresh()
             }
+        }
+
+        btnApplySteps.setOnClickListener {
+            val value = etStepsValue.text.toString().toIntOrNull()
+            if (value == null || value < 0) {
+                Toast.makeText(requireContext(), "Введите целое число ≥ 0", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            setDebugSteps(value)
+            refresh()
+        }
+
+        btnOpenChapterNow.setOnClickListener {
+            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
+            if (nextChapter == null || nextChapter.requiredSteps == 0) {
+                Toast.makeText(requireContext(), "Шлюз не активен", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            onStepsCompleted(nextChapter)
+            refresh()
         }
 
         btnReset.setOnClickListener {

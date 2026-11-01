@@ -74,6 +74,78 @@
             android:layout_marginBottom="16dp" />
 
         <!-- ===== Сброс ===== -->
+        <!-- ===== Шаги (только при активном шлюзе) ===== -->
+        <LinearLayout
+            android:id="@+id/section_steps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Шаги до следующей главы"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Симуляция прогресса шагомера. При достижении порога глава откроется."
+                android:textSize="11sp"
+                android:textColor="#9E9E9E"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tv_steps_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="13sp"
+                android:textColor="#FFC107"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <EditText
+                    android:id="@+id/et_steps_value"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Пройдено шагов"
+                    android:inputType="number"
+                    android:autofillHints="" />
+
+                <Button
+                    android:id="@+id/btn_apply_steps"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Применить"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    style="?android:attr/borderlessButtonStyle" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_open_chapter_now"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Открыть главу сейчас"
+                android:textColor="#4CAF50"
+                android:textSize="12sp"
+                style="?android:attr/borderlessButtonStyle" />
+        </LinearLayout>
+
+        <!-- ===== Сброс ===== -->
         <Button
             android:id="@+id/btn_reset"
             android:layout_width="match_parent"
