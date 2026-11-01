@@ -7,12 +7,25 @@
     android:background="@drawable/scene_background"
     android:layout_marginBottom="12dp">
 
-    <!-- Заголовок сцены и кнопка удаления в одной строке -->
+    <!-- ===== Шапка: шеврон, заголовок, удалить ===== -->
     <LinearLayout
+        android:id="@+id/header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tv_chevron"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:text="▼"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
 
         <EditText
             android:id="@+id/et_scene_title"
@@ -22,9 +35,10 @@
             android:hint="Название сцены"
             android:textColor="#FFFFFF"
             android:textColorHint="#AAAAAA"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            android:background="@android:color/transparent" />
+            android:background="@android:color/transparent"
+            android:maxLines="1" />
 
         <Button
             android:id="@+id/btn_delete_scene"
@@ -33,94 +47,174 @@
             android:text="✕"
             android:textColor="#FF4444"
             style="?android:attr/borderlessButtonStyle"
-            android:textSize="16sp" />
+            android:textSize="16sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tv_scene_id"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="ID: "
-        android:textColor="#BBBBBB"
-        android:textSize="12sp"
-        android:layout_marginBottom="4dp" />
-
-    <EditText
-        android:id="@+id/et_scene_text"
-        android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:hint="Текст сцены"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#AAAAAA"
-        android:gravity="top"
-        android:textSize="14sp"
-        android:layout_marginBottom="8dp"
-        android:background="@android:color/transparent" />
-
+    <!-- ===== Инфо-строка: ID, счётчик вариантов, бейдж главы ===== -->
     <LinearLayout
-        android:id="@+id/container_tags"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginBottom="4dp" />
-
-    <Button
-        android:id="@+id/btn_add_tag"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Добавить метку"
-        android:textColor="#FFFFFF"
-        style="?android:attr/borderlessButtonStyle"
-        android:textSize="12sp" />
-
-    <CheckBox
-        android:id="@+id/cb_chapter_end"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Сделать концом главы"
-        android:textColor="#FFFFFF"
-        android:layout_marginTop="8dp" />
-
-    <LinearLayout
-        android:id="@+id/layout_steps"
+        android:id="@+id/info_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:visibility="gone"
-        android:layout_marginBottom="8dp">
+        android:gravity="center_vertical"
+        android:paddingStart="32dp"
+        android:paddingEnd="8dp"
+        android:layout_marginBottom="4dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_scene_id"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ID: "
+                android:textColor="#9E9E9E"
+                android:textSize="11sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <ImageButton
+                android:id="@+id/btn_rebuild_id"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_rotate"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Пересобрать ID из названия"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/btn_preview_scene"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_media_play"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Предпросмотр сцены в читалке"
+                android:scaleType="centerInside"
+                android:padding="2dp" />
+
+        </LinearLayout>
 
         <TextView
+            android:id="@+id/tv_choices_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Шагов до след. главы:"
-            android:textColor="#FFFFFF"
-            android:layout_gravity="center_vertical" />
+            android:text=""
+            android:textColor="#9E9E9E"
+            android:textSize="11sp"
+            android:layout_marginStart="8dp" />
 
-        <EditText
-            android:id="@+id/et_steps"
-            android:layout_width="80dp"
+        <TextView
+            android:id="@+id/tv_chapter_end_badge"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:inputType="number"
-            android:text="0"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#AAAAAA"
-            android:background="@android:color/transparent" />
+            android:text="🏁 Глава"
+            android:textSize="11sp"
+            android:textColor="#FFC107"
+            android:layout_marginStart="8dp"
+            android:visibility="gone" />
     </LinearLayout>
 
+    <!-- ===== Тело: скрывается при сворачивании ===== -->
     <LinearLayout
-        android:id="@+id/container_choices"
+        android:id="@+id/body"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginBottom="4dp" />
+        android:paddingTop="4dp">
 
-    <Button
-        android:id="@+id/btn_add_choice"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Добавить вариант действия"
-        android:textColor="#FFFFFF"
-        style="?android:attr/borderlessButtonStyle"
-        android:textSize="12sp" />
+        <EditText
+            android:id="@+id/et_scene_text"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:hint="Текст сцены"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:gravity="top"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp"
+            android:background="@android:color/transparent" />
+
+        <LinearLayout
+            android:id="@+id/container_tags"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/btn_add_tag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Добавить метку"
+            android:textColor="#FFFFFF"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="12sp" />
+
+        <CheckBox
+            android:id="@+id/cb_chapter_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Сделать концом главы"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:id="@+id/layout_steps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Шагов до след. главы:"
+                android:textColor="#FFFFFF"
+                android:layout_gravity="center_vertical" />
+
+            <EditText
+                android:id="@+id/et_steps"
+                android:layout_width="80dp"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:text="0"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#AAAAAA"
+                android:background="@android:color/transparent" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/container_choices"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="4dp" />
+
+        <Button
+            android:id="@+id/btn_add_choice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Добавить вариант действия"
+            android:textColor="#FFFFFF"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="12sp" />
+
+    </LinearLayout>
 
 </LinearLayout>

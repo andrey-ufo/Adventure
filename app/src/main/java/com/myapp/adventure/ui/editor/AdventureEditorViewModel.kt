@@ -7,8 +7,11 @@ import com.myapp.adventure.data.Chapter
 import com.myapp.adventure.data.Choice
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
+import com.myapp.adventure.data.EditorSnapshot
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.Scene
+import com.myapp.adventure.data.RebuildResult
+import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.utils.Logger
 
 class AdventureEditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -18,11 +21,92 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     var author: String = ""
     var description: String = ""
 
+    private val expandedScenes = mutableSetOf<String>()
+
+    private val history = ArrayDeque<EditorSnapshot>()
+    private val redoStack = ArrayDeque<EditorSnapshot>()
+
     private val context get() = getApplication<Application>().applicationContext
 
-    /**
-     * Транслитерация кириллицы для создания латинских идентификаторов и имён файлов.
-     */
+    // ---------- Аккордеон ----------
+
+    fun isSceneExpanded(uid: String): Boolean = uid in expandedScenes
+    fun expandScene(uid: String) { expandedScenes.add(uid) }
+
+    fun toggleSceneExpanded(uid: String): Boolean {
+        return if (uid in expandedScenes) {
+            expandedScenes.remove(uid)
+            false
+        } else {
+            expandedScenes.add(uid)
+            true
+        }
+    }
+
+    fun collapseAllScenes() { expandedScenes.clear() }
+    fun expandAllScenes() { scenes.forEach { expandedScenes.add(it.uid) } }
+
+    private fun pruneExpandedScenes() {
+        val currentUids = scenes.map { it.uid }.toSet()
+        expandedScenes.retainAll(currentUids)
+    }
+
+    // ---------- История Undo/Redo ----------
+
+    fun isHistoryInitialized(): Boolean = history.isNotEmpty()
+
+    fun initHistory() {
+        history.clear()
+        redoStack.clear()
+        history.addLast(takeSnapshot())
+    }
+
+    fun takeSnapshot(): EditorSnapshot = EditorSnapshot(
+        title = title,
+        author = author,
+        description = description,
+        scenes = scenes.map { it.deepCopy() }
+    )
+
+    fun restoreSnapshot(snapshot: EditorSnapshot) {
+        title = snapshot.title
+        author = snapshot.author
+        description = snapshot.description
+        scenes.clear()
+        scenes.addAll(snapshot.scenes.map { it.deepCopy() })
+        pruneExpandedScenes()
+    }
+
+    fun commitSnapshot() {
+        val current = takeSnapshot()
+        if (current == history.lastOrNull()) return
+        history.addLast(current)
+        while (history.size > MAX_HISTORY) history.removeFirst()
+        redoStack.clear()
+    }
+
+    fun undo(): Boolean {
+        if (history.size < 2) return false
+        val current = history.removeLast()
+        redoStack.addLast(current)
+        restoreSnapshot(history.last())
+        return true
+    }
+
+    fun redo(): Boolean {
+        if (redoStack.isEmpty()) return false
+        val next = redoStack.removeLast()
+        history.addLast(next)
+        while (history.size > MAX_HISTORY) history.removeFirst()
+        restoreSnapshot(next)
+        return true
+    }
+
+    fun canUndo(): Boolean = history.size >= 2
+    fun canRedo(): Boolean = redoStack.isNotEmpty()
+
+    // ---------- Транслитерация и ID ----------
+
     fun transliterate(text: String): String {
         val translitMap = mapOf(
             'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
@@ -60,15 +144,121 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         return id
     }
 
+    // ---------- ID-заморозка и пересборка ----------
+
+    /**
+     * Если ID сцены ещё "автоматический" и в названии что-то есть —
+     * генерирует ID из полного названия, замораживает и обновляет все ссылки.
+     * Возвращает true, если ID фактически изменился.
+     */
+    fun freezeSceneId(sceneUid: String): Boolean {
+        val scene = scenes.find { it.uid == sceneUid } ?: return false
+        if (!scene.idIsAuto) return false
+        if (scene.title.isBlank()) return false
+
+        val oldId = scene.id
+        scene.id = ""
+        val newId = generateSceneId(scene.title)
+        scene.id = newId
+        scene.idIsAuto = false
+
+        if (newId == oldId) return false
+        val updatedRefs = updateReferences(oldId, newId)
+        Logger.log(context, "ID сцены '${scene.title}' заморожен: '$oldId' → '$newId', обновлено ссылок: $updatedRefs")
+        return true
+    }
+
+    /**
+     * Пересобрать ID по явному запросу пользователя (кнопка «🔄»).
+     * Возвращает результат с количеством обновлённых ссылок или null,
+     * если пересборка невозможна.
+     */
+    fun rebuildSceneId(sceneUid: String): RebuildResult? {
+        val scene = scenes.find { it.uid == sceneUid } ?: return null
+        if (scene.title.isBlank()) return null
+
+        val oldId = scene.id
+        scene.id = ""
+        val newId = generateSceneId(scene.title)
+        scene.id = newId
+        scene.idIsAuto = false
+
+        val updatedRefs = if (newId != oldId) updateReferences(oldId, newId) else 0
+        Logger.log(context, "ID сцены пересобран: '$oldId' → '$newId', обновлено ссылок: $updatedRefs")
+        return RebuildResult(oldId, newId, updatedRefs)
+    }
+
+    /** Заранее посчитать, каким будет новый ID, без применения. */
+    fun previewRebuiltId(sceneUid: String): String? {
+        val scene = scenes.find { it.uid == sceneUid } ?: return null
+        if (scene.title.isBlank()) return null
+        val oldId = scene.id
+        scene.id = ""
+        val preview = generateSceneId(scene.title)
+        scene.id = oldId
+        return preview
+    }
+
+    /** Замораживает все «висящие» ID перед сборкой JSON. */
+    fun freezeAllPendingIds() {
+        scenes.toList().forEach { scene ->
+            if (scene.idIsAuto) {
+                if (scene.title.isNotBlank()) {
+                    freezeSceneId(scene.uid)
+                } else {
+                    scene.idIsAuto = false   // пустую сцену тоже замораживаем как есть
+                }
+            }
+        }
+    }
+
+    /** Обновляет все ссылки со старого ID на новый. Возвращает количество изменённых выборов. */
+    private fun updateReferences(oldId: String, newId: String): Int {
+        if (oldId.isEmpty() || oldId == newId) return 0
+        var count = 0
+        scenes.forEach { other ->
+            other.choices.forEach { c ->
+                if (c.nextSceneId == oldId) {
+                    c.nextSceneId = newId
+                    count++
+                }
+            }
+        }
+        return count
+    }
+
+    // ---------- Изменения структуры ----------
+
     fun addScene() {
         val newScene = EditorScene()
         scenes.add(newScene)
+        expandedScenes.add(newScene.uid)
         Logger.log(context, "Добавлена сцена, индекс: ${scenes.size - 1}")
+    }
+
+    /**
+     * Создаёт сцену с заданным названием. Если название непустое — генерирует и
+     * сразу замораживает ID, чтобы ссылки работали сразу.
+     */
+    fun addSceneWithTitle(title: String): EditorScene {
+        val trimmed = title.trim()
+        val newScene = EditorScene(
+            title = trimmed,
+            idIsAuto = trimmed.isEmpty()
+        )
+        if (trimmed.isNotEmpty()) {
+            newScene.id = generateSceneId(trimmed)
+        }
+        scenes.add(newScene)
+        expandedScenes.add(newScene.uid)
+        Logger.log(context, "Добавлена сцена '${trimmed.ifEmpty { "(без названия)" }}', индекс: ${scenes.size - 1}")
+        return newScene
     }
 
     fun removeScene(index: Int) {
         if (index in scenes.indices) {
             val removed = scenes.removeAt(index)
+            expandedScenes.remove(removed.uid)
             Logger.log(context, "Удалена сцена: ${removed.title.ifEmpty { "(без названия)" }}, индекс: $index")
         }
     }
@@ -77,13 +267,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val scene = scenes.getOrNull(index) ?: return
         val oldTitle = scene.title
         scene.title = newTitle
-        if (scene.id.isEmpty() || scene.id.startsWith("scene_")) {
-            val newId = generateSceneId(newTitle)
-            scene.id = newId
-            Logger.log(context, "Сцена '$oldTitle' переименована в '$newTitle', ID обновлён: $newId")
-        } else {
-            Logger.log(context, "Сцена '$oldTitle' переименована в '$newTitle' (ID не менялся: ${scene.id})")
-        }
+        Logger.log(context, "Сцена '$oldTitle' переименована в '$newTitle' (ID: ${scene.id.ifEmpty { "пуст" }})")
     }
 
     fun addChoice(sceneIndex: Int) {
@@ -120,6 +304,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             else (scene.title.ifEmpty { "(без названия)" } to scene.id)
         }
     }
+
+    // ---------- Сборка Adventure ----------
 
     fun buildAdventure(): Adventure {
         Logger.log(context, "Сборка приключения '${title}' в JSON-модель")
@@ -168,5 +354,9 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             description = description,
             chapters = chapters
         )
+    }
+
+    companion object {
+        private const val MAX_HISTORY = 20
     }
 }

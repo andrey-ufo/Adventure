@@ -1,11 +1,13 @@
 package com.myapp.adventure.ui.reader
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,7 +15,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -45,6 +49,10 @@ class AdventureReaderFragment : Fragment() {
     private var notificationPermissionGranted = false
     private var activityRecognitionGranted = false
 
+    private var previewMode = false
+    private var previewStartSceneId = ""
+    private var previewStartChapterIndex = 0
+
     private val flags = mutableSetOf<String>()
     private val stats = mutableMapOf<String, Int>()
     private val appliedSceneEffects = mutableSetOf<String>()
@@ -67,61 +75,101 @@ class AdventureReaderFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val adventureJson = arguments?.getString("adventure_json")
-        if (adventureJson != null) {
-            try {
-                adventure = Gson().fromJson(adventureJson, Adventure::class.java)
-                val uriString = arguments?.getString("adventure_file_uri")
-                adventureFileUri = if (uriString != null) Uri.parse(uriString) else null
-
-                val saved = if (adventureFileUri != null) ProgressManager.loadProgress(requireContext(), adventureFileUri!!) else null
-                if (saved != null) {
-                    currentChapterIndex = saved.currentChapterIndex
-                    currentSceneId = saved.currentSceneId
-                    currentStepsDone = saved.currentStepsDone
-                    goalAbsoluteSteps = saved.goalAbsoluteSteps
-                    startAbsoluteSteps = saved.startAbsoluteSteps
-                    flags.clear()
-                    flags.addAll(saved.flags)
-                    stats.clear()
-                    stats.putAll(saved.stats)
-                    appliedSceneEffects.clear()
-                    appliedSceneEffects.addAll(saved.appliedSceneEffects)
-                    Logger.log(requireContext(), "Прогресс загружен: глава ${currentChapterIndex+1}, сцена '$currentSceneId', цель: $goalAbsoluteSteps (start=$startAbsoluteSteps)")
-
-                    if (goalAbsoluteSteps >= 0) {
-                        val currentAbsolute = StepCounterService.absoluteSteps
-                        if (currentAbsolute >= goalAbsoluteSteps) {
-                            Logger.log(requireContext(), "Цель уже достигнута при загрузке (абс=$currentAbsolute, цель=$goalAbsoluteSteps)")
-                            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-                            if (nextChapter != null) {
-                                advanceToNextChapter(nextChapter)
-                            }
-                        } else {
-                            currentStepsDone = (currentAbsolute - startAbsoluteSteps).coerceAtLeast(0)
-                        }
-                    }
-                } else {
-                    val initialState = adventure.initialState
-                    flags.clear()
-                    if (initialState?.flags != null) flags.addAll(initialState.flags)
-                    stats.clear()
-                    if (initialState?.stats != null) stats.putAll(initialState.stats)
-                    appliedSceneEffects.clear()
-                    currentChapterIndex = 0
-                    currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
-                    goalAbsoluteSteps = -1
-                    startAbsoluteSteps = 0
-                    Logger.log(requireContext(), "Приключение '${adventure.title}' загружено, глава ${currentChapterIndex+1}")
-                }
-            } catch (e: Exception) {
-                Logger.log(requireContext(), "Ошибка загрузки приключения: ${e.message}")
-                Toast.makeText(requireContext(), "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
-                parentFragmentManager.popBackStack()
-                return
-            }
-        } else {
+        if (adventureJson == null) {
             Toast.makeText(requireContext(), "Ошибка: нет данных приключения", Toast.LENGTH_SHORT).show()
             parentFragmentManager.popBackStack()
+            return
+        }
+
+        try {
+            adventure = Gson().fromJson(adventureJson, Adventure::class.java)
+            previewMode = arguments?.getBoolean("preview_mode", false) ?: false
+
+            if (previewMode) {
+                initPreviewState()
+            } else {
+                initNormalState()
+            }
+        } catch (e: Exception) {
+            Logger.log(requireContext(), "Ошибка загрузки приключения: ${e.message}")
+            Toast.makeText(requireContext(), "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
+            parentFragmentManager.popBackStack()
+        }
+    }
+
+    private fun initPreviewState() {
+        previewStartSceneId = arguments?.getString("preview_scene_id") ?: ""
+        previewStartChapterIndex = arguments?.getInt("preview_chapter_index", 0) ?: 0
+        adventureFileUri = null
+
+        val initialState = adventure.initialState
+        flags.clear()
+        if (initialState?.flags != null) flags.addAll(initialState.flags)
+        stats.clear()
+        if (initialState?.stats != null) stats.putAll(initialState.stats)
+        appliedSceneEffects.clear()
+
+        currentChapterIndex = previewStartChapterIndex
+        currentSceneId = previewStartSceneId
+        goalAbsoluteSteps = -1
+        startAbsoluteSteps = 0
+        currentStepsDone = 0
+
+        Logger.log(
+            requireContext(),
+            "Предпросмотр: глава ${previewStartChapterIndex + 1}, сцена '$previewStartSceneId'"
+        )
+    }
+
+    private fun initNormalState() {
+        val uriString = arguments?.getString("adventure_file_uri")
+        adventureFileUri = if (uriString != null) Uri.parse(uriString) else null
+
+        val saved = if (adventureFileUri != null) {
+            ProgressManager.loadProgress(requireContext(), adventureFileUri!!)
+        } else null
+
+        if (saved != null) {
+            currentChapterIndex = saved.currentChapterIndex
+            currentSceneId = saved.currentSceneId
+            currentStepsDone = saved.currentStepsDone
+            goalAbsoluteSteps = saved.goalAbsoluteSteps
+            startAbsoluteSteps = saved.startAbsoluteSteps
+            flags.clear()
+            flags.addAll(saved.flags)
+            stats.clear()
+            stats.putAll(saved.stats)
+            appliedSceneEffects.clear()
+            appliedSceneEffects.addAll(saved.appliedSceneEffects)
+            Logger.log(
+                requireContext(),
+                "Прогресс загружен: глава ${currentChapterIndex + 1}, сцена '$currentSceneId', цель: $goalAbsoluteSteps (start=$startAbsoluteSteps)"
+            )
+
+            if (goalAbsoluteSteps >= 0) {
+                val currentAbsolute = StepCounterService.absoluteSteps
+                if (currentAbsolute >= goalAbsoluteSteps) {
+                    Logger.log(requireContext(), "Цель уже достигнута при загрузке (абс=$currentAbsolute, цель=$goalAbsoluteSteps)")
+                    val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
+                    if (nextChapter != null) {
+                        advanceToNextChapter(nextChapter)
+                    }
+                } else {
+                    currentStepsDone = (currentAbsolute - startAbsoluteSteps).coerceAtLeast(0)
+                }
+            }
+        } else {
+            val initialState = adventure.initialState
+            flags.clear()
+            if (initialState?.flags != null) flags.addAll(initialState.flags)
+            stats.clear()
+            if (initialState?.stats != null) stats.putAll(initialState.stats)
+            appliedSceneEffects.clear()
+            currentChapterIndex = 0
+            currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+            goalAbsoluteSteps = -1
+            startAbsoluteSteps = 0
+            Logger.log(requireContext(), "Приключение '${adventure.title}' загружено, глава ${currentChapterIndex + 1}")
         }
     }
 
@@ -137,29 +185,42 @@ class AdventureReaderFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Применяем выбранный шрифт ко всем элементам фрагмента
         val fontName = FontManager.getSelectedFont(requireContext())
         FontManager.applyFontToViewTree(view, fontName, requireContext())
 
         try {
-            checkPermissions()
+            if (!previewMode) {
+                checkPermissions()
+            }
 
-            binding.btnMenu.setOnClickListener {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.fragment_container, MenuFragment())
-                    .addToBackStack(null)
-                    .commit()
+            if (previewMode) {
+                binding.btnMenu.text = "Назад"
+                binding.btnMenu.setOnClickListener {
+                    parentFragmentManager.popBackStack()
+                }
+                binding.btnDebug.visibility = View.VISIBLE
+                binding.btnDebug.setOnClickListener { showDebugPanel() }
+            } else {
+                binding.btnMenu.setOnClickListener {
+                    parentFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, MenuFragment())
+                        .addToBackStack(null)
+                        .commit()
+                }
+                binding.btnDebug.visibility = View.GONE
             }
 
             binding.btnNextChapter.visibility = View.GONE
 
             loadCurrentScene()
 
-            requireContext().registerReceiver(
-                stepReceiver,
-                IntentFilter(StepCounterConstants.ACTION_UPDATE),
-                Context.RECEIVER_NOT_EXPORTED
-            )
+            if (!previewMode) {
+                requireContext().registerReceiver(
+                    stepReceiver,
+                    IntentFilter(StepCounterConstants.ACTION_UPDATE),
+                    Context.RECEIVER_NOT_EXPORTED
+                )
+            }
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка в onViewCreated: ${e.message}")
             Toast.makeText(requireContext(), "Ошибка запуска читалки: ${e.message}", Toast.LENGTH_LONG).show()
@@ -179,22 +240,26 @@ class AdventureReaderFragment : Fragment() {
             return
         }
 
-        binding.tvChapterTitle.text = adventure.title
+        binding.tvChapterTitle.text = if (previewMode) {
+            "▶ Предпросмотр — ${adventure.title}"
+        } else {
+            adventure.title
+        }
         binding.tvStoryText.text = scene.text
 
         if (!appliedSceneEffects.contains(scene.id)) {
             applyEffects(scene.setFlags, scene.removeFlags, scene.modifyStats)
             appliedSceneEffects.add(scene.id)
-            Logger.log(requireContext(), "Глава ${currentChapterIndex+1}, сцена '${scene.id}' загружена впервые. Эффекты применены. Здоровье: ${stats["health"] ?: "?"}")
+            Logger.log(requireContext(), "Глава ${currentChapterIndex + 1}, сцена '${scene.id}' загружена впервые. Эффекты применены. Здоровье: ${stats["health"] ?: "?"}")
         } else {
-            Logger.log(requireContext(), "Глава ${currentChapterIndex+1}, сцена '${scene.id}' загружена (эффекты уже были). Здоровье: ${stats["health"] ?: "?"}")
+            Logger.log(requireContext(), "Глава ${currentChapterIndex + 1}, сцена '${scene.id}' загружена (эффекты уже были). Здоровье: ${stats["health"] ?: "?"}")
         }
 
         val choices = scene.choices.orEmpty()
         if (choices.isEmpty()) {
             if (currentChapterIndex < chapters.size - 1) {
                 val nextChapter = chapters[currentChapterIndex + 1]
-                if (nextChapter.requiredSteps > 0) {
+                if (!previewMode && nextChapter.requiredSteps > 0) {
                     startChapterSteps(nextChapter)
                 } else {
                     advanceToNextChapter(nextChapter)
@@ -319,20 +384,23 @@ class AdventureReaderFragment : Fragment() {
     }
 
     private fun showEnd(message: String) {
-        binding.tvChapterTitle.text = "Конец"
+        binding.tvChapterTitle.text = if (previewMode) "▶ Конец предпросмотра" else "Конец"
         binding.tvStoryText.text = message
         binding.btnNextChapter.visibility = View.GONE
         binding.tvStepsRequired.visibility = View.GONE
 
-        // Кнопка "Начать заново" на финальном экране
         val container = binding.choicesContainer
         container.removeAllViews()
         container.visibility = View.VISIBLE
 
         val restartButton = Button(requireContext()).apply {
-            text = "Начать заново"
+            text = if (previewMode) "Вернуться в редактор" else "Начать заново"
             setOnClickListener {
-                onRestartAdventure()
+                if (previewMode) {
+                    parentFragmentManager.popBackStack()
+                } else {
+                    onRestartAdventure()
+                }
             }
         }
         container.addView(restartButton)
@@ -349,8 +417,14 @@ class AdventureReaderFragment : Fragment() {
         val initialState = adventure.initialState
         if (initialState?.flags != null) flags.addAll(initialState.flags)
         if (initialState?.stats != null) stats.putAll(initialState.stats)
-        currentChapterIndex = 0
-        currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+
+        if (previewMode) {
+            currentChapterIndex = previewStartChapterIndex
+            currentSceneId = previewStartSceneId
+        } else {
+            currentChapterIndex = 0
+            currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+        }
         goalAbsoluteSteps = -1
         startAbsoluteSteps = 0
         currentStepsDone = 0
@@ -360,6 +434,7 @@ class AdventureReaderFragment : Fragment() {
     }
 
     private fun saveProgress() {
+        if (previewMode) return
         if (adventureFileUri == null) return
         val progress = ProgressData(
             adventureFileName = "",
@@ -373,7 +448,7 @@ class AdventureReaderFragment : Fragment() {
             startAbsoluteSteps = startAbsoluteSteps
         )
         ProgressManager.saveProgress(requireContext(), adventureFileUri!!, progress)
-        Logger.log(requireContext(), "Прогресс сохранён: глава ${currentChapterIndex+1}, цель=$goalAbsoluteSteps")
+        Logger.log(requireContext(), "Прогресс сохранён: глава ${currentChapterIndex + 1}, цель=$goalAbsoluteSteps")
     }
 
     private fun checkPermissions() {
@@ -397,12 +472,205 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    // ---------- Отладочная панель ----------
+
+    private fun showDebugPanel() {
+        if (!previewMode) return
+
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_debug_panel, null)
+
+        val tvSceneInfo = dialogView.findViewById<TextView>(R.id.tv_debug_scene_info)
+        val containerStats = dialogView.findViewById<LinearLayout>(R.id.container_stats)
+        val containerFlags = dialogView.findViewById<LinearLayout>(R.id.container_flags)
+        val btnAddStat = dialogView.findViewById<Button>(R.id.btn_add_stat)
+        val btnAddFlag = dialogView.findViewById<Button>(R.id.btn_add_flag)
+        val btnReset = dialogView.findViewById<Button>(R.id.btn_reset)
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle("🐞 Отладка")
+            .setView(dialogView)
+            .setPositiveButton("Закрыть", null)
+            .create()
+
+        fun refresh() {
+            tvSceneInfo.text = "Текущая сцена: $currentSceneId"
+
+            containerStats.removeAllViews()
+            if (stats.isEmpty()) {
+                val tv = TextView(requireContext()).apply {
+                    text = "(нет статов)"
+                    setTextColor(Color.parseColor("#9E9E9E"))
+                    textSize = 12f
+                }
+                containerStats.addView(tv)
+            } else {
+                for ((name, value) in stats.toSortedMap()) {
+                    val rowView = LayoutInflater.from(requireContext())
+                        .inflate(R.layout.item_debug_stat, containerStats, false)
+                    val tvName = rowView.findViewById<TextView>(R.id.tv_stat_name)
+                    val tvValue = rowView.findViewById<TextView>(R.id.tv_stat_value)
+                    val btnEdit = rowView.findViewById<View>(R.id.btn_edit_stat)
+                    val btnDelete = rowView.findViewById<View>(R.id.btn_delete_stat)
+
+                    tvName.text = name
+                    tvValue.text = value.toString()
+
+                    btnEdit.setOnClickListener {
+                        showEditStatDialog(name, value) { newValue ->
+                            stats[name] = newValue
+                            loadCurrentScene()
+                            refresh()
+                        }
+                    }
+                    btnDelete.setOnClickListener {
+                        stats.remove(name)
+                        loadCurrentScene()
+                        refresh()
+                    }
+
+                    containerStats.addView(rowView)
+                }
+            }
+
+            containerFlags.removeAllViews()
+            if (flags.isEmpty()) {
+                val tv = TextView(requireContext()).apply {
+                    text = "(нет флагов)"
+                    setTextColor(Color.parseColor("#9E9E9E"))
+                    textSize = 12f
+                }
+                containerFlags.addView(tv)
+            } else {
+                for (flag in flags.toSortedSet()) {
+                    val rowView = LayoutInflater.from(requireContext())
+                        .inflate(R.layout.item_debug_flag, containerFlags, false)
+                    val tvName = rowView.findViewById<TextView>(R.id.tv_flag_name)
+                    val btnDelete = rowView.findViewById<View>(R.id.btn_delete_flag)
+
+                    tvName.text = flag
+
+                    btnDelete.setOnClickListener {
+                        flags.remove(flag)
+                        loadCurrentScene()
+                        refresh()
+                    }
+
+                    containerFlags.addView(rowView)
+                }
+            }
+        }
+
+        btnAddStat.setOnClickListener {
+            showAddStatDialog { name, value ->
+                stats[name] = value
+                loadCurrentScene()
+                refresh()
+            }
+        }
+
+        btnAddFlag.setOnClickListener {
+            showAddFlagDialog { name ->
+                flags.add(name)
+                loadCurrentScene()
+                refresh()
+            }
+        }
+
+        btnReset.setOnClickListener {
+            AlertDialog.Builder(requireContext())
+                .setTitle("Сбросить?")
+                .setMessage("Сбросить флаги и статы к начальному состоянию?")
+                .setPositiveButton("Сбросить") { _, _ ->
+                    flags.clear()
+                    stats.clear()
+                    val initialState = adventure.initialState
+                    if (initialState?.flags != null) flags.addAll(initialState.flags)
+                    if (initialState?.stats != null) stats.putAll(initialState.stats)
+                    loadCurrentScene()
+                    refresh()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+
+        refresh()
+        dialog.show()
+    }
+
+    private fun showEditStatDialog(
+        statName: String,
+        currentValue: Int,
+        onResult: (Int) -> Unit
+    ) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_debug_stat, null)
+        val etValue = dialogView.findViewById<EditText>(R.id.et_debug_stat_value)
+        val tvName = dialogView.findViewById<TextView>(R.id.tv_debug_stat_name)
+
+        tvName.text = statName
+        etValue.setText(currentValue.toString())
+        etValue.setSelection(etValue.text.length)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Изменить значение")
+            .setView(dialogView)
+            .setPositiveButton("OK") { _, _ ->
+                val v = etValue.text.toString().toIntOrNull() ?: return@setPositiveButton
+                onResult(v)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun showAddStatDialog(onResult: (String, Int) -> Unit) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_debug_add, null)
+        val etName = dialogView.findViewById<EditText>(R.id.et_debug_name)
+        val etValue = dialogView.findViewById<EditText>(R.id.et_debug_value)
+
+        etValue.visibility = View.VISIBLE
+        etValue.setText("0")
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Добавить стат")
+            .setView(dialogView)
+            .setPositiveButton("OK") { _, _ ->
+                val name = etName.text.toString().trim()
+                val value = etValue.text.toString().toIntOrNull() ?: 0
+                if (name.isNotEmpty()) onResult(name, value)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun showAddFlagDialog(onResult: (String) -> Unit) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_debug_add, null)
+        val etName = dialogView.findViewById<EditText>(R.id.et_debug_name)
+        val etValue = dialogView.findViewById<EditText>(R.id.et_debug_value)
+
+        etValue.visibility = View.GONE
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Добавить флаг")
+            .setView(dialogView)
+            .setPositiveButton("OK") { _, _ ->
+                val name = etName.text.toString().trim()
+                if (name.isNotEmpty()) onResult(name)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         saveProgress()
-        try {
-            requireContext().unregisterReceiver(stepReceiver)
-        } catch (_: Exception) { }
+        if (!previewMode) {
+            try {
+                requireContext().unregisterReceiver(stepReceiver)
+            } catch (_: Exception) { }
+        }
         _binding = null
     }
 }

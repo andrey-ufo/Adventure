@@ -5,6 +5,7 @@ import java.util.UUID
 data class EditorScene(
     val uid: String = UUID.randomUUID().toString(),
     var id: String = "",
+    var idIsAuto: Boolean = true,   // ← новый флаг
     var title: String = "",
     var text: String = "",
     var isChapterEnd: Boolean = false,
@@ -28,4 +29,10 @@ data class EditorTag(
 fun EditorScene.deepCopy(): EditorScene = copy(
     tags = tags.map { it.copy() }.toMutableList(),
     choices = choices.map { it.copy() }.toMutableList()
+)
+
+data class RebuildResult(
+    val oldId: String,
+    val newId: String,
+    val updatedReferences: Int
 )

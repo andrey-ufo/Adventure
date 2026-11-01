@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,11 +67,49 @@ class SettingsFragment : Fragment() {
             ).show()
         }
 
+        // Выбор размера шрифта
+        setupFontSizeSpinner()
+
         // Выбор шрифта
         refreshFontList()
 
         binding.btnAddFont.setOnClickListener {
             addFontLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/vnd.ms-opentype"))
+        }
+    }
+
+    private fun setupFontSizeSpinner() {
+        val scales = FontManager.FONT_SCALES
+        val sizeAdapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_item,
+            scales.map { it.first }
+        )
+        sizeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerFontSize.adapter = sizeAdapter
+
+        val currentScale = FontManager.getFontScale(requireContext())
+        val currentScaleIdx = scales.indexOfFirst { it.second == currentScale }.coerceAtLeast(0)
+
+        // Сначала сбрасываем слушатель, чтобы setSelection не дёрнул его
+        binding.spinnerFontSize.onItemSelectedListener = null
+        binding.spinnerFontSize.setSelection(currentScaleIdx)
+
+        binding.spinnerFontSize.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                val newScale = scales[position].second
+                if (newScale != FontManager.getFontScale(requireContext())) {
+                    FontManager.setFontScale(requireContext(), newScale)
+                    requireActivity().recreate()
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 
@@ -90,13 +129,17 @@ class SettingsFragment : Fragment() {
             binding.spinnerFont.setSelection(position)
         }
 
-        binding.spinnerFont.onItemSelectedListener = null // сброс слушателя перед установкой нового
-        binding.spinnerFont.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+        binding.spinnerFont.onItemSelectedListener = null
+        binding.spinnerFont.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
                 val fontName = fonts[position]
                 val oldFont = FontManager.getSelectedFont(requireContext())
                 if (fontName != oldFont) {
-                    // Показываем диалог с предложением перезапустить приложение
                     AlertDialog.Builder(requireContext())
                         .setTitle("Смена шрифта")
                         .setMessage("Применить шрифт \"$fontName\" ко всем экранам? Приложение будет перезапущено.")
@@ -105,7 +148,6 @@ class SettingsFragment : Fragment() {
                             requireActivity().recreate()
                         }
                         .setNegativeButton("Отмена") { _, _ ->
-                            // возвращаем предыдущий выбор
                             val oldPos = fonts.indexOf(oldFont)
                             if (oldPos >= 0) binding.spinnerFont.setSelection(oldPos)
                         }
@@ -113,7 +155,7 @@ class SettingsFragment : Fragment() {
                 }
             }
 
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 

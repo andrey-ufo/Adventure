@@ -24,6 +24,21 @@
         android:textColor="#FFFFFF"
         android:layout_marginBottom="24dp" />
 
+    <!-- Размер шрифта -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Размер шрифта интерфейса:"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="8dp" />
+
+    <Spinner
+        android:id="@+id/spinner_font_size"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp" />
+
     <!-- Выбор шрифта -->
     <TextView
         android:layout_width="wrap_content"

@@ -2,16 +2,19 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:orientation="vertical">
 
-    <!-- Заголовок с кнопкой "Меню" (закреплён) -->
+    <!-- ===== Toolbar ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="8dp">
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:background="#1F1F1F">
 
         <Button
             android:id="@+id/btn_menu"
@@ -19,99 +22,183 @@
             android:layout_height="wrap_content"
             android:text="Меню"
             android:textColor="#FFFFFF"
-            style="?android:attr/borderlessButtonStyle" />
+            style="?android:attr/borderlessButtonStyle"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
         <TextView
+            android:id="@+id/tv_adventure_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Редактор приключения"
-            android:textSize="20sp"
+            android:text="Без названия"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
-            android:gravity="center" />
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/tv_save_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="11sp"
+            android:textColor="#9E9E9E" />
+
+        <ImageButton
+            android:id="@+id/btn_toggle_menu"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/arrow_down_float"
+            android:contentDescription="Свернуть/развернуть меню" />
     </LinearLayout>
 
-    <!-- Прокручиваемая область -->
+    <!-- ===== Раскрываемое меню действий ===== -->
+    <HorizontalScrollView
+        android:id="@+id/menu_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#2A2A2A"
+        android:visibility="gone"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btn_undo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↶"
+                android:textSize="20sp"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:minWidth="48dp" />
+
+            <Button
+                android:id="@+id/btn_redo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↷"
+                android:textSize="20sp"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:minWidth="48dp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:background="#444444"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btn_add_scene"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+ Сцена"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_save"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Сохранить"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_load"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Загрузить"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_edit_meta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Название"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_validate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Проверить"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_search"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Поиск"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_stats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Статистика"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- ===== Основная прокручиваемая область ===== -->
     <ScrollView
+        android:id="@+id/scroll_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:padding="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Кнопка загрузки -->
-            <Button
-                android:id="@+id/btn_load"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Загрузить приключение из файла"
-                android:textColor="#FFFFFF"
-                android:layout_marginBottom="12dp" />
-
-            <!-- Название -->
-            <EditText
-                android:id="@+id/et_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Название приключения"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#BBBBBB"
-                android:textSize="16sp"
-                android:layout_marginBottom="8dp" />
-
-            <!-- Автор -->
-            <EditText
-                android:id="@+id/et_author"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Автор"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#BBBBBB"
-                android:textSize="16sp"
-                android:layout_marginBottom="8dp" />
-
-            <!-- Описание -->
-            <EditText
-                android:id="@+id/et_description"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Описание"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#BBBBBB"
-                android:minLines="2"
-                android:gravity="top"
-                android:textSize="14sp"
-                android:layout_marginBottom="12dp" />
-
-            <!-- Список сцен -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_scenes"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:nestedScrollingEnabled="false" />
 
-            <!-- Кнопка добавления сцены -->
-            <Button
-                android:id="@+id/btn_add_scene"
+            <TextView
+                android:id="@+id/tv_empty_hint"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Добавить сцену"
-                android:textColor="#FFFFFF"
-                android:layout_marginBottom="8dp" />
-
-            <!-- Кнопка сохранения (с отступом снизу) -->
-            <Button
-                android:id="@+id/btn_save"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Сохранить приключение"
-                android:textColor="#FFFFFF"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="32dp" />
+                android:text="Пока нет сцен. Нажмите «+ Сцена» в меню вверху."
+                android:textColor="#9E9E9E"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:padding="32dp"
+                android:visibility="gone" />
 
         </LinearLayout>
     </ScrollView>

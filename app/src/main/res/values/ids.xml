@@ -2,4 +2,5 @@
 <resources>
     <item name="choices_container" type="id"/>
     <item name="tag_watcher" type="id"/>
+    <item name="original_text_size" type="id"/>
 </resources>
