@@ -8,7 +8,8 @@ data class Adventure(
     val description: String = "",
     @SerializedName("initial_state")
     val initialState: PlayerState? = null,
-    val chapters: List<Chapter>? = null   // тоже обезопасим
+    val tags: List<TagDefinition>? = null,
+    val chapters: List<Chapter>? = null
 )
 
 data class Chapter(
@@ -45,6 +46,6 @@ data class Choice(
 )
 
 data class PlayerState(
-    val flags: Set<String>? = null,
+    val flags: List<String>? = null,
     val stats: Map<String, Int>? = null
 )

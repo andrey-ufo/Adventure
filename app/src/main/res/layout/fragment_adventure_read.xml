@@ -5,6 +5,7 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!-- ===== Шапка: Назад/Меню, HUD, 🐞 ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -12,13 +13,66 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="16dp">
 
-        <TextView
-            android:id="@+id/tv_chapter_title"
-            android:layout_width="0dp"
+        <Button
+            android:id="@+id/btn_menu"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:text="Меню"
+            android:textColor="#FFFFFF"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            style="?android:attr/borderlessButtonStyle" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/btn_health"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="❤️ 0"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            style="?android:attr/borderlessButtonStyle" />
+
+        <Button
+            android:id="@+id/btn_inventory"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎒 0"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            style="?android:attr/borderlessButtonStyle" />
+
+        <Button
+            android:id="@+id/btn_journal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📖 0"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            style="?android:attr/borderlessButtonStyle" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <Button
             android:id="@+id/btn_debug"
@@ -32,14 +86,6 @@
             android:minHeight="0dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            style="?android:attr/borderlessButtonStyle" />
-
-        <Button
-            android:id="@+id/btn_menu"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Меню"
-            android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>
 
@@ -67,7 +113,6 @@
         android:textColor="?android:attr/textColorSecondary"
         android:visibility="gone" />
 
-    <!-- Контейнер для кнопок выборов будет добавлен программно -->
     <LinearLayout
         android:id="@+id/choices_container"
         android:layout_width="match_parent"

@@ -1,0 +1,164 @@
+{
+  "title": "Тестовое приключение",
+  "author": "Claude (AI-ассистент)",
+  "description": "Приключение создано исключительно для тестирования функций приложения Adventure. Не является связной историей. Сцены, метки и переходы предназначены для проверки редактора, читалки, отладочной панели и шаговых шлюзов.",
+  "initial_state": {
+    "flags": ["initial_flag"],
+    "stats": {
+      "health": 100,
+      "stamina": 50,
+      "mana": 10,
+      "sword": 1,
+      "potion": 3,
+      "gold": 0
+    }
+  },
+  "tags": [
+    { "name": "health", "display_name": "Здоровье", "category": "HEALTH", "visible": true },
+    { "name": "stamina", "display_name": "Выносливость", "category": "HEALTH", "visible": true },
+    { "name": "mana", "display_name": "Мана", "category": "HEALTH", "visible": true },
+    { "name": "sword", "display_name": "Ржавый меч", "category": "ITEM", "visible": true },
+    { "name": "potion", "display_name": "Зелье", "category": "ITEM", "visible": true },
+    { "name": "gold", "display_name": "Золото", "category": "ITEM", "visible": true },
+    { "name": "initial_flag", "display_name": "Всё началось", "category": "JOURNAL", "visible": true },
+    { "name": "visited_forest", "display_name": "Посетил лес", "category": "JOURNAL", "visible": true },
+    { "name": "knows_secret", "display_name": "Знает секрет", "category": "JOURNAL", "visible": true },
+    { "name": "hidden_secret", "display_name": "Скрытый секрет", "category": "JOURNAL", "visible": false },
+    { "name": "quest_started", "display_name": "Квест начат", "category": "JOURNAL", "visible": true },
+    { "name": "quest_completed", "display_name": "Квест завершён", "category": "JOURNAL", "visible": false }
+  ],
+  "chapters": [
+    {
+      "id": "chapter_1",
+      "title": "Начало",
+      "required_steps": 0,
+      "scenes": [
+        {
+          "id": "start",
+          "text": "Добро пожаловать в тестовое приключение. Здесь можно проверить все функции приложения. Выберите, что хотите протестировать.",
+          "choices": [
+            { "text": "Проверить здоровье", "next_scene": "health_test", "modify_stats": {"health": 10} },
+            { "text": "Проверить предметы", "next_scene": "items_test", "modify_stats": {"potion": 2, "gold": 100} },
+            { "text": "Проверить журнал", "next_scene": "journal_test", "set_flags": ["visited_forest", "knows_secret"] },
+            { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "has_sword" },
+            { "text": "Перейти к концу главы", "next_scene": "chapter_end_1" }
+          ]
+        },
+        {
+          "id": "health_test",
+          "text": "Здесь можно наблюдать, как меняется здоровье в HUD. Здоровье увеличилось на 10. Также можно менять ману и выносливость.",
+          "choices": [
+            { "text": "Получить урон (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
+            { "text": "Получить лечение (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
+            { "text": "Израсходовать ману (-5)", "next_scene": "health_test", "modify_stats": {"mana": -5} },
+            { "text": "Восстановить ману (+10)", "next_scene": "health_test", "modify_stats": {"mana": 10} },
+            { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "items_test",
+          "text": "В рюкзаке теперь больше зелий и золото. Проверьте, как это отображается в рюкзаке.",
+          "choices": [
+            { "text": "Выбросить зелье (-1)", "next_scene": "items_test", "modify_stats": {"potion": -1} },
+            { "text": "Добавить зелье (+1)", "next_scene": "items_test", "modify_stats": {"potion": 1} },
+            { "text": "Потратить 10 золота", "next_scene": "items_test", "modify_stats": {"gold": -10} },
+            { "text": "Найти 50 золота", "next_scene": "items_test", "modify_stats": {"gold": 50} },
+            { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "journal_test",
+          "text": "В журнал добавлены записи: «Посетил лес», «Знает секрет». Здесь можно управлять квестом и скрытыми метками.",
+          "choices": [
+            { "text": "Начать квест", "next_scene": "quest_test", "set_flags": ["quest_started"] },
+            { "text": "Завершить квест", "next_scene": "quest_test", "set_flags": ["quest_completed"], "remove_flags": ["quest_started"] },
+            { "text": "Установить скрытый флаг", "next_scene": "quest_test", "set_flags": ["hidden_secret"] },
+            { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "quest_test",
+          "text": "Здесь можно наблюдать изменения журнала. Скрытые метки не отображаются в интерфейсе игрока.",
+          "choices": [
+            { "text": "Назад к журналу", "next_scene": "journal_test" },
+            { "text": "Продолжить", "next_scene": "chapter_end_1" }
+          ]
+        },
+        {
+          "id": "has_item_test",
+          "text": "Вы попали сюда, потому что у вас есть меч. Если бы меча не было, этого выбора бы не было.",
+          "choices": [
+            { "text": "Выбросить меч (-1)", "next_scene": "start", "modify_stats": {"sword": -1} },
+            { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "chapter_end_1",
+          "text": "Конец первой главы. Чтобы открыть следующую, нужно 5 шагов.",
+          "choices": []
+        }
+      ]
+    },
+    {
+      "id": "chapter_2",
+      "title": "Проверка условий",
+      "required_steps": 5,
+      "scenes": [
+        {
+          "id": "conditions_test",
+          "text": "Здесь тестируются условия. Некоторые выборы видны только при выполнении условия. Попробуйте установить и снять разные метки.",
+          "choices": [
+            { "text": "Только если здоровье ≥ 50", "next_scene": "healthy", "condition": "health >= 50" },
+            { "text": "Только если здоровье < 50", "next_scene": "unhealthy", "condition": "health < 50" },
+            { "text": "Только если есть меч", "next_scene": "has_sword_node", "condition": "has_sword" },
+            { "text": "Только если нет скрытого секрета", "next_scene": "no_secret_node", "condition": "!has_hidden_secret" },
+            { "text": "Только если посещал лес", "next_scene": "visited_forest_node", "condition": "has_visited_forest" },
+            { "text": "Продолжить", "next_scene": "chapter_end_2" }
+          ]
+        },
+        {
+          "id": "healthy",
+          "text": "У вас health ≥ 50. Отлично!",
+          "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "unhealthy",
+          "text": "У вас health < 50. Лечитесь!",
+          "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "has_sword_node",
+          "text": "У вас есть меч.",
+          "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "no_secret_node",
+          "text": "Вы ещё не знаете скрытого секрета.",
+          "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "visited_forest_node",
+          "text": "Вы были в лесу.",
+          "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "chapter_end_2",
+          "text": "Конец второй главы. Чтобы открыть следующую, нужно 4000 шагов. В предпросмотре это можно симулировать через 🐞 отладку.",
+          "choices": []
+        }
+      ]
+    },
+    {
+      "id": "chapter_3",
+      "title": "Финальная",
+      "required_steps": 4000,
+      "scenes": [
+        {
+          "id": "final",
+          "text": "Поздравляем! Вы прошли все тесты. Финальная сцена.",
+          "choices": []
+        }
+      ]
+    }
+  ]
+}

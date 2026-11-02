@@ -230,8 +230,7 @@ class SetupFragment : Fragment() {
     }
 
     private fun copyTestAdventureIfNeeded(parentUri: Uri) {
-        copyTestAdventure(parentUri, "forest_legend.json", R.raw.forest_legend)
-        copyTestAdventure(parentUri, "mountain_trial.json", R.raw.mountain_trial)
+        copyTestAdventure(parentUri, "test_adventure.json", R.raw.test_adventure)
     }
 
     private fun copyTestAdventure(parentUri: Uri, fileName: String, rawResId: Int) {

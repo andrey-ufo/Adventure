@@ -179,24 +179,19 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:visibility="gone"
-            android:layout_marginBottom="8dp">
+            android:layout_marginBottom="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:padding="6dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:id="@+id/tv_steps_display"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Шагов до след. главы:"
-                android:textColor="#FFFFFF"
-                android:layout_gravity="center_vertical" />
-
-            <EditText
-                android:id="@+id/et_steps"
-                android:layout_width="80dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:text="0"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#AAAAAA"
-                android:background="@android:color/transparent" />
+                android:text=""
+                android:textSize="13sp"
+                android:textColor="#FFC107" />
         </LinearLayout>
 
         <LinearLayout

@@ -9,7 +9,10 @@ import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorSnapshot
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.PlayerState
 import com.myapp.adventure.data.Scene
+import com.myapp.adventure.data.TagCategory
+import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.utils.Logger
@@ -20,8 +23,10 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     var title: String = ""
     var author: String = ""
     var description: String = ""
+    var initialState: PlayerState? = null
 
     private val expandedScenes = mutableSetOf<String>()
+    private val expandedChoices = mutableSetOf<String>()
 
     private val history = ArrayDeque<EditorSnapshot>()
     private val redoStack = ArrayDeque<EditorSnapshot>()
@@ -49,6 +54,29 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     private fun pruneExpandedScenes() {
         val currentUids = scenes.map { it.uid }.toSet()
         expandedScenes.retainAll(currentUids)
+    }
+
+    // ---------- Аккордеон выборов ----------
+
+    fun isChoiceExpanded(uid: String): Boolean = uid in expandedChoices
+
+    fun expandChoice(uid: String) { expandedChoices.add(uid) }
+
+    fun toggleChoiceExpanded(uid: String): Boolean {
+        return if (uid in expandedChoices) {
+            expandedChoices.remove(uid)
+            false
+        } else {
+            expandedChoices.add(uid)
+            true
+        }
+    }
+
+    fun collapseAllChoices() { expandedChoices.clear() }
+
+    private fun pruneExpandedChoices() {
+        val currentUids = scenes.flatMap { it.choices.map { c -> c.uid } }.toSet()
+        expandedChoices.retainAll(currentUids)
     }
 
     // ---------- История Undo/Redo ----------
@@ -272,7 +300,9 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     fun addChoice(sceneIndex: Int) {
         val scene = scenes.getOrNull(sceneIndex) ?: return
-        scene.choices.add(EditorChoice())
+        val choice = EditorChoice()
+        scene.choices.add(choice)
+        expandedChoices.add(choice.uid)  // новый выбор сразу развёрнут
         Logger.log(context, "Добавлен выбор в сцену '${scene.title}' (индекс $sceneIndex)")
     }
 
@@ -298,14 +328,57 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun getSceneOptions(excludeIndex: Int = -1): List<Pair<String, String>> {
-        return scenes.mapIndexedNotNull { index, scene ->
-            if (index == excludeIndex) null
-            else (scene.title.ifEmpty { "(без названия)" } to scene.id)
+    fun getSceneOptions(): List<Pair<String, String>> {
+        return scenes.map { scene ->
+            scene.title.ifEmpty { "(без названия)" } to scene.id
         }
     }
 
     // ---------- Сборка Adventure ----------
+
+    /**
+     * Сериализует список тегов в тройку (setFlags, removeFlags, modifyStats).
+     * Возвращает null в соответствующем поле, если оно пустое.
+     */
+    private fun serializeTags(tags: List<EditorTag>): Triple<List<String>?, List<String>?, Map<String, Int>?> {
+        val setFlagsSet = linkedSetOf<String>()
+        val removeFlagsSet = linkedSetOf<String>()
+        val modifyStatsMap = mutableMapOf<String, Int>()
+
+        for (tag in tags) {
+            val rawName = tag.name
+            if (rawName.isBlank()) continue
+
+            if (rawName.startsWith("!")) {
+                val cleanName = rawName.removePrefix("!")
+                if (tag.category == TagCategory.JOURNAL) {
+                    removeFlagsSet.add(cleanName)
+                }
+                continue
+            }
+
+            when (tag.category) {
+                TagCategory.HEALTH, TagCategory.ITEM -> {
+                    if (tag.value != 0) {
+                        modifyStatsMap[rawName] = (modifyStatsMap[rawName] ?: 0) + tag.value
+                    }
+                }
+                TagCategory.JOURNAL -> {
+                    if (tag.isStatModifier || tag.value != 0) {
+                        modifyStatsMap[rawName] = (modifyStatsMap[rawName] ?: 0) + tag.value
+                    } else {
+                        setFlagsSet.add(rawName)
+                    }
+                }
+            }
+        }
+
+        return Triple(
+            setFlagsSet.toList().ifEmpty { null },
+            removeFlagsSet.toList().ifEmpty { null },
+            modifyStatsMap.ifEmpty { null }
+        )
+    }
 
     fun buildAdventure(): Adventure {
         Logger.log(context, "Сборка приключения '${title}' в JSON-модель")
@@ -314,18 +387,24 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         var chapterIndex = 1
 
         for (scene in scenes) {
+            val (sceneSetFlags, sceneRemoveFlags, sceneModifyStats) = serializeTags(scene.tags)
+
             val sceneObj = Scene(
                 id = scene.id.ifEmpty { "scene_${scenes.indexOf(scene)}" },
                 text = scene.text,
-                setFlags = scene.tags.filter { !it.isStatModifier && it.value == 0 }.map { it.name },
-                removeFlags = scene.tags.filter { it.name.startsWith("!") }.map { it.name.removePrefix("!") },
-                modifyStats = scene.tags.filter { it.isStatModifier || it.value != 0 }.associate { it.name to it.value },
+                setFlags = sceneSetFlags,
+                removeFlags = sceneRemoveFlags,
+                modifyStats = sceneModifyStats,
                 choices = scene.choices.map { choice ->
+                    val (choiceSetFlags, choiceRemoveFlags, choiceModifyStats) =
+                        serializeTags(choice.tags)
                     Choice(
                         text = choice.text,
                         nextScene = choice.nextSceneId,
                         condition = choice.conditionTag.ifEmpty { null },
-                        setFlags = if (choice.conditionTag.isNotEmpty()) listOf(choice.conditionTag) else emptyList()
+                        setFlags = choiceSetFlags,
+                        removeFlags = choiceRemoveFlags,
+                        modifyStats = choiceModifyStats
                     )
                 }.ifEmpty { null }
             )
@@ -348,10 +427,54 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
+        // Собираем реестр меток из tags сцен и tags выборов
+        val tagRegistry = LinkedHashMap<String, TagDefinition>()
+
+        fun registerTag(tag: EditorTag) {
+            val cleanName = tag.name.removePrefix("!")
+            if (cleanName.isBlank()) return
+            tagRegistry[cleanName] = TagDefinition(
+                name = cleanName,
+                displayName = tag.displayName.ifBlank { cleanName },
+                category = tag.category,
+                visible = tag.visible
+            )
+        }
+
+        for (scene in scenes) {
+            for (tag in scene.tags) registerTag(tag)
+            for (choice in scene.choices) {
+                for (tag in choice.tags) registerTag(tag)
+            }
+        }
+
+        // Метки из условий, которые нигде не объявлены — добавляем в JOURNAL/visible=false
+        for (scene in scenes) {
+            for (choice in scene.choices) {
+                val cond = choice.conditionTag.trim()
+                if (cond.isEmpty()) continue
+                val flagName = when {
+                    cond.startsWith("!has_") -> cond.removePrefix("!has_").trim()
+                    cond.startsWith("has_") -> cond.removePrefix("has_").trim()
+                    else -> null
+                }
+                if (flagName != null && flagName !in tagRegistry) {
+                    tagRegistry[flagName] = TagDefinition(
+                        name = flagName,
+                        displayName = flagName,
+                        category = TagCategory.JOURNAL,
+                        visible = false
+                    )
+                }
+            }
+        }
+
         return Adventure(
             title = title,
             author = author,
             description = description,
+            initialState = initialState,
+            tags = tagRegistry.values.toList(),
             chapters = chapters
         )
     }

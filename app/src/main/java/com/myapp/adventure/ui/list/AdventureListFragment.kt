@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.gson.Gson
@@ -15,6 +16,7 @@ import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.databinding.FragmentAdventureListBinding
 import com.myapp.adventure.ui.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
+import com.myapp.adventure.utils.AdventureImportHelper
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger
 import java.io.BufferedReader
@@ -30,6 +32,15 @@ class AdventureListFragment : Fragment() {
     private val adventureUris = mutableListOf<Uri>()
     private lateinit var adapter: AdventureAdapter
 
+    private val importFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            AdventureImportHelper.importAdventure(requireContext(), uri)
+            loadAdventures()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -42,23 +53,28 @@ class AdventureListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Применяем выбранный шрифт ко всем элементам фрагмента
         val fontName = FontManager.getSelectedFont(requireContext())
         FontManager.applyFontToViewTree(view, fontName, requireContext())
 
-        adapter = AdventureAdapter(adventures) { adventure, position ->
-            val fileUri = adventureUris[position]
-            val fragment = AdventureReaderFragment().apply {
-                arguments = Bundle().apply {
-                    putString("adventure_json", gson.toJson(adventure))
-                    putString("adventure_file_uri", fileUri.toString())
+        adapter = AdventureAdapter(
+            adventures = adventures,
+            onItemClick = { adventure, position ->
+                val fileUri = adventureUris[position]
+                val fragment = AdventureReaderFragment().apply {
+                    arguments = Bundle().apply {
+                        putString("adventure_json", gson.toJson(adventure))
+                        putString("adventure_file_uri", fileUri.toString())
+                    }
                 }
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            },
+            onLoadClick = {
+                importFileLauncher.launch(arrayOf("application/json"))
             }
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, fragment)
-                .addToBackStack(null)
-                .commit()
-        }
+        )
 
         binding.rvAdventures.layoutManager = LinearLayoutManager(requireContext())
         binding.rvAdventures.adapter = adapter
@@ -81,6 +97,7 @@ class AdventureListFragment : Fragment() {
             val prefs = requireContext().getSharedPreferences("adventure_prefs", 0)
             val folderUriString = prefs.getString("adventure_folder_uri", null) ?: run {
                 Toast.makeText(requireContext(), "Папка не выбрана", Toast.LENGTH_SHORT).show()
+                adapter.notifyDataSetChanged()
                 return
             }
             val folderUri = Uri.parse(folderUriString)

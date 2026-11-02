@@ -35,6 +35,8 @@ import com.myapp.adventure.data.ChapterStats
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.TagCategory
+import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.ValidationIssue
 import com.myapp.adventure.data.deepCopy
@@ -281,6 +283,7 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.scenes.addAll(draft.scenes.map { it.deepCopy() })
                 viewModel.initHistory()
                 viewModel.collapseAllScenes()
+                viewModel.collapseAllChoices()
                 viewModel.scenes.firstOrNull()?.let { viewModel.expandScene(it.uid) }
 
                 adapter.submitList()
@@ -316,7 +319,10 @@ class AdventureEditorFragment : Fragment() {
             viewModel.title = adventure.title
             viewModel.author = adventure.author
             viewModel.description = adventure.description
+            viewModel.initialState = adventure.initialState
             viewModel.scenes.clear()
+
+            val tagDefs = adventure.tags.orEmpty().associateBy { it.name }
 
             for (chapter in adventure.chapters.orEmpty()) {
                 for (scene in chapter.scenes.orEmpty()) {
@@ -327,12 +333,13 @@ class AdventureEditorFragment : Fragment() {
                         text = scene.text,
                         isChapterEnd = chapter.requiredSteps > 0,
                         requiredSteps = chapter.requiredSteps,
-                        tags = extractTags(scene),
+                        tags = extractTags(scene, tagDefs),
                         choices = scene.choices?.map { choice ->
                             EditorChoice(
                                 text = choice.text,
                                 nextSceneId = choice.nextScene,
-                                conditionTag = choice.condition ?: ""
+                                conditionTag = choice.condition ?: "",
+                                tags = extractChoiceTags(choice, tagDefs)
                             )
                         }?.toMutableList() ?: mutableListOf()
                     )
@@ -342,6 +349,7 @@ class AdventureEditorFragment : Fragment() {
 
             viewModel.initHistory()
             viewModel.collapseAllScenes()
+            viewModel.collapseAllChoices()
             viewModel.scenes.firstOrNull()?.let { viewModel.expandScene(it.uid) }
 
             adapter.submitList()
@@ -360,14 +368,83 @@ class AdventureEditorFragment : Fragment() {
         }
     }
 
-    private fun extractTags(scene: com.myapp.adventure.data.Scene): MutableList<EditorTag> {
+    private fun extractTags(
+        scene: com.myapp.adventure.data.Scene,
+        tagDefs: Map<String, TagDefinition>
+    ): MutableList<EditorTag> {
+        return buildTagList(
+            setFlags = scene.setFlags,
+            removeFlags = scene.removeFlags,
+            modifyStats = scene.modifyStats,
+            tagDefs = tagDefs
+        )
+    }
+
+    private fun extractChoiceTags(
+        choice: com.myapp.adventure.data.Choice,
+        tagDefs: Map<String, TagDefinition>
+    ): MutableList<EditorTag> {
+        return buildTagList(
+            setFlags = choice.setFlags,
+            removeFlags = choice.removeFlags,
+            modifyStats = choice.modifyStats,
+            tagDefs = tagDefs
+        )
+    }
+
+    private fun buildTagList(
+        setFlags: List<String>?,
+        removeFlags: List<String>?,
+        modifyStats: Map<String, Int>?,
+        tagDefs: Map<String, TagDefinition>
+    ): MutableList<EditorTag> {
         val tags = mutableListOf<EditorTag>()
-        for (flag in scene.setFlags.orEmpty()) {
-            tags.add(EditorTag(name = flag, value = 0, isStatModifier = false))
+
+        for (flag in setFlags.orEmpty()) {
+            val def = tagDefs[flag]
+            val category = def?.category ?: TagCategory.JOURNAL
+            val value = if (category == TagCategory.ITEM) 1 else 0
+            val isStat = category == TagCategory.ITEM
+            tags.add(
+                EditorTag(
+                    name = flag,
+                    value = value,
+                    isStatModifier = isStat,
+                    category = category,
+                    displayName = def?.displayName ?: flag,
+                    visible = def?.visible ?: false
+                )
+            )
         }
-        for ((stat, value) in scene.modifyStats.orEmpty()) {
-            tags.add(EditorTag(name = stat, value = value, isStatModifier = true))
+
+        for (flag in removeFlags.orEmpty()) {
+            val def = tagDefs[flag]
+            tags.add(
+                EditorTag(
+                    name = "!$flag",
+                    value = 0,
+                    isStatModifier = false,
+                    category = def?.category ?: TagCategory.JOURNAL,
+                    displayName = def?.displayName ?: flag,
+                    visible = def?.visible ?: false
+                )
+            )
         }
+
+        for ((stat, value) in modifyStats.orEmpty()) {
+            val def = tagDefs[stat]
+            tags.add(
+                EditorTag(
+                    name = stat,
+                    value = value,
+                    isStatModifier = true,
+                    category = def?.category ?: TagCategory.JOURNAL,
+                    displayName = def?.displayName ?: stat,
+                    visible = def?.visible ?: false
+                )
+            )
+        }
+
         return tags
     }
 
@@ -467,7 +544,7 @@ class AdventureEditorFragment : Fragment() {
     // ---------- Валидатор ----------
 
     private fun showValidationDialog() {
-        val issues = StoryValidator.validate(viewModel.scenes)
+        val issues = StoryValidator.validate(viewModel.scenes, viewModel.initialState)
 
         if (issues.isEmpty()) {
             AlertDialog.Builder(requireContext())

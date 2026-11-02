@@ -5,30 +5,58 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.databinding.ItemAdventureBinding
+import com.myapp.adventure.databinding.ItemLoadAdventureBinding
 
 class AdventureAdapter(
     private val adventures: List<Adventure>,
-    private val onItemClick: (Adventure, Int) -> Unit   // добавлена позиция
-) : RecyclerView.Adapter<AdventureAdapter.ViewHolder>() {
+    private val onItemClick: (Adventure, Int) -> Unit,
+    private val onLoadClick: () -> Unit
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    inner class ViewHolder(val binding: ItemAdventureBinding) : RecyclerView.ViewHolder(binding.root)
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val binding = ItemAdventureBinding.inflate(
-            LayoutInflater.from(parent.context), parent, false
-        )
-        return ViewHolder(binding)
+    companion object {
+        private const val TYPE_ADVENTURE = 0
+        private const val TYPE_LOAD = 1
     }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val adventure = adventures[position]
-        holder.binding.tvTitle.text = adventure.title
-        holder.binding.tvAuthor.text = adventure.author
-        holder.binding.tvDescription.text = adventure.description
-        holder.itemView.setOnClickListener {
-            onItemClick(adventure, position)
+    inner class AdventureViewHolder(val binding: ItemAdventureBinding) :
+        RecyclerView.ViewHolder(binding.root)
+
+    inner class LoadViewHolder(val binding: ItemLoadAdventureBinding) :
+        RecyclerView.ViewHolder(binding.root)
+
+    override fun getItemViewType(position: Int): Int =
+        if (position == adventures.size) TYPE_LOAD else TYPE_ADVENTURE
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return if (viewType == TYPE_LOAD) {
+            val binding = ItemLoadAdventureBinding.inflate(
+                LayoutInflater.from(parent.context), parent, false
+            )
+            LoadViewHolder(binding)
+        } else {
+            val binding = ItemAdventureBinding.inflate(
+                LayoutInflater.from(parent.context), parent, false
+            )
+            AdventureViewHolder(binding)
         }
     }
 
-    override fun getItemCount(): Int = adventures.size
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (holder) {
+            is AdventureViewHolder -> {
+                val adventure = adventures[position]
+                holder.binding.tvTitle.text = adventure.title
+                holder.binding.tvAuthor.text = adventure.author
+                holder.binding.tvDescription.text = adventure.description
+                holder.itemView.setOnClickListener {
+                    onItemClick(adventure, position)
+                }
+            }
+            is LoadViewHolder -> {
+                holder.itemView.setOnClickListener { onLoadClick() }
+            }
+        }
+    }
+
+    override fun getItemCount(): Int = adventures.size + 1
 }

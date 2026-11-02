@@ -7,22 +7,60 @@
     android:padding="4dp"
     android:background="@drawable/scene_background">
 
-    <!-- Строка с текстом варианта и кнопкой удаления -->
+    <!-- ===== Шапка: шеврон, сводка, бейджи, эффекты, удалить ===== -->
     <LinearLayout
+        android:id="@+id/choice_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground">
 
-        <EditText
-            android:id="@+id/et_choice_text"
+        <TextView
+            android:id="@+id/tv_choice_chevron"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:text="▼"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/tv_choice_summary"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Текст варианта"
+            android:text="(без текста)"
             android:textColor="#FFFFFF"
-            android:textColorHint="#AAAAAA"
-            android:background="@android:color/transparent" />
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginStart="4dp" />
+
+        <TextView
+            android:id="@+id/tv_choice_badges"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#9E9E9E"
+            android:textSize="11sp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/btn_choice_effects"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚙"
+            android:textColor="#FFC107"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="14sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
         <Button
             android:id="@+id/btn_delete_choice"
@@ -31,34 +69,58 @@
             android:text="✕"
             android:textColor="#FF4444"
             style="?android:attr/borderlessButtonStyle"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp" />
     </LinearLayout>
 
+    <!-- ===== Тело: скрывается при сворачивании ===== -->
     <LinearLayout
+        android:id="@+id/choice_body"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="4dp">
+        android:orientation="vertical"
+        android:paddingTop="4dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <EditText
+            android:id="@+id/et_choice_text"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="След. сцена:"
-            android:textColor="#FFFFFF" />
+            android:hint="Текст варианта"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:background="@android:color/transparent"
+            android:layout_marginBottom="4dp" />
 
-        <Spinner
-            android:id="@+id/spinner_next_scene"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="След. сцена:"
+                android:textColor="#FFFFFF"
+                android:layout_gravity="center_vertical" />
+
+            <Spinner
+                android:id="@+id/spinner_next_scene"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/et_choice_condition"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Условие (метка)"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:background="@android:color/transparent" />
     </LinearLayout>
-
-    <EditText
-        android:id="@+id/et_choice_condition"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Условие (метка)"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#AAAAAA"
-        android:background="@android:color/transparent" />
 </LinearLayout>

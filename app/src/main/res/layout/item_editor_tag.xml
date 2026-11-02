@@ -2,36 +2,84 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:layout_marginBottom="4dp"
-    android:gravity="center_vertical">
+    android:orientation="vertical"
+    android:layout_marginBottom="6dp"
+    android:padding="6dp"
+    android:background="@drawable/scene_background">
 
-    <EditText
-        android:id="@+id/et_tag_name"
-        android:layout_width="0dp"
+    <!-- Строка 1: имя метки, значение, удалить -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:hint="Метка (название)"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#AAAAAA"
-        android:background="@android:color/transparent" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
-    <EditText
-        android:id="@+id/et_tag_value"
-        android:layout_width="80dp"
-        android:layout_height="wrap_content"
-        android:hint="Значение"
-        android:inputType="number"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#AAAAAA"
-        android:background="@android:color/transparent" />
+        <EditText
+            android:id="@+id/et_tag_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Имя метки (технич.)"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="13sp"
+            android:background="@android:color/transparent" />
 
-    <Button
-        android:id="@+id/btn_delete_tag"
-        android:layout_width="wrap_content"
+        <EditText
+            android:id="@+id/et_tag_value"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:hint="Знач."
+            android:inputType="numberSigned"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="13sp"
+            android:background="@android:color/transparent" />
+
+        <Button
+            android:id="@+id/btn_delete_tag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="#FF4444"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="14sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp" />
+    </LinearLayout>
+
+    <!-- Строка 2: видимое название, категория, видимость -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="✕"
-        android:textColor="#FF4444"
-        style="?android:attr/borderlessButtonStyle"
-        android:textSize="14sp" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="2dp">
+
+        <EditText
+            android:id="@+id/et_tag_display"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Видимое название"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="12sp"
+            android:background="@android:color/transparent" />
+
+        <Spinner
+            android:id="@+id/spinner_tag_category"
+            android:layout_width="110dp"
+            android:layout_height="wrap_content" />
+
+        <CheckBox
+            android:id="@+id/cb_tag_visible"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="👁"
+            android:textSize="14sp"
+            android:contentDescription="Показывать в статистике героя" />
+    </LinearLayout>
 </LinearLayout>

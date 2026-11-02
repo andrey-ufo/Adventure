@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Сколько шагов нужно пройти, чтобы открыть следующую главу?"
+        android:textSize="14sp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Средний пользователь проходит ~6000 шагов в день (~60 минут ходьбы)."
+        android:textSize="11sp"
+        android:textColor="#9E9E9E"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btn_steps_500"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🚶 500 шагов  (≈ 5 минут)"
+        android:textColor="#FFFFFF"
+        android:gravity="start|center_vertical"
+        style="?android:attr/borderlessButtonStyle" />
+
+    <Button
+        android:id="@+id/btn_steps_1000"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🚶 1 000 шагов  (≈ 10 минут)"
+        android:textColor="#FFFFFF"
+        android:gravity="start|center_vertical"
+        style="?android:attr/borderlessButtonStyle" />
+
+    <Button
+        android:id="@+id/btn_steps_4000"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🚶 4 000 шагов  (≈ 40 минут)"
+        android:textColor="#FFFFFF"
+        android:gravity="start|center_vertical"
+        style="?android:attr/borderlessButtonStyle" />
+
+    <Button
+        android:id="@+id/btn_steps_8000"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🚶 8 000 шагов  (≈ 1 ч 20 мин)"
+        android:textColor="#FFFFFF"
+        android:gravity="start|center_vertical"
+        style="?android:attr/borderlessButtonStyle" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#444444"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Своё значение:"
+        android:textSize="13sp"
+        android:layout_marginBottom="4dp" />
+
+    <EditText
+        android:id="@+id/et_custom_steps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Например, 2500"
+        android:inputType="number"
+        android:autofillHints="" />
+
+</LinearLayout>

@@ -8,14 +8,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Spinner
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.myapp.adventure.R
+import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
+import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.databinding.ItemEditorSceneBinding
+import android.content.Context
 
 class EditorSceneAdapter(
     private val viewModel: AdventureEditorViewModel,
@@ -44,12 +53,9 @@ class EditorSceneAdapter(
         val diff = DiffUtil.calculateDiff(SceneDiffCallback(snapshot, newSnapshot))
         snapshot = newSnapshot
         diff.dispatchUpdatesTo(this)
-        // RecyclerView с wrap_content внутри ScrollView не всегда пересчитывает
-        // свою высоту при изменении количества элементов — просим пересчёт явно
-        attachedRv?.requestLayout()
+        attachedRv?.post { attachedRv?.requestLayout() }
     }
 
-    /** Подсвечивает указанную сцену (жёлтая рамка). null — снять подсветку. */
     fun setHighlighted(uid: String?) {
         if (highlightedUid == uid) return
         val oldUid = highlightedUid
@@ -186,29 +192,22 @@ class EditorSceneAdapter(
             onDirty(false)
         }
 
-        // ---------- Метки ----------
+        // ---------- Метки сцены ----------
         binding.containerTags.removeAllViews()
         for ((tagIdx, tag) in scene.tags.withIndex()) {
-            val tagView = LayoutInflater.from(context)
-                .inflate(R.layout.item_editor_tag, binding.containerTags, false)
-            val etTagName = tagView.findViewById<EditText>(R.id.et_tag_name)
-            val etTagValue = tagView.findViewById<EditText>(R.id.et_tag_value)
-            val btnDeleteTag = tagView.findViewById<View>(R.id.btn_delete_tag)
-
-            etTagName.setTextIfDifferentSilently(tag.name)
-            etTagValue.setTextIfDifferentSilently(tag.value.toString())
-            etTagName.bindAfterTextChanged { tag.name = it; onDirty(false) }
-            etTagValue.bindAfterTextChanged { tag.value = it.toIntOrNull() ?: 0; onDirty(false) }
-
-            btnDeleteTag.setOnClickListener {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    viewModel.removeTag(pos, tagIdx)
-                    onDirty(true)
-                    submitList()
+            renderTagRow(
+                container = binding.containerTags,
+                tag = tag,
+                onChanged = { onDirty(false) },
+                onDelete = {
+                    val pos = holder.bindingAdapterPosition
+                    if (pos != RecyclerView.NO_POSITION) {
+                        viewModel.removeTag(pos, tagIdx)
+                        onDirty(true)
+                        submitList()
+                    }
                 }
-            }
-            binding.containerTags.addView(tagView)
+            )
         }
 
         binding.btnAddTag.setOnClickListener {
@@ -224,21 +223,60 @@ class EditorSceneAdapter(
         binding.cbChapterEnd.setOnCheckedChangeListener(null)
         binding.cbChapterEnd.isChecked = scene.isChapterEnd
         binding.layoutSteps.visibility = if (scene.isChapterEnd) View.VISIBLE else View.GONE
-        binding.cbChapterEnd.setOnCheckedChangeListener { _, isChecked ->
-            val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION) return@setOnCheckedChangeListener
-            viewModel.scenes.getOrNull(pos)?.isChapterEnd = isChecked
-            binding.layoutSteps.visibility = if (isChecked) View.VISIBLE else View.GONE
-            binding.tvChapterEndBadge.visibility = if (isChecked) View.VISIBLE else View.GONE
-            onDirty(true)
+        if (scene.isChapterEnd) {
+            binding.tvStepsDisplay.text = formatStepsDisplay(scene.requiredSteps)
         }
 
-        binding.etSteps.setTextIfDifferentSilently(scene.requiredSteps.toString())
-        binding.etSteps.bindAfterTextChanged { newVal ->
+        val chapterEndListener = object : CompoundButton.OnCheckedChangeListener {
+            override fun onCheckedChanged(buttonView: CompoundButton, isChecked: Boolean) {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return
+                val s = viewModel.scenes.getOrNull(pos) ?: return
+
+                if (isChecked && !s.isChapterEnd) {
+                    val initial = if (s.requiredSteps > 0) s.requiredSteps else 1000
+                    showChapterStepsDialog(
+                        context = context,
+                        initialSteps = initial,
+                        onApply = { newSteps ->
+                            s.isChapterEnd = true
+                            s.requiredSteps = newSteps
+                            binding.layoutSteps.visibility = View.VISIBLE
+                            binding.tvStepsDisplay.text = formatStepsDisplay(newSteps)
+                            binding.tvChapterEndBadge.visibility = View.VISIBLE
+                            onDirty(true)
+                        },
+                        onCancel = {
+                            // Откат визуального состояния чекбокса
+                            binding.cbChapterEnd.setOnCheckedChangeListener(null)
+                            binding.cbChapterEnd.isChecked = false
+                            binding.cbChapterEnd.setOnCheckedChangeListener(this)
+                        }
+                    )
+                } else if (!isChecked && s.isChapterEnd) {
+                    s.isChapterEnd = false
+                    binding.layoutSteps.visibility = View.GONE
+                    binding.tvChapterEndBadge.visibility = View.GONE
+                    onDirty(true)
+                }
+            }
+        }
+        binding.cbChapterEnd.setOnCheckedChangeListener(chapterEndListener)
+
+        binding.layoutSteps.setOnClickListener {
             val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION) return@bindAfterTextChanged
-            viewModel.scenes.getOrNull(pos)?.requiredSteps = newVal.toIntOrNull() ?: 0
-            onDirty(false)
+            if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+            val s = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
+            showChapterStepsDialog(
+                context = context,
+                initialSteps = s.requiredSteps,
+                onApply = { newSteps ->
+                    s.requiredSteps = newSteps
+                    binding.tvStepsDisplay.text = formatStepsDisplay(newSteps)
+                    onDirty(true)
+                },
+                onCancel = { /* ничего не меняем */ }
+            )
         }
 
         // ---------- Выборы ----------
@@ -246,11 +284,66 @@ class EditorSceneAdapter(
         for ((choiceIdx, choice) in scene.choices.withIndex()) {
             val choiceView = LayoutInflater.from(context)
                 .inflate(R.layout.item_editor_choice, binding.containerChoices, false)
+            val choiceHeader = choiceView.findViewById<View>(R.id.choice_header)
+            val choiceBody = choiceView.findViewById<View>(R.id.choice_body)
+            val tvChevron = choiceView.findViewById<TextView>(R.id.tv_choice_chevron)
+            val tvSummary = choiceView.findViewById<TextView>(R.id.tv_choice_summary)
+            val tvBadges = choiceView.findViewById<TextView>(R.id.tv_choice_badges)
             val etChoiceText = choiceView.findViewById<EditText>(R.id.et_choice_text)
             val spinnerScene = choiceView.findViewById<Spinner>(R.id.spinner_next_scene)
             val etCondition = choiceView.findViewById<EditText>(R.id.et_choice_condition)
+            val btnChoiceEffects = choiceView.findViewById<View>(R.id.btn_choice_effects)
             val btnDeleteChoice = choiceView.findViewById<View>(R.id.btn_delete_choice)
 
+            // --- Применяем состояние "развёрнут/свёрнут" ---
+            fun applyChoiceState() {
+                val expanded = viewModel.isChoiceExpanded(choice.uid)
+                choiceBody.visibility = if (expanded) View.VISIBLE else View.GONE
+                tvChevron.text = if (expanded) "▼" else "▶"
+
+                if (expanded) {
+                    tvSummary.text = ""
+                } else {
+                    tvSummary.text = choice.text.ifBlank { "(без текста)" }
+                }
+
+                // Бейджи: ⚙ N (эффекты) и 🔗 (переход задан)
+                val badges = mutableListOf<String>()
+                if (choice.tags.isNotEmpty()) {
+                    badges.add("⚙ ${choice.tags.size}")
+                }
+                if (choice.nextSceneId.isNotEmpty()) {
+                    badges.add("🔗")
+                }
+                if (choice.conditionTag.isNotEmpty()) {
+                    badges.add("?")
+                }
+                tvBadges.text = badges.joinToString(" ")
+            }
+            applyChoiceState()
+
+            // --- Клик по шапке: сворачивание/разворачивание ---
+            choiceHeader.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+                val s = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
+                val currentChoice = s.choices.getOrNull(choiceIdx) ?: return@setOnClickListener
+                viewModel.toggleChoiceExpanded(currentChoice.uid)
+                applyChoiceState()
+            }
+
+            // --- Кнопка «⚙ Эффекты» ---
+            btnChoiceEffects.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+                val currentScene = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
+                val currentChoice = currentScene.choices.getOrNull(choiceIdx) ?: return@setOnClickListener
+                showChoiceEffectsDialog(context, pos, choiceIdx, currentChoice) {
+                    applyChoiceState()
+                }
+            }
+
+            // --- Кнопка «✕ Удалить» ---
             btnDeleteChoice.setOnClickListener {
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
@@ -272,12 +365,24 @@ class EditorSceneAdapter(
                     .show()
             }
 
+            // --- Поля ввода ---
             etChoiceText.setTextIfDifferentSilently(choice.text)
             etCondition.setTextIfDifferentSilently(choice.conditionTag)
-            etChoiceText.bindAfterTextChanged { choice.text = it; onDirty(false) }
-            etCondition.bindAfterTextChanged { choice.conditionTag = it; onDirty(false) }
+            etChoiceText.bindAfterTextChanged { newText ->
+                choice.text = newText
+                if (!viewModel.isChoiceExpanded(choice.uid)) {
+                    tvSummary.text = newText.ifBlank { "(без текста)" }
+                }
+                onDirty(false)
+            }
+            etCondition.bindAfterTextChanged { newText ->
+                choice.conditionTag = newText
+                applyChoiceState()
+                onDirty(false)
+            }
 
-            val options = viewModel.getSceneOptions(position)
+            // --- Спиннер «След. сцена» ---
+            val options = viewModel.getSceneOptions()
             val displayList = mutableListOf(
                 "➕ Создать новую сцену…",
                 "(выберите сцену)"
@@ -308,12 +413,14 @@ class EditorSceneAdapter(
                     } else if (selectedPos == 1) {
                         if (choice.nextSceneId != "") {
                             choice.nextSceneId = ""
+                            applyChoiceState()
                             onDirty(true)
                         }
                     } else {
                         val newNext = options.getOrNull(selectedPos - 2)?.second ?: ""
                         if (choice.nextSceneId != newNext) {
                             choice.nextSceneId = newNext
+                            applyChoiceState()
                             onDirty(true)
                         }
                     }
@@ -333,6 +440,232 @@ class EditorSceneAdapter(
             }
         }
     }
+
+    // ---------- Рендер строки тега (общий для сцены и диалога эффектов) ----------
+
+    private fun renderTagRow(
+        container: LinearLayout,
+        tag: EditorTag,
+        onChanged: () -> Unit,
+        onDelete: () -> Unit
+    ) {
+        val context = container.context
+        val tagView = LayoutInflater.from(context)
+            .inflate(R.layout.item_editor_tag, container, false)
+        val etTagName = tagView.findViewById<EditText>(R.id.et_tag_name)
+        val etTagValue = tagView.findViewById<EditText>(R.id.et_tag_value)
+        val etTagDisplay = tagView.findViewById<EditText>(R.id.et_tag_display)
+        val spinnerCategory = tagView.findViewById<Spinner>(R.id.spinner_tag_category)
+        val cbVisible = tagView.findViewById<CheckBox>(R.id.cb_tag_visible)
+        val btnDeleteTag = tagView.findViewById<View>(R.id.btn_delete_tag)
+
+        etTagName.setTextIfDifferentSilently(tag.name)
+        etTagValue.setTextIfDifferentSilently(tag.value.toString())
+        etTagName.bindAfterTextChanged { tag.name = it; onChanged() }
+        etTagValue.bindAfterTextChanged { tag.value = it.toIntOrNull() ?: 0; onChanged() }
+
+        etTagDisplay.setTextIfDifferentSilently(tag.displayName)
+        etTagDisplay.bindAfterTextChanged { tag.displayName = it; onChanged() }
+
+        val categories = listOf(
+            TagCategory.HEALTH to "Здоровье",
+            TagCategory.ITEM to "Предмет",
+            TagCategory.JOURNAL to "Журнал"
+        )
+        val displayList = categories.map { it.second }
+        val catAdapter = ArrayAdapter(
+            context, android.R.layout.simple_spinner_item, displayList
+        )
+        catAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        spinnerCategory.onItemSelectedListener = null
+        spinnerCategory.adapter = catAdapter
+
+        val currentCatIdx = categories.indexOfFirst { it.first == tag.category }.coerceAtLeast(0)
+        spinnerCategory.setSelection(currentCatIdx)
+
+        fun applyValueHint(cat: TagCategory) {
+            etTagValue.hint = when (cat) {
+                TagCategory.HEALTH -> "Изменение"
+                TagCategory.ITEM -> "Количество"
+                TagCategory.JOURNAL -> "Знач."
+            }
+        }
+        applyValueHint(tag.category)
+
+        spinnerCategory.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?, view: View?, pos: Int, id: Long
+            ) {
+                val newCat = categories.getOrNull(pos)?.first ?: TagCategory.JOURNAL
+                applyValueHint(newCat)
+                if (tag.category != newCat) {
+                    tag.category = newCat
+                    if (newCat == TagCategory.ITEM && tag.value == 0) {
+                        tag.value = 1
+                        etTagValue.setTextIfDifferentSilently("1")
+                    }
+                    onChanged()
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        cbVisible.setOnCheckedChangeListener(null)
+        cbVisible.isChecked = tag.visible
+        cbVisible.setOnCheckedChangeListener { _, isChecked ->
+            tag.visible = isChecked
+            onChanged()
+        }
+
+        btnDeleteTag.setOnClickListener { onDelete() }
+
+        container.addView(tagView)
+    }
+
+    // ---------- Диалог эффектов выбора ----------
+
+    private fun showChoiceEffectsDialog(
+        context: android.content.Context,
+        sceneIndex: Int,
+        choiceIndex: Int,
+        choice: EditorChoice,
+        onChanged: () -> Unit = {}
+    ) {
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_edit_choice_tags, null)
+        val tvInfo = dialogView.findViewById<TextView>(R.id.tv_choice_effects_info)
+        val container = dialogView.findViewById<LinearLayout>(R.id.container_choice_tags)
+        val btnAddEffect = dialogView.findViewById<Button>(R.id.btn_add_choice_effect)
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("Эффекты выбора")
+            .setView(dialogView)
+            .setPositiveButton("Готово") { _, _ ->
+                onDirty(false)
+                onChanged()
+            }
+            .create()
+
+        fun refresh() {
+            val choiceText = choice.text.ifBlank { "(без текста)" }
+            tvInfo.text = "Эффекты, применяемые при клике на «$choiceText»:"
+
+            container.removeAllViews()
+            for ((tagIdx, tag) in choice.tags.withIndex()) {
+                renderTagRow(
+                    container = container,
+                    tag = tag,
+                    onChanged = { onDirty(false) },
+                    onDelete = {
+                        if (tagIdx in choice.tags.indices) {
+                            choice.tags.removeAt(tagIdx)
+                            onDirty(false)
+                            refresh()
+                        }
+                    }
+                )
+            }
+
+            if (choice.tags.isEmpty()) {
+                val tvEmpty = android.widget.TextView(context).apply {
+                    text = "(нет эффектов)"
+                    setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
+                    textSize = 12f
+                }
+                container.addView(tvEmpty)
+            }
+        }
+
+        btnAddEffect.setOnClickListener {
+            choice.tags.add(EditorTag(category = TagCategory.ITEM, value = 1))
+            onDirty(false)
+            refresh()
+        }
+
+        refresh()
+        dialog.show()
+    }
+
+    // ---------- Диалог шагового шлюза ----------
+
+    private fun showChapterStepsDialog(
+        context: Context,
+        initialSteps: Int,
+        onApply: (Int) -> Unit,
+        onCancel: () -> Unit
+    ) {
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_chapter_steps, null)
+
+        val etCustom = dialogView.findViewById<EditText>(R.id.et_custom_steps)
+        val btn500 = dialogView.findViewById<Button>(R.id.btn_steps_500)
+        val btn1000 = dialogView.findViewById<Button>(R.id.btn_steps_1000)
+        val btn4000 = dialogView.findViewById<Button>(R.id.btn_steps_4000)
+        val btn8000 = dialogView.findViewById<Button>(R.id.btn_steps_8000)
+
+        if (initialSteps > 0) {
+            etCustom.setText(initialSteps.toString())
+            etCustom.setSelection(etCustom.text.length)
+        }
+
+        var applied = false
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("Шагов до следующей главы")
+            .setView(dialogView)
+            .setPositiveButton("Применить", null)
+            .setNegativeButton("Отмена", null)
+            .create()
+
+        fun applyAndClose(value: Int) {
+            if (value <= 0) {
+                android.widget.Toast.makeText(context, "Значение должно быть больше 0", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+            applied = true
+            onApply(value)
+            dialog.dismiss()
+        }
+
+        btn500.setOnClickListener { applyAndClose(500) }
+        btn1000.setOnClickListener { applyAndClose(1000) }
+        btn4000.setOnClickListener { applyAndClose(4000) }
+        btn8000.setOnClickListener { applyAndClose(8000) }
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val value = etCustom.text.toString().toIntOrNull()
+                if (value == null || value <= 0) {
+                    android.widget.Toast.makeText(context, "Введите целое число больше 0", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    applyAndClose(value)
+                }
+            }
+        }
+
+        dialog.setOnDismissListener {
+            if (!applied) onCancel()
+        }
+
+        dialog.show()
+    }
+
+    private fun formatStepsDisplay(steps: Int): String {
+        if (steps <= 0) return "🚶 Шаги не заданы · нажмите, чтобы изменить"
+        val minutes = ((steps + 99) / 100).coerceAtLeast(1)
+        val timeText = when {
+            minutes < 60 -> "≈ $minutes мин"
+            else -> {
+                val hours = minutes / 60
+                val mins = minutes % 60
+                if (mins == 0) "≈ $hours ч" else "≈ $hours ч $mins мин"
+            }
+        }
+        val formatted = String.format(java.util.Locale.getDefault(), "%,d", steps).replace(',', ' ')
+        return "🚶 $formatted шагов ($timeText) · нажмите, чтобы изменить"
+    }
+
 
     // ---------- Диалоги ----------
 
