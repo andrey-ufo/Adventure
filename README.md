@@ -1,58 +1,120 @@
-# Adventure 
+# Adventure
 
-> Adventure - приложение созданное для людей, которым нравятся текстовые приключения (такие как Fighting Fantasy и подобные) и пешие прогулки, а также для авторов, которые хотят писать текстовые квесты.
+> Text adventures for walkers — a step-gated interactive fiction engine and
+> authoring tool for Android.
 
-## 📚 Документация
+**Status:** pre-alpha. Features, data formats, UI and public APIs may change
+without notice. The repository is under active development.
 
-Для получения подробной информации обратитесь к соответствующим разделам:
+## What is this?
 
+Adventure is an Android app for people who enjoy text adventures (such as
+*Fighting Fantasy* and similar gamebooks) and walking — and for authors who
+want to write text quests. Chapters are unlocked by real-world steps counted
+by the phone's step sensor (or Health Connect), so reading progress is tied
+to physical activity.
 
-## 🤝 Участие в разработке
+Two primary audiences:
 
-Мы рады вашей помощи! Пожалуйста, ознакомьтесь с [Руководством по контрибьютингу](CONTRIBUTING.md) перед созданием Pull Request.
+- **Authors** — write, edit and preview interactive adventures inside the app.
+- **Developers** — extend the app, add features, integrate new step sources.
 
-## 📄 Лицензия
+End users of the app find everything they need in the in-app UI; this README
+and `docs/` are for authors and developers.
 
-Проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](LICENSE).
+## Features (current)
 
-test_adventure.json - это тестовое приключение. Его нужно переписывать по мере развития приложения, чтобы оно соответствовало новым функциям приложения и позволяло тестировать их.
+- Adventure editor: scenes, choices, conditional branching, tags
+  (health / items / journal), chapter ends with step gates, death scenes,
+  initial player state.
+- Reader with HUD (health, inventory, journal), save/resume progress, death
+  handling (step back / restart chapter / restart adventure).
+- Step counter: foreground service using `TYPE_STEP_COUNTER` plus optional
+  Health Connect source; 30-day history; monotonic all-time counter.
+- Utilities: validator, search, story statistics, map view, JSON
+  import/export via the Storage Access Framework.
+- Adjustable font size and custom fonts, in-app debug log viewer.
 
-Комментарии в коде должны быть написаны на английском языке. Все комментарии на русском нужно заменять на английские.
+See [ROADMAP.md](./ROADMAP.md) for what is planned.
 
-Приложение имеет папки «NewAdventures» и «Adventures» чтобы разделять черновики и готовые книги. «Adventures» - библиотека законченных приключений. «NewAdventures» - черновики.
+## Quick start (developers)
 
+Requirements:
 
-## Step counter architecture
+- Android Studio (latest stable)
+- JDK 21 (the project's Gradle toolchain)
+- Android device or emulator with `minSdk 26`
 
-Three layers, from lowest to highest:
+Build and run:
 
-1. **Source** (`StepCounterService`, optional `HealthConnectStepSource`) — a stream of
-   step *deltas*. Sources never touch `progress.json` or game state.
-2. **History** (`StepHistoryManager`) — the single owner of step history:
-    - 30 daily buckets (`date → steps`) + monotonic `totalStepsAllTime`
-    - in-memory cache, batched disk writes, `Mutex`-protected
-    - public API: `getTotalSteps`, `getTodaySteps`, `getLastNDaysSum`,
-      `getDailyBuckets`, `recordDelta`, `flush`.
-3. **Game** (`AdventureReaderFragment`) — reads only aggregates from
-   `StepHistoryManager`; owns `remainingSteps` and `isGateActive` for chapter gates.
+```bash
+git clone https://github.com/andrey-ufo/Adventure.git
+cd Adventure
+./gradlew :app:assembleDebug
+```
 
-## API for future features
+On first launch the app asks you to choose a folder (via the Storage Access
+Framework). Adventure creates two sub-folders inside it:
 
-The following are deliberately exposed and stable; future features should
-build on them and not open `progress.json` / `step_history.json` directly:
+- `Adventures/` — library of finished works
+- `NewAdventures/` — drafts
 
-- **Achievements** (`StepAchievementEngine`, not yet implemented) —
-  read via `StepHistoryManager.getLastNDaysSum(ctx, 7)` and `(ctx, 30)`.
-  Planned examples: "≥50 000 steps in the last 7 days → +10 stamina".
-  The `TODO(feature:achievements)` marker in `StepHistoryManager.kt` shows
-  where the engine will hook in.
-- **Step-gated choices** (5000 / 10000 steps in a scene) — implement via a
-  per-choice `remainingSteps` identical to chapter gates; the model already
-  lives in `ProgressData.remainingSteps`.
-- **Adventure unlocks** — read `StepHistoryManager.getTotalSteps(ctx)` and
-  compare against per-adventure thresholds. No new storage is required.
-- **Ranks** — pure function of `getTotalSteps()`; the statistics screen
-  already shows progress to the first rank as a template.
+and a few service files (`progress.json`, `step_history.json`,
+`debug_log.txt`) at the root of the chosen folder.
 
-Everything above is a pure read from `StepHistoryManager`; sources
-(`StepCounterService`, HC) can be swapped without touching game logic.
+## Documentation
+
+Full documentation lives in [`docs/`](./docs/index.md). Start there.
+
+- **For authors** — [Authoring guide](./docs/authoring-guide.md)
+- **For developers** — [Getting started](./docs/getting-started.md),
+  [Architecture overview](./docs/architecture.md)
+- **Documentation rules** — [docs/documentation-rules.md](./docs/documentation-rules.md)
+
+## Project structure (high level)
+
+- `app/src/main/java/com/myapp/adventure/` — application code
+  - `data/` — domain models (Adventure, Scene, Choice, Tag, …) and editor models
+  - `service/` — `StepCounterService` (foreground sensor service)
+  - `step/` — step source abstraction, Health Connect integration
+  - `ui/` — fragments, adapters, editor, reader
+  - `utils/` — persistence (`ProgressManager`, `StepHistoryManager`,
+    `Logger`), helpers
+- `app/src/main/res/` — layouts, drawables, strings, themes
+- `app/src/main/res/raw/test_adventure.json` — sample adventure used for testing
+- `docs/` — documentation
+
+## Architecture invariants
+
+The step pipeline has three layers, from lowest to highest:
+
+1. **Source** — `StepCounterService` (sensor) or optional
+   `HealthConnectStepSource`. Emits step *deltas*; never touches game state
+   or `progress.json`.
+2. **History** — `StepHistoryManager`, the single owner of step history
+   (30 daily buckets + monotonic `totalStepsAllTime`; in-memory cache,
+   batched disk writes, `Mutex`-protected).
+3. **Game** — `AdventureReaderFragment` reads only aggregates from
+   `StepHistoryManager` and owns chapter-gate state (`remainingSteps`,
+   `isGateActive`).
+
+Future features (achievements, step-gated choices, adventure unlocks, ranks)
+build on `StepHistoryManager`'s read APIs and must not open `progress.json`
+or `step_history.json` directly. Full details will be documented in
+[docs/architecture.md](./docs/architecture.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a Pull Request.
+
+Project conventions:
+
+- **Source-code comments are in English.** All Russian comments in the code
+  must be translated to English.
+- `test_adventure.json` is the reference sample adventure. It must be
+  updated whenever the app gains new features, so it always exercises the
+  current feature set.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
