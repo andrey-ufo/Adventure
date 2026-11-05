@@ -16,6 +16,8 @@ class MainActivity : AppCompatActivity() {
             Logger.init(this, savedUri)
         }
 
+        com.myapp.adventure.step.StepSourceManager.start(this)
+
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, SetupFragment())

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.myapp.adventure.data.EditorDraft
 import com.myapp.adventure.data.EditorScene
+import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.deepCopy
 
 object EditorDraftManager {
@@ -18,6 +19,7 @@ object EditorDraftManager {
         title: String,
         author: String,
         description: String,
+        initialStateTags: List<EditorTag>,
         scenes: List<EditorScene>
     ) {
         try {
@@ -25,6 +27,7 @@ object EditorDraftManager {
                 title = title,
                 author = author,
                 description = description,
+                initialStateTags = initialStateTags.map { it.copy() },
                 scenes = scenes.map { it.deepCopy() }
             )
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -50,6 +53,4 @@ object EditorDraftManager {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().remove(KEY_DRAFT).apply()
     }
-
-    fun hasDraft(context: Context): Boolean = loadDraft(context) != null
 }

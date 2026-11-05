@@ -5,15 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.data.Chapter
 import com.myapp.adventure.data.Choice
+import com.myapp.adventure.data.DeathScene
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorSnapshot
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.PlayerState
+import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
-import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.utils.Logger
 
@@ -23,17 +24,22 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     var title: String = ""
     var author: String = ""
     var description: String = ""
-    var initialState: PlayerState? = null
+
+    val initialStateTags: MutableList<EditorTag> = mutableListOf()
+    var initialStateExpanded: Boolean = false
 
     private val expandedScenes = mutableSetOf<String>()
     private val expandedChoices = mutableSetOf<String>()
+    private val expandedMapChapters = mutableSetOf<Int>()
+
+    var pendingJumpToSceneUid: String? = null
 
     private val history = ArrayDeque<EditorSnapshot>()
     private val redoStack = ArrayDeque<EditorSnapshot>()
 
     private val context get() = getApplication<Application>().applicationContext
 
-    // ---------- Аккордеон ----------
+    // ---------- Аккордеон сцен ----------
 
     fun isSceneExpanded(uid: String): Boolean = uid in expandedScenes
     fun expandScene(uid: String) { expandedScenes.add(uid) }
@@ -49,7 +55,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun collapseAllScenes() { expandedScenes.clear() }
-    fun expandAllScenes() { scenes.forEach { expandedScenes.add(it.uid) } }
 
     private fun pruneExpandedScenes() {
         val currentUids = scenes.map { it.uid }.toSet()
@@ -59,8 +64,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     // ---------- Аккордеон выборов ----------
 
     fun isChoiceExpanded(uid: String): Boolean = uid in expandedChoices
-
-    fun expandChoice(uid: String) { expandedChoices.add(uid) }
 
     fun toggleChoiceExpanded(uid: String): Boolean {
         return if (uid in expandedChoices) {
@@ -79,6 +82,23 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         expandedChoices.retainAll(currentUids)
     }
 
+    // ---------- Карта: аккордеон глав ----------
+
+    fun isMapChapterExpanded(index: Int): Boolean = index in expandedMapChapters
+
+    fun toggleMapChapterExpanded(index: Int) {
+        if (index in expandedMapChapters) expandedMapChapters.remove(index)
+        else expandedMapChapters.add(index)
+    }
+
+    fun ensureFirstMapChapterExpanded(totalChapters: Int) {
+        if (expandedMapChapters.isEmpty() && totalChapters > 0) {
+            expandedMapChapters.add(0)
+        }
+    }
+
+    fun collapseAllMapChapters() { expandedMapChapters.clear() }
+
     // ---------- История Undo/Redo ----------
 
     fun isHistoryInitialized(): Boolean = history.isNotEmpty()
@@ -93,6 +113,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         title = title,
         author = author,
         description = description,
+        initialStateTags = initialStateTags.map { it.copy() },
         scenes = scenes.map { it.deepCopy() }
     )
 
@@ -100,9 +121,12 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         title = snapshot.title
         author = snapshot.author
         description = snapshot.description
+        initialStateTags.clear()
+        initialStateTags.addAll(snapshot.initialStateTags.map { it.copy() })
         scenes.clear()
         scenes.addAll(snapshot.scenes.map { it.deepCopy() })
         pruneExpandedScenes()
+        pruneExpandedChoices()
     }
 
     fun commitSnapshot() {
@@ -174,11 +198,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     // ---------- ID-заморозка и пересборка ----------
 
-    /**
-     * Если ID сцены ещё "автоматический" и в названии что-то есть —
-     * генерирует ID из полного названия, замораживает и обновляет все ссылки.
-     * Возвращает true, если ID фактически изменился.
-     */
     fun freezeSceneId(sceneUid: String): Boolean {
         val scene = scenes.find { it.uid == sceneUid } ?: return false
         if (!scene.idIsAuto) return false
@@ -196,11 +215,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         return true
     }
 
-    /**
-     * Пересобрать ID по явному запросу пользователя (кнопка «🔄»).
-     * Возвращает результат с количеством обновлённых ссылок или null,
-     * если пересборка невозможна.
-     */
     fun rebuildSceneId(sceneUid: String): RebuildResult? {
         val scene = scenes.find { it.uid == sceneUid } ?: return null
         if (scene.title.isBlank()) return null
@@ -216,7 +230,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         return RebuildResult(oldId, newId, updatedRefs)
     }
 
-    /** Заранее посчитать, каким будет новый ID, без применения. */
     fun previewRebuiltId(sceneUid: String): String? {
         val scene = scenes.find { it.uid == sceneUid } ?: return null
         if (scene.title.isBlank()) return null
@@ -227,20 +240,18 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         return preview
     }
 
-    /** Замораживает все «висящие» ID перед сборкой JSON. */
     fun freezeAllPendingIds() {
         scenes.toList().forEach { scene ->
             if (scene.idIsAuto) {
                 if (scene.title.isNotBlank()) {
                     freezeSceneId(scene.uid)
                 } else {
-                    scene.idIsAuto = false   // пустую сцену тоже замораживаем как есть
+                    scene.idIsAuto = false
                 }
             }
         }
     }
 
-    /** Обновляет все ссылки со старого ID на новый. Возвращает количество изменённых выборов. */
     private fun updateReferences(oldId: String, newId: String): Int {
         if (oldId.isEmpty() || oldId == newId) return 0
         var count = 0
@@ -264,10 +275,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         Logger.log(context, "Добавлена сцена, индекс: ${scenes.size - 1}")
     }
 
-    /**
-     * Создаёт сцену с заданным названием. Если название непустое — генерирует и
-     * сразу замораживает ID, чтобы ссылки работали сразу.
-     */
     fun addSceneWithTitle(title: String): EditorScene {
         val trimmed = title.trim()
         val newScene = EditorScene(
@@ -291,18 +298,18 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun updateSceneTitle(index: Int, newTitle: String) {
-        val scene = scenes.getOrNull(index) ?: return
-        val oldTitle = scene.title
-        scene.title = newTitle
-        Logger.log(context, "Сцена '$oldTitle' переименована в '$newTitle' (ID: ${scene.id.ifEmpty { "пуст" }})")
+    fun setDeathScene(sceneUid: String, enabled: Boolean) {
+        if (enabled) {
+            scenes.forEach { if (it.uid != sceneUid) it.isDeathScene = false }
+        }
+        scenes.find { it.uid == sceneUid }?.isDeathScene = enabled
     }
 
     fun addChoice(sceneIndex: Int) {
         val scene = scenes.getOrNull(sceneIndex) ?: return
         val choice = EditorChoice()
         scene.choices.add(choice)
-        expandedChoices.add(choice.uid)  // новый выбор сразу развёрнут
+        expandedChoices.add(choice.uid)
         Logger.log(context, "Добавлен выбор в сцену '${scene.title}' (индекс $sceneIndex)")
     }
 
@@ -334,12 +341,50 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    // ---------- Начальное состояние ----------
+
+    fun addInitialStateTag() {
+        initialStateTags.add(EditorTag(category = TagCategory.JOURNAL))
+    }
+
+    fun removeInitialStateTag(index: Int) {
+        if (index in initialStateTags.indices) {
+            initialStateTags.removeAt(index)
+        }
+    }
+
+    fun buildInitialState(): PlayerState? {
+        if (initialStateTags.isEmpty()) return null
+
+        val flags = mutableListOf<String>()
+        val stats = mutableMapOf<String, Int>()
+
+        for (tag in initialStateTags) {
+            if (tag.name.isBlank() || tag.name.startsWith("!")) continue
+            val effectiveCategory = if (tag.name == "health") TagCategory.HEALTH else tag.category
+            when (effectiveCategory) {
+                TagCategory.HEALTH, TagCategory.ITEM -> {
+                    stats[tag.name] = tag.value
+                }
+                TagCategory.JOURNAL -> {
+                    if (tag.isStatModifier || tag.value != 0) {
+                        stats[tag.name] = tag.value
+                    } else {
+                        if (!flags.contains(tag.name)) flags.add(tag.name)
+                    }
+                }
+            }
+        }
+
+        if (flags.isEmpty() && stats.isEmpty()) return null
+        return PlayerState(
+            flags = flags.ifEmpty { null },
+            stats = stats.ifEmpty { null }
+        )
+    }
+
     // ---------- Сборка Adventure ----------
 
-    /**
-     * Сериализует список тегов в тройку (setFlags, removeFlags, modifyStats).
-     * Возвращает null в соответствующем поле, если оно пустое.
-     */
     private fun serializeTags(tags: List<EditorTag>): Triple<List<String>?, List<String>?, Map<String, Int>?> {
         val setFlagsSet = linkedSetOf<String>()
         val removeFlagsSet = linkedSetOf<String>()
@@ -357,7 +402,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 continue
             }
 
-            when (tag.category) {
+            val effectiveCategory = if (rawName == "health") TagCategory.HEALTH else tag.category
+            when (effectiveCategory) {
                 TagCategory.HEALTH, TagCategory.ITEM -> {
                     if (tag.value != 0) {
                         modifyStatsMap[rawName] = (modifyStatsMap[rawName] ?: 0) + tag.value
@@ -386,7 +432,12 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val sceneList = mutableListOf<Scene>()
         var chapterIndex = 1
 
+        // Ищем сцену смерти и исключаем её из обычного обхода
+        val deathSceneEditor = scenes.firstOrNull { it.isDeathScene }
+
         for (scene in scenes) {
+            if (scene.isDeathScene) continue
+
             val (sceneSetFlags, sceneRemoveFlags, sceneModifyStats) = serializeTags(scene.tags)
 
             val sceneObj = Scene(
@@ -410,7 +461,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             )
             sceneList.add(sceneObj)
 
-            if (scene.isChapterEnd || scene == scenes.last()) {
+            if (scene.isChapterEnd || scene == scenes.lastOrNull { !it.isDeathScene }) {
                 val chapterId = "chapter_$chapterIndex"
                 val requiredSteps = if (scene.isChapterEnd) scene.requiredSteps else 0
                 chapters.add(
@@ -427,20 +478,30 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
-        // Собираем реестр меток из tags сцен и tags выборов
+        // Собираем реестр меток из tags сцен, tags выборов и initial_state
         val tagRegistry = LinkedHashMap<String, TagDefinition>()
 
         fun registerTag(tag: EditorTag) {
             val cleanName = tag.name.removePrefix("!")
             if (cleanName.isBlank()) return
+
+            // Хардкод: health всегда HEALTH
+            val effectiveCategory = if (cleanName == "health") TagCategory.HEALTH else tag.category
+            val effectiveDisplay = if (cleanName == "health" && tag.displayName.isBlank()) {
+                "Здоровье"
+            } else {
+                tag.displayName.ifBlank { cleanName }
+            }
+
             tagRegistry[cleanName] = TagDefinition(
                 name = cleanName,
-                displayName = tag.displayName.ifBlank { cleanName },
-                category = tag.category,
+                displayName = effectiveDisplay,
+                category = effectiveCategory,
                 visible = tag.visible
             )
         }
 
+        for (tag in initialStateTags) registerTag(tag)
         for (scene in scenes) {
             for (tag in scene.tags) registerTag(tag)
             for (choice in scene.choices) {
@@ -448,7 +509,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
-        // Метки из условий, которые нигде не объявлены — добавляем в JOURNAL/visible=false
+        // Метки из условий, которые нигде не объявлены
         for (scene in scenes) {
             for (choice in scene.choices) {
                 val cond = choice.conditionTag.trim()
@@ -469,12 +530,24 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
+        // Собираем DeathScene из помеченной сцены
+        val deathScene = deathSceneEditor?.let {
+            DeathScene(
+                id = it.id.ifEmpty { "death_scene" },
+                text = it.text,
+                allowStepBack = it.deathAllowStepBack,
+                allowChapterRestart = it.deathAllowChapterRestart,
+                allowAdventureRestart = it.deathAllowAdventureRestart
+            )
+        }
+
         return Adventure(
             title = title,
             author = author,
             description = description,
-            initialState = initialState,
+            initialState = buildInitialState(),
             tags = tagRegistry.values.toList(),
+            deathScene = deathScene,
             chapters = chapters
         )
     }

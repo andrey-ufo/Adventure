@@ -16,7 +16,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Статистика шагов"
+            android:text="@string/stats_title"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -24,7 +24,7 @@
             android:id="@+id/btn_menu"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Меню"
+            android:text="@string/stats_menu"
             style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>
 
@@ -36,7 +36,153 @@
             android:id="@+id/container_stats"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:paddingBottom="16dp">
+
+            <!-- Loading indicator -->
+            <TextView
+                android:id="@+id/tv_loading"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/stats_loading"
+                android:gravity="center"
+                android:padding="24dp"
+                android:visibility="gone" />
+
+            <!-- No permission warning -->
+            <TextView
+                android:id="@+id/tv_no_permission"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/stats_no_permission"
+                android:textColor="#FF9800"
+                android:padding="12dp"
+                android:background="@drawable/scene_background"
+                android:layout_marginBottom="12dp"
+                android:visibility="gone" />
+
+            <!-- No data placeholder -->
+            <TextView
+                android:id="@+id/tv_no_data"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/stats_no_data"
+                android:textColor="#9E9E9E"
+                android:gravity="center"
+                android:padding="24dp"
+                android:visibility="gone" />
+
+            <!-- ===== Summary section ===== -->
+            <LinearLayout
+                android:id="@+id/section_summary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/scene_background"
+                android:padding="12dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/stats_total"
+                    android:textSize="12sp"
+                    android:textColor="#AAAAAA" />
+
+                <TextView
+                    android:id="@+id/tv_total_steps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginTop="2dp" />
+
+                <!-- Rank progress -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/stats_rank_title"
+                    android:textSize="12sp"
+                    android:textColor="#AAAAAA"
+                    android:layout_marginTop="12dp" />
+
+                <ProgressBar
+                    android:id="@+id/progress_rank"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="0"
+                    android:layout_marginTop="4dp" />
+
+                <TextView
+                    android:id="@+id/tv_rank_progress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="#FFC107"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <!-- ===== Today / 7 days / 30 days ===== -->
+            <LinearLayout
+                android:id="@+id/section_recent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/scene_background"
+                android:padding="12dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:id="@+id/tv_today_steps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tv_last_7_days_steps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginTop="6dp" />
+
+                <TextView
+                    android:id="@+id/tv_last_30_days_steps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginTop="6dp" />
+            </LinearLayout>
+
+            <!-- ===== 14-day list ===== -->
+            <LinearLayout
+                android:id="@+id/section_days"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/stats_last_14_days_title"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:id="@+id/container_days"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+
+        </LinearLayout>
     </ScrollView>
 
 </LinearLayout>

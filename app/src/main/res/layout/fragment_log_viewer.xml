@@ -26,6 +26,14 @@
             android:layout_height="wrap_content"
             android:text="Копировать"
             style="?android:attr/borderlessButtonStyle" />
+
+        <Button
+            android:id="@+id/btn_clear_log"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Очистить"
+            android:textColor="#FF9800"
+            style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>
 
     <ScrollView

@@ -21,10 +21,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.google.gson.Gson
 import com.myapp.adventure.R
 import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.data.Choice
+import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
@@ -36,6 +38,7 @@ import com.myapp.adventure.ui.SettingsFragment
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ProgressManager
+import kotlinx.coroutines.launch
 
 class AdventureReaderFragment : Fragment() {
 
@@ -44,11 +47,31 @@ class AdventureReaderFragment : Fragment() {
 
     private lateinit var adventure: Adventure
     private var adventureFileUri: Uri? = null
+
     private var currentChapterIndex = 0
     private var currentSceneId = ""
-    private var currentStepsDone = 0
-    private var goalAbsoluteSteps = -1
-    private var startAbsoluteSteps = 0
+
+    // ----- Steps gate state -----
+
+    /** Steps remaining until the next chapter opens. */
+    private var remainingSteps = 0
+
+    /** Whether a steps gate is currently active. */
+    private var isGateActive = false
+
+    /**
+     * Raw sensor reading at the moment this fragment last synchronized with the sensor.
+     * -1 means "not yet known" — we wait for the first broadcast or fall back to
+     * [lastAbsoluteAtSaveFromProgress] for catch-up.
+     */
+    private var lastKnownAbsolute = -1
+
+    /**
+     * lastAbsoluteAtSave restored from ProgressData at load.
+     * Used once to catch up steps taken while the app was closed.
+     */
+    private var lastAbsoluteAtSaveFromProgress = -1
+
     private var notificationPermissionGranted = false
     private var activityRecognitionGranted = false
 
@@ -56,34 +79,45 @@ class AdventureReaderFragment : Fragment() {
     private var previewStartSceneId = ""
     private var previewStartChapterIndex = 0
 
-    private var isWaitingForSteps = false
+    private var isDead = false
 
-    // JOURNAL-флаги, порядок добавления (новые в конце)
+    private var previousStepSnapshot: PlayerStateSnapshot? = null
+    private var chapterStartSnapshot: PlayerStateSnapshot? = null
+
     private val flags = mutableListOf<String>()
-
-    // Значения HEALTH и ITEM (и числовых JOURNAL)
     private val stats = mutableMapOf<String, Int>()
-
-    // ITEM-метки, порядок получения (новые в конце)
     private val itemOrder = mutableListOf<String>()
-
     private val appliedSceneEffects = mutableSetOf<String>()
 
-    // Реестр меток из adventure.tags для быстрого доступа
     private val tagRegistry: Map<String, TagDefinition>
         get() = adventure.tags.orEmpty().associateBy { it.name }
 
     private val stepReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (!isGateActive) return
             val absoluteSteps = intent?.getIntExtra(StepCounterConstants.EXTRA_ABSOLUTE_STEPS, 0) ?: 0
-            if (goalAbsoluteSteps >= 0) {
-                currentStepsDone = (absoluteSteps - startAbsoluteSteps).coerceAtLeast(0)
-                val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-                val required = nextChapter?.requiredSteps ?: 0
-                if (currentStepsDone >= required) {
-                    onStepsCompleted(nextChapter)
+            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
+            if (nextChapter.requiredSteps <= 0) return
+
+            if (lastKnownAbsolute < 0) {
+                // First event since fragment opened. Catch up from saved baseline.
+                if (lastAbsoluteAtSaveFromProgress >= 0) {
+                    val delta = (absoluteSteps - lastAbsoluteAtSaveFromProgress).coerceAtLeast(0)
+                    remainingSteps = (remainingSteps - delta).coerceAtLeast(0)
                 }
-                updateStepsProgress()
+                lastKnownAbsolute = absoluteSteps
+            } else {
+                val delta = (absoluteSteps - lastKnownAbsolute).coerceAtLeast(0)
+                lastKnownAbsolute = absoluteSteps
+                if (delta > 0) {
+                    remainingSteps = (remainingSteps - delta).coerceAtLeast(0)
+                }
+            }
+
+            if (remainingSteps <= 0) {
+                onStepsCompleted(nextChapter)
+            } else {
+                updateStepsProgressUi(nextChapter)
             }
         }
     }
@@ -107,35 +141,32 @@ class AdventureReaderFragment : Fragment() {
                 initNormalState()
             }
         } catch (e: Exception) {
-            Logger.log(requireContext(), "Ошибка загрузки приключения: ${e.message}")
+            Logger.log(requireContext(), "Error loading adventure: ${e.message}")
             Toast.makeText(requireContext(), "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
             parentFragmentManager.popBackStack()
         }
     }
 
-    // ---------- Инициализация ----------
+    // ==================== State init ====================
 
     private fun addFlagIfMissing(flag: String) {
         if (!flags.contains(flag)) flags.add(flag)
     }
 
-    /** Возвращает категорию метки из реестра, либо JOURNAL по умолчанию. */
     private fun getCategory(name: String): TagCategory {
+        if (name == "health") return TagCategory.HEALTH
         return tagRegistry[name]?.category ?: TagCategory.JOURNAL
     }
 
-    /** Возвращает отображаемое имя метки. */
     private fun getDisplayName(name: String): String {
         val def = tagRegistry[name]
         return def?.displayName?.ifBlank { name } ?: name
     }
 
-    /** Видима ли метка в HUD. */
     private fun isVisible(name: String): Boolean {
         return tagRegistry[name]?.visible ?: false
     }
 
-    /** Регистрирует получение ITEM-метки в itemOrder. */
     private fun registerItem(name: String, newCount: Int) {
         if (getCategory(name) != TagCategory.ITEM) return
         if (newCount > 0 && !itemOrder.contains(name)) {
@@ -145,7 +176,6 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
-    /** Восстанавливает itemOrder после загрузки stats (порядок = порядок tags). */
     private fun rebuildItemOrder() {
         itemOrder.clear()
         adventure.tags?.filter { it.category == TagCategory.ITEM }?.forEach { def ->
@@ -153,6 +183,50 @@ class AdventureReaderFragment : Fragment() {
                 itemOrder.add(def.name)
             }
         }
+    }
+
+    private fun captureSnapshot(): PlayerStateSnapshot = PlayerStateSnapshot(
+        sceneId = currentSceneId,
+        chapterIndex = currentChapterIndex,
+        flags = flags.toList(),
+        stats = stats.toMap(),
+        itemOrder = itemOrder.toList(),
+        appliedSceneEffects = appliedSceneEffects.toSet()
+    )
+
+    private fun restoreSnapshot(snapshot: PlayerStateSnapshot) {
+        currentChapterIndex = snapshot.chapterIndex
+        currentSceneId = snapshot.sceneId
+        flags.clear()
+        flags.addAll(snapshot.flags)
+        stats.clear()
+        stats.putAll(snapshot.stats)
+        itemOrder.clear()
+        itemOrder.addAll(snapshot.itemOrder)
+        appliedSceneEffects.clear()
+        appliedSceneEffects.addAll(snapshot.appliedSceneEffects)
+        isDead = false
+        saveProgress()
+        loadCurrentScene()
+    }
+
+    private fun captureChapterStartIfNeeded() {
+        val chapter = adventure.chapters?.getOrNull(currentChapterIndex) ?: return
+        val firstSceneId = chapter.scenes?.firstOrNull()?.id ?: return
+        if (currentSceneId != firstSceneId) return
+        if (chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIndex) return
+        val health = stats["health"]
+        if (health == null || health > 0) {
+            chapterStartSnapshot = captureSnapshot()
+        }
+    }
+
+    private fun checkDeath(): Boolean {
+        if (isDead) return false
+        val health = stats["health"] ?: return false
+        if (health > 0) return false
+        isDead = true
+        return true
     }
 
     private fun initPreviewState() {
@@ -170,14 +244,14 @@ class AdventureReaderFragment : Fragment() {
 
         currentChapterIndex = previewStartChapterIndex
         currentSceneId = previewStartSceneId
-        goalAbsoluteSteps = -1
-        startAbsoluteSteps = 0
-        currentStepsDone = 0
-        isWaitingForSteps = false
+        resetGate()
+        isDead = false
+        previousStepSnapshot = null
+        chapterStartSnapshot = null
 
         Logger.log(
             requireContext(),
-            "Предпросмотр: глава ${previewStartChapterIndex + 1}, сцена '$previewStartSceneId'"
+            "Preview: chapter ${previewStartChapterIndex + 1}, scene '$previewStartSceneId'"
         )
     }
 
@@ -192,9 +266,11 @@ class AdventureReaderFragment : Fragment() {
         if (saved != null) {
             currentChapterIndex = saved.currentChapterIndex
             currentSceneId = saved.currentSceneId
-            currentStepsDone = saved.currentStepsDone
-            goalAbsoluteSteps = saved.goalAbsoluteSteps
-            startAbsoluteSteps = saved.startAbsoluteSteps
+            remainingSteps = saved.remainingSteps
+            isGateActive = saved.isGateActive
+            lastAbsoluteAtSaveFromProgress = saved.lastAbsoluteAtSave
+            lastKnownAbsolute = -1
+
             flags.clear()
             saved.flags.forEach { addFlagIfMissing(it) }
             stats.clear()
@@ -203,31 +279,20 @@ class AdventureReaderFragment : Fragment() {
             appliedSceneEffects.addAll(saved.appliedSceneEffects)
             itemOrder.clear()
             if (saved.itemOrder.isNotEmpty()) {
-                // Восстанавливаем сохранённый порядок, оставляя только те предметы,
-                // что реально есть в stats с количеством > 0
                 for (name in saved.itemOrder) {
                     if ((stats[name] ?: 0) > 0) itemOrder.add(name)
                 }
             } else {
-                // Fallback для старых сохранений без itemOrder
                 rebuildItemOrder()
             }
+            previousStepSnapshot = saved.previousStepSnapshot
+            chapterStartSnapshot = saved.chapterStartSnapshot
+            isDead = false
             Logger.log(
                 requireContext(),
-                "Прогресс загружен: глава ${currentChapterIndex + 1}, сцена '$currentSceneId', цель: $goalAbsoluteSteps"
+                "Progress loaded: chapter ${currentChapterIndex + 1}, scene '$currentSceneId', " +
+                        "gate=$isGateActive, remaining=$remainingSteps, lastAbsAtSave=$lastAbsoluteAtSaveFromProgress"
             )
-
-            if (goalAbsoluteSteps >= 0) {
-                val currentAbsolute = StepCounterService.absoluteSteps
-                if (currentAbsolute >= goalAbsoluteSteps) {
-                    val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-                    if (nextChapter != null) {
-                        advanceToNextChapter(nextChapter)
-                    }
-                } else {
-                    currentStepsDone = (currentAbsolute - startAbsoluteSteps).coerceAtLeast(0)
-                }
-            }
         } else {
             val initialState = adventure.initialState
             flags.clear()
@@ -238,11 +303,20 @@ class AdventureReaderFragment : Fragment() {
             rebuildItemOrder()
             currentChapterIndex = 0
             currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
-            goalAbsoluteSteps = -1
-            startAbsoluteSteps = 0
-            Logger.log(requireContext(), "Приключение '${adventure.title}' загружено, глава ${currentChapterIndex + 1}")
+            resetGate()
+            previousStepSnapshot = null
+            chapterStartSnapshot = null
+            isDead = false
+            Logger.log(
+                requireContext(),
+                "Adventure '${adventure.title}' loaded, chapter ${currentChapterIndex + 1}"
+            )
         }
+
+        tryCatchUpGate()
     }
+
+    // ==================== Lifecycle ====================
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -260,15 +334,11 @@ class AdventureReaderFragment : Fragment() {
         FontManager.applyFontToViewTree(view, fontName, requireContext())
 
         try {
-            if (!previewMode) {
-                checkPermissions()
-            }
+            if (!previewMode) checkPermissions()
 
             if (previewMode) {
                 binding.btnMenu.text = "Назад"
-                binding.btnMenu.setOnClickListener {
-                    parentFragmentManager.popBackStack()
-                }
+                binding.btnMenu.setOnClickListener { parentFragmentManager.popBackStack() }
                 binding.btnDebug.visibility = View.VISIBLE
                 binding.btnDebug.setOnClickListener { showDebugPanel() }
             } else {
@@ -276,51 +346,78 @@ class AdventureReaderFragment : Fragment() {
                 binding.btnDebug.visibility = View.GONE
             }
 
-            // HUD
             binding.btnHealth.setOnClickListener { showHealthDialog() }
             binding.btnInventory.setOnClickListener { showInventoryDialog() }
             binding.btnJournal.setOnClickListener { showJournalDialog() }
 
             binding.btnNextChapter.visibility = View.GONE
 
+            // If the sensor was already alive when the fragment opened, catch up
+            // immediately so the player sees the correct remaining count without
+            // waiting for the next broadcast.
+            tryCatchUpGate()
+
             loadCurrentScene()
             updateHud()
 
             if (!previewMode) {
-                requireContext().registerReceiver(
+                ContextCompat.registerReceiver(
+                    requireContext(),
                     stepReceiver,
                     IntentFilter(StepCounterConstants.ACTION_UPDATE),
-                    Context.RECEIVER_NOT_EXPORTED
+                    ContextCompat.RECEIVER_NOT_EXPORTED
                 )
             }
         } catch (e: Exception) {
-            Logger.log(requireContext(), "Ошибка в onViewCreated: ${e.message}")
+            Logger.log(requireContext(), "Error in onViewCreated: ${e.message}")
             Toast.makeText(requireContext(), "Ошибка запуска читалки: ${e.message}", Toast.LENGTH_LONG).show()
             parentFragmentManager.popBackStack()
         }
     }
 
-    // ---------- HUD ----------
+    override fun onPause() {
+        super.onPause()
+        saveProgress()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!previewMode && adventureFileUri != null) {
+            val appContext = requireContext().applicationContext
+            lifecycleScope.launch {
+                ProgressManager.flush(appContext)
+            }
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        if (!previewMode) {
+            try {
+                requireContext().unregisterReceiver(stepReceiver)
+            } catch (_: Exception) {
+            }
+        }
+        _binding = null
+    }
 
     private fun updateHud() {
         if (_binding == null) return
 
-        // Здоровье: health по имени или первый HEALTH из tags
         val healthDef = adventure.tags?.firstOrNull { it.name == "health" && it.category == TagCategory.HEALTH }
             ?: adventure.tags?.firstOrNull { it.category == TagCategory.HEALTH }
         val healthValue = healthDef?.let { stats[it.name] ?: 0 } ?: 0
         binding.btnHealth.text = "❤️ $healthValue"
 
-        // Рюкзак: количество ITEM-меток с > 0
         val itemCount = itemOrder.count { (stats[it] ?: 0) > 0 }
         binding.btnInventory.text = "🎒 $itemCount"
 
-        // Журнал: количество видимых JOURNAL-меток
         val journalCount = getJournalItems().size
         binding.btnJournal.text = "📖 $journalCount"
     }
 
-    /** Все HEALTH-метки из реестра: (displayName, value). */
+    // ==================== Lists / dialogs (HUD) ====================
+
     private fun getHealthItems(): List<Pair<String, Int>> {
         return adventure.tags.orEmpty()
             .filter { it.category == TagCategory.HEALTH }
@@ -330,25 +427,19 @@ class AdventureReaderFragment : Fragment() {
             }
     }
 
-    /** ITEM-метки с количеством > 0, новые сверху. */
     private fun getInventoryItems(): List<Pair<String, Int>> {
         return itemOrder.asReversed()
             .filter { (stats[it] ?: 0) > 0 }
             .map { name -> getDisplayName(name) to (stats[name] ?: 0) }
     }
 
-    /** Видимые JOURNAL-метки (флаги и числовые), новые сверху. */
     private fun getJournalItems(): List<String> {
         val result = mutableListOf<String>()
-
-        // Флаги — обратный порядок, чтобы новые были сверху
         for (name in flags.asReversed()) {
             if (isVisible(name) && getCategory(name) == TagCategory.JOURNAL) {
                 result.add(getDisplayName(name))
             }
         }
-
-        // Числовые JOURNAL — в порядке объявления в tags
         adventure.tags.orEmpty()
             .filter { it.category == TagCategory.JOURNAL && it.visible }
             .forEach { def ->
@@ -357,25 +448,19 @@ class AdventureReaderFragment : Fragment() {
                     result.add("$display: ${stats[def.name]}")
                 }
             }
-
         return result
     }
 
-    // ---------- Диалоги HUD ----------
-
     private fun showHealthDialog() {
-        val items = getHealthItems()
-        showListDialog("❤️ Здоровье", items)
+        showListDialog("❤️ Здоровье", getHealthItems())
     }
 
     private fun showInventoryDialog() {
-        val items = getInventoryItems()
-        showListDialog("🎒 Рюкзак", items)
+        showListDialog("🎒 Рюкзак", getInventoryItems())
     }
 
     private fun showJournalDialog() {
-        val items = getJournalItems().map { it to null }
-        showListDialog("📖 Журнал", items)
+        showListDialog("📖 Журнал", getJournalItems().map { it to null })
     }
 
     private fun showListDialog(title: String, items: List<Pair<String, Int?>>) {
@@ -385,7 +470,6 @@ class AdventureReaderFragment : Fragment() {
         val tvEmpty = dialogView.findViewById<TextView>(R.id.tv_dialog_empty)
 
         container.removeAllViews()
-
         if (items.isEmpty()) {
             tvEmpty.visibility = View.VISIBLE
         } else {
@@ -395,7 +479,6 @@ class AdventureReaderFragment : Fragment() {
                     .inflate(R.layout.item_dialog_row, container, false)
                 val tvLabel = rowView.findViewById<TextView>(R.id.tv_row_label)
                 val tvValue = rowView.findViewById<TextView>(R.id.tv_row_value)
-
                 tvLabel.text = label
                 if (value != null) {
                     tvValue.text = "×$value"
@@ -403,7 +486,6 @@ class AdventureReaderFragment : Fragment() {
                 } else {
                     tvValue.visibility = View.GONE
                 }
-
                 container.addView(rowView)
             }
         }
@@ -415,9 +497,11 @@ class AdventureReaderFragment : Fragment() {
             .show()
     }
 
-    // ---------- Читалка ----------
+    // ==================== Scene loading ====================
 
     private fun loadCurrentScene() {
+        if (isDead) return
+
         val chapters = adventure.chapters.orEmpty()
         val chapter = chapters.getOrNull(currentChapterIndex) ?: run {
             showEnd("Вы прошли все главы!")
@@ -434,20 +518,33 @@ class AdventureReaderFragment : Fragment() {
         if (!appliedSceneEffects.contains(scene.id)) {
             applyEffects(scene.setFlags, scene.removeFlags, scene.modifyStats)
             appliedSceneEffects.add(scene.id)
-            Logger.log(requireContext(), "Глава ${currentChapterIndex + 1}, сцена '${scene.id}' загружена впервые")
+            Logger.log(
+                requireContext(),
+                "Chapter ${currentChapterIndex + 1}, scene '${scene.id}' loaded for the first time"
+            )
         }
 
         updateHud()
+
+        if (checkDeath()) {
+            saveProgress()
+            showDeathScreen()
+            return
+        }
+
+        captureChapterStartIfNeeded()
 
         val choices = scene.choices.orEmpty()
         if (choices.isEmpty()) {
             if (currentChapterIndex < chapters.size - 1) {
                 val nextChapter = chapters[currentChapterIndex + 1]
                 if (nextChapter.requiredSteps > 0) {
-                    if (previewMode) {
-                        startChapterStepsInPreview(nextChapter)
+                    if (isGateActive) {
+                        // Gate was restored from saved progress — keep remainingSteps.
+                        showGateWaiting(nextChapter)
                     } else {
-                        startChapterSteps(nextChapter)
+                        if (previewMode) startChapterStepsInPreview(nextChapter)
+                        else startChapterSteps(nextChapter)
                     }
                 } else {
                     advanceToNextChapter(nextChapter)
@@ -464,43 +561,38 @@ class AdventureReaderFragment : Fragment() {
         try {
             currentChapterIndex++
             currentSceneId = nextChapter.scenes?.firstOrNull()?.id ?: ""
-            isWaitingForSteps = false
-            goalAbsoluteSteps = -1
-            startAbsoluteSteps = 0
-            currentStepsDone = 0
+            resetGate()
+            previousStepSnapshot = null
             saveProgress()
-            if (_binding != null) {
-                loadCurrentScene()
-            }
+            if (_binding != null) loadCurrentScene()
         } catch (e: Exception) {
-            Logger.log(requireContext(), "Ошибка при продвижении главы: ${e.message}")
+            Logger.log(requireContext(), "Error advancing chapter: ${e.message}")
         }
     }
 
-    private fun applyEffects(setFlags: List<String>?, removeFlags: List<String>?, modifyStats: Map<String, Int>?) {
+    private fun applyEffects(
+        setFlags: List<String>?,
+        removeFlags: List<String>?,
+        modifyStats: Map<String, Int>?
+    ) {
         if (setFlags != null) {
             for (f in setFlags) {
-                if (getCategory(f) == TagCategory.ITEM) {
-                    // ITEM как флаг — количество 1
-                    val oldValue = stats[f] ?: 0
-                    val newValue = oldValue + 1
-                    stats[f] = newValue
-                    registerItem(f, newValue)
-                } else {
+                val cat = getCategory(f)
+                if (cat == TagCategory.JOURNAL) {
                     addFlagIfMissing(f)
+                } else {
+                    Logger.log(requireContext(), "applyEffects: set_flags '$f' (category $cat) ignored")
                 }
             }
         }
 
         if (removeFlags != null) {
             for (f in removeFlags) {
-                if (getCategory(f) == TagCategory.ITEM) {
-                    val oldValue = stats[f] ?: 0
-                    val newValue = (oldValue - 1).coerceAtLeast(0)
-                    stats[f] = newValue
-                    registerItem(f, newValue)
-                } else {
+                val cat = getCategory(f)
+                if (cat == TagCategory.JOURNAL) {
                     flags.remove(f)
+                } else {
+                    Logger.log(requireContext(), "applyEffects: remove_flags '$f' (category $cat) ignored")
                 }
             }
         }
@@ -508,11 +600,14 @@ class AdventureReaderFragment : Fragment() {
         if (modifyStats != null) {
             modifyStats.forEach { (key, value) ->
                 val oldValue = stats[key] ?: 0
-                val newValue = oldValue + value
-                stats[key] = newValue
-                if (getCategory(key) == TagCategory.ITEM) {
-                    registerItem(key, newValue)
+                val rawNew = oldValue + value
+                val cat = getCategory(key)
+                val newValue = when (cat) {
+                    TagCategory.HEALTH, TagCategory.ITEM -> rawNew.coerceAtLeast(0)
+                    TagCategory.JOURNAL -> rawNew
                 }
+                stats[key] = newValue
+                if (cat == TagCategory.ITEM) registerItem(key, newValue)
             }
         }
     }
@@ -523,24 +618,27 @@ class AdventureReaderFragment : Fragment() {
 
         for (choice in choices) {
             val conditionMet = isConditionMet(choice.condition)
-
-            if (!previewMode && !conditionMet) {
-                continue
-            }
+            if (!previewMode && !conditionMet) continue
 
             val button = Button(requireContext()).apply {
                 if (previewMode && !conditionMet) {
-                    val conditionLabel = choice.condition ?: ""
-                    text = "${choice.text}  🔒 ($conditionLabel)"
+                    text = "${choice.text}  🔒 (${choice.condition ?: ""})"
                     isEnabled = false
                     setTextColor(Color.parseColor("#808080"))
                     alpha = 0.6f
                 } else {
                     text = choice.text
                     setOnClickListener {
+                        previousStepSnapshot = captureSnapshot()
                         applyEffects(choice.setFlags, choice.removeFlags, choice.modifyStats)
                         currentSceneId = choice.nextScene
                         saveProgress()
+
+                        if (checkDeath()) {
+                            showDeathScreen()
+                            return@setOnClickListener
+                        }
+
                         loadCurrentScene()
                     }
                 }
@@ -576,63 +674,171 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
-    // ---------- Шаговые шлюзы ----------
+    // ==================== Death screen ====================
+
+    private fun showDeathScreen() {
+        binding.tvStepsRequired.visibility = View.GONE
+        binding.choicesContainer.removeAllViews()
+
+        val deathText = adventure.deathScene?.text ?: "💀 Вы погибли."
+        binding.tvStoryText.text = deathText
+
+        val allowStepBack = adventure.deathScene?.allowStepBack ?: true
+        val allowChapter = adventure.deathScene?.allowChapterRestart ?: true
+        val allowAdventure = adventure.deathScene?.allowAdventureRestart ?: true
+
+        if (allowStepBack && previousStepSnapshot != null) {
+            val btn = Button(requireContext()).apply {
+                text = "↩ Один шаг назад"
+                setOnClickListener { onStepBack() }
+            }
+            binding.choicesContainer.addView(btn)
+        }
+
+        if (allowChapter && chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIndex) {
+            val btn = Button(requireContext()).apply {
+                text = "📖 В начало главы"
+                setOnClickListener { onChapterRestart() }
+            }
+            binding.choicesContainer.addView(btn)
+        }
+
+        if (allowAdventure) {
+            val btn = Button(requireContext()).apply {
+                text = if (previewMode) "🔄 Начать предпросмотр заново" else "🏠 Начать приключение заново"
+                setOnClickListener { onAdventureRestart() }
+            }
+            binding.choicesContainer.addView(btn)
+        }
+    }
+
+    private fun onStepBack() {
+        val snapshot = previousStepSnapshot ?: return
+        restoreSnapshot(snapshot)
+    }
+
+    private fun onChapterRestart() {
+        val snapshot = chapterStartSnapshot ?: return
+        previousStepSnapshot = null
+        restoreSnapshot(snapshot)
+    }
+
+    private fun onAdventureRestart() {
+        if (previewMode) {
+            flags.clear()
+            stats.clear()
+            itemOrder.clear()
+            appliedSceneEffects.clear()
+            val initialState = adventure.initialState
+            initialState?.flags?.forEach { addFlagIfMissing(it) }
+            if (initialState?.stats != null) stats.putAll(initialState.stats)
+            rebuildItemOrder()
+            currentChapterIndex = previewStartChapterIndex
+            currentSceneId = previewStartSceneId
+            resetGate()
+            isDead = false
+            previousStepSnapshot = null
+            chapterStartSnapshot = null
+            loadCurrentScene()
+        } else {
+            isDead = false
+            previousStepSnapshot = null
+            chapterStartSnapshot = null
+            onRestartAdventure()
+        }
+    }
+
+    // ==================== Steps gate ====================
+
+    private fun resetGate() {
+        isGateActive = false
+        remainingSteps = 0
+        lastKnownAbsolute = -1
+        lastAbsoluteAtSaveFromProgress = -1
+    }
+
+    /**
+     * If a gate is restored from saved progress and the sensor is already alive,
+     * subtract the delta between the last save and the current absolute reading.
+     * Idempotent: safe to call from onCreate and onViewCreated.
+     */
+    private fun tryCatchUpGate() {
+        if (!isGateActive || previewMode) return
+        if (lastKnownAbsolute >= 0) return // already caught up or just started
+
+        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
+        if (nextChapter == null || nextChapter.requiredSteps <= 0) {
+            resetGate()
+            return
+        }
+
+        if (StepCounterService.hasFirstEvent && lastAbsoluteAtSaveFromProgress >= 0) {
+            val delta = (StepCounterService.absoluteSteps - lastAbsoluteAtSaveFromProgress).coerceAtLeast(0)
+            remainingSteps = (remainingSteps - delta).coerceAtLeast(0)
+            lastKnownAbsolute = StepCounterService.absoluteSteps
+            if (remainingSteps <= 0) {
+                onStepsCompleted(nextChapter)
+            }
+        }
+        // else: sensor is not awake yet; catch-up will happen on the first broadcast.
+    }
 
     private fun startChapterSteps(nextChapter: com.myapp.adventure.data.Chapter) {
-        val absolute = StepCounterService.absoluteSteps
-        goalAbsoluteSteps = absolute + nextChapter.requiredSteps
-        startAbsoluteSteps = absolute
-        currentStepsDone = 0
-        binding.tvStepsRequired.text = "Чтобы открыть главу «${nextChapter.title}», пройдите ${nextChapter.requiredSteps} шагов (пройдено $currentStepsDone)."
-        binding.tvStepsRequired.visibility = View.VISIBLE
+        isGateActive = true
+        remainingSteps = nextChapter.requiredSteps
+        lastKnownAbsolute = if (StepCounterService.hasFirstEvent) StepCounterService.absoluteSteps else -1
+        lastAbsoluteAtSaveFromProgress = -1
+        if (_binding != null) showGateWaiting(nextChapter)
         saveProgress()
     }
 
     private fun startChapterStepsInPreview(nextChapter: com.myapp.adventure.data.Chapter) {
-        isWaitingForSteps = true
-        goalAbsoluteSteps = -1
-        startAbsoluteSteps = 0
-        currentStepsDone = 0
-        showStepsGate(nextChapter)
+        isGateActive = true
+        remainingSteps = nextChapter.requiredSteps
+        lastKnownAbsolute = -1
+        showGateWaiting(nextChapter)
     }
 
-    private fun showStepsGate(nextChapter: com.myapp.adventure.data.Chapter) {
-        binding.tvStepsRequired.text =
-            "Чтобы открыть главу «${nextChapter.title}», пройдите ${nextChapter.requiredSteps} шагов (пройдено $currentStepsDone)."
-        binding.tvStepsRequired.visibility = View.VISIBLE
+    private fun showGateWaiting(nextChapter: com.myapp.adventure.data.Chapter) {
+        if (_binding == null) return
         binding.choicesContainer.removeAllViews()
-    }
-
-    private fun updateStepsProgress() {
-        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
-        binding.tvStepsRequired.text = "Чтобы открыть главу «${nextChapter.title}», пройдите ${nextChapter.requiredSteps} шагов (пройдено $currentStepsDone)."
-        binding.tvStepsRequired.visibility = View.VISIBLE
-        if (currentStepsDone >= nextChapter.requiredSteps) {
-            binding.tvStepsRequired.text = "Цель достигнута! Глава откроется при следующем входе."
-        }
-    }
-
-    private fun setDebugSteps(value: Int) {
-        currentStepsDone = value.coerceAtLeast(0)
-        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
-        val required = nextChapter.requiredSteps
-        if (required == 0) return
-
-        if (currentStepsDone >= required) {
-            onStepsCompleted(nextChapter)
+        if (lastKnownAbsolute < 0) {
+            binding.tvStepsRequired.text = "Ожидание данных шагомера…"
         } else {
-            showStepsGate(nextChapter)
+            updateStepsProgressUi(nextChapter)
         }
+        if (com.myapp.adventure.step.StepSourceManager.isHealthConnectActive(requireContext())) {
+            binding.tvStepsRequired.append("\n(Health Connect: обновление раз в ~1 минуту)")
+        }
+        binding.tvStepsRequired.visibility = View.VISIBLE
+    }
+
+    private fun updateStepsProgressUi(nextChapter: com.myapp.adventure.data.Chapter) {
+        if (_binding == null) return
+        val total = nextChapter.requiredSteps
+        val done = (total - remainingSteps).coerceIn(0, total)
+        binding.tvStepsRequired.text =
+            "Чтобы открыть главу «${nextChapter.title}», пройдено $done из $total шагов (осталось $remainingSteps)."
+        binding.tvStepsRequired.visibility = View.VISIBLE
     }
 
     private fun onStepsCompleted(nextChapter: com.myapp.adventure.data.Chapter?) {
         if (nextChapter == null) return
-        isWaitingForSteps = false
-        binding.tvStepsRequired.visibility = View.GONE
         advanceToNextChapter(nextChapter)
     }
 
-    // ---------- Конец ----------
+    private fun setDebugRemainingSteps(remaining: Int) {
+        remainingSteps = remaining.coerceAtLeast(0)
+        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
+        if (nextChapter.requiredSteps <= 0) return
+        if (remainingSteps <= 0) {
+            onStepsCompleted(nextChapter)
+        } else {
+            updateStepsProgressUi(nextChapter)
+        }
+    }
+
+    // ==================== End / restart ====================
 
     private fun showEnd(message: String) {
         binding.tvStoryText.text = if (previewMode) "▶ Конец предпросмотра\n\n$message" else "Конец\n\n$message"
@@ -646,11 +852,8 @@ class AdventureReaderFragment : Fragment() {
         val restartButton = Button(requireContext()).apply {
             text = if (previewMode) "Вернуться в редактор" else "Начать заново"
             setOnClickListener {
-                if (previewMode) {
-                    parentFragmentManager.popBackStack()
-                } else {
-                    onRestartAdventure()
-                }
+                if (previewMode) parentFragmentManager.popBackStack()
+                else onRestartAdventure()
             }
         }
         container.addView(restartButton)
@@ -669,39 +872,42 @@ class AdventureReaderFragment : Fragment() {
         if (initialState?.stats != null) stats.putAll(initialState.stats)
         rebuildItemOrder()
 
-        if (previewMode) {
-            currentChapterIndex = previewStartChapterIndex
-            currentSceneId = previewStartSceneId
-        } else {
-            currentChapterIndex = 0
-            currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
-        }
-        goalAbsoluteSteps = -1
-        startAbsoluteSteps = 0
-        currentStepsDone = 0
-        isWaitingForSteps = false
+        currentChapterIndex = 0
+        currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+        resetGate()
+        isDead = false
+        previousStepSnapshot = null
+        chapterStartSnapshot = null
         saveProgress()
         loadCurrentScene()
         Toast.makeText(requireContext(), "Приключение начато заново", Toast.LENGTH_SHORT).show()
     }
 
+    // ==================== Progress persistence ====================
+
     private fun saveProgress() {
         if (previewMode) return
         if (adventureFileUri == null) return
+
+        val absoluteAtSave = if (StepCounterService.hasFirstEvent) StepCounterService.absoluteSteps else -1
         val progress = ProgressData(
             adventureFileName = "",
             currentChapterIndex = currentChapterIndex,
             currentSceneId = currentSceneId,
             flags = flags.toList(),
             stats = stats.toMap(),
-            currentStepsDone = currentStepsDone,
             appliedSceneEffects = appliedSceneEffects.toSet(),
-            goalAbsoluteSteps = goalAbsoluteSteps,
-            startAbsoluteSteps = startAbsoluteSteps,
-            itemOrder = itemOrder.toList()
+            itemOrder = itemOrder.toList(),
+            previousStepSnapshot = previousStepSnapshot,
+            chapterStartSnapshot = chapterStartSnapshot,
+            remainingSteps = remainingSteps,
+            isGateActive = isGateActive,
+            lastAbsoluteAtSave = absoluteAtSave
         )
         ProgressManager.saveProgress(requireContext(), adventureFileUri!!, progress)
     }
+
+    // ==================== Permissions ====================
 
     private fun checkPermissions() {
         notificationPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -720,7 +926,39 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
-    // ---------- Отладка ----------
+    // ==================== Menu ====================
+
+    private fun showReaderMenuDialog() {
+        val options = arrayOf("В главное меню", "Начать приключение заново", "Настройки")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Меню")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> parentFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, MenuFragment())
+                        .addToBackStack(null)
+                        .commit()
+                    1 -> confirmRestartAdventure()
+                    2 -> parentFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, SettingsFragment())
+                        .addToBackStack(null)
+                        .commit()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun confirmRestartAdventure() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Начать заново?")
+            .setMessage("Текущий прогресс по этому приключению будет удалён. Это действие нельзя отменить.")
+            .setPositiveButton("Начать заново") { _, _ -> onRestartAdventure() }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // ==================== Debug panel (preview) ====================
 
     private fun showDebugPanel() {
         if (!previewMode) return
@@ -748,15 +986,18 @@ class AdventureReaderFragment : Fragment() {
             .create()
 
         val nextChapterInitial = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-        if (isWaitingForSteps && nextChapterInitial != null && nextChapterInitial.requiredSteps > 0) {
-            etStepsValue.setText(currentStepsDone.toString())
+        if (isGateActive && nextChapterInitial != null && nextChapterInitial.requiredSteps > 0) {
+            etStepsValue.setText(remainingSteps.toString())
         }
 
         fun refreshStepsSection() {
             val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-            if (isWaitingForSteps && nextChapter != null && nextChapter.requiredSteps > 0) {
+            if (isGateActive && nextChapter != null && nextChapter.requiredSteps > 0) {
                 sectionSteps.visibility = View.VISIBLE
-                tvStepsStatus.text = "Глава «${nextChapter.title}»: пройдено $currentStepsDone из ${nextChapter.requiredSteps}"
+                val total = nextChapter.requiredSteps
+                val done = (total - remainingSteps).coerceIn(0, total)
+                tvStepsStatus.text =
+                    "Глава «${nextChapter.title}»: пройдено $done из $total (осталось $remainingSteps)"
             } else {
                 sectionSteps.visibility = View.GONE
             }
@@ -787,11 +1028,9 @@ class AdventureReaderFragment : Fragment() {
 
                     btnEdit.setOnClickListener {
                         showEditStatDialog(name, value) { newValue ->
-                            val oldValue = stats[name] ?: 0
                             stats[name] = newValue
-                            if (getCategory(name) == TagCategory.ITEM) {
-                                registerItem(name, newValue)
-                            }
+                            if (getCategory(name) == TagCategory.ITEM) registerItem(name, newValue)
+                            isDead = false
                             loadCurrentScene()
                             refresh()
                         }
@@ -799,10 +1038,10 @@ class AdventureReaderFragment : Fragment() {
                     btnDelete.setOnClickListener {
                         stats.remove(name)
                         itemOrder.remove(name)
+                        isDead = false
                         loadCurrentScene()
                         refresh()
                     }
-
                     containerStats.addView(rowView)
                 }
             }
@@ -828,7 +1067,6 @@ class AdventureReaderFragment : Fragment() {
                         loadCurrentScene()
                         refresh()
                     }
-
                     containerFlags.addView(rowView)
                 }
             }
@@ -839,9 +1077,8 @@ class AdventureReaderFragment : Fragment() {
         btnAddStat.setOnClickListener {
             showAddStatDialog { name, value ->
                 stats[name] = value
-                if (getCategory(name) == TagCategory.ITEM) {
-                    registerItem(name, value)
-                }
+                if (getCategory(name) == TagCategory.ITEM) registerItem(name, value)
+                isDead = false
                 loadCurrentScene()
                 refresh()
             }
@@ -861,14 +1098,14 @@ class AdventureReaderFragment : Fragment() {
                 Toast.makeText(requireContext(), "Введите целое число ≥ 0", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            setDebugSteps(value)
+            setDebugRemainingSteps(value)
             refresh()
         }
 
         btnOpenChapterNow.setOnClickListener {
             val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
             if (nextChapter == null || nextChapter.requiredSteps == 0) {
-                Toast.makeText(requireContext(), "Шлюз не активен", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Шлюз неактивен", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             onStepsCompleted(nextChapter)
@@ -887,6 +1124,7 @@ class AdventureReaderFragment : Fragment() {
                     initialState?.flags?.forEach { addFlagIfMissing(it) }
                     if (initialState?.stats != null) stats.putAll(initialState.stats)
                     rebuildItemOrder()
+                    isDead = false
                     loadCurrentScene()
                     refresh()
                 }
@@ -898,11 +1136,7 @@ class AdventureReaderFragment : Fragment() {
         dialog.show()
     }
 
-    private fun showEditStatDialog(
-        statName: String,
-        currentValue: Int,
-        onResult: (Int) -> Unit
-    ) {
+    private fun showEditStatDialog(statName: String, currentValue: Int, onResult: (Int) -> Unit) {
         val dialogView = LayoutInflater.from(requireContext())
             .inflate(R.layout.dialog_debug_stat, null)
         val etValue = dialogView.findViewById<EditText>(R.id.et_debug_stat_value)
@@ -961,56 +1195,5 @@ class AdventureReaderFragment : Fragment() {
             }
             .setNegativeButton("Отмена", null)
             .show()
-    }
-
-    // ---------- Меню читалки ----------
-
-    private fun showReaderMenuDialog() {
-        val options = arrayOf(
-            "В главное меню",
-            "Начать приключение заново",
-            "Настройки"
-        )
-        AlertDialog.Builder(requireContext())
-            .setTitle("Меню")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> {
-                        parentFragmentManager.beginTransaction()
-                            .replace(R.id.fragment_container, MenuFragment())
-                            .addToBackStack(null)
-                            .commit()
-                    }
-                    1 -> confirmRestartAdventure()
-                    2 -> {
-                        parentFragmentManager.beginTransaction()
-                            .replace(R.id.fragment_container, SettingsFragment())
-                            .addToBackStack(null)
-                            .commit()
-                    }
-                }
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    private fun confirmRestartAdventure() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("Начать заново?")
-            .setMessage("Текущий прогресс по этому приключению будет удалён. Это действие нельзя отменить.")
-            .setPositiveButton("Начать заново") { _, _ -> onRestartAdventure() }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        saveProgress()
-        if (!previewMode) {
-            try {
-                requireContext().unregisterReceiver(stepReceiver)
-            } catch (_: Exception) { }
-        }
-        _binding = null
     }
 }

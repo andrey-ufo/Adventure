@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- Colours are declared where they are used (layouts, drawables).
+         Kept as an empty file because values/themes.xml and others reference
+         @color/* in the future; keeping the file avoids a missing-folder
+         error if you later add a colour here. -->
 </resources>

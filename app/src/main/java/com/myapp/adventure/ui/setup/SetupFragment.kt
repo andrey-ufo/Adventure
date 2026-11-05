@@ -14,12 +14,15 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.myapp.adventure.R
 import com.myapp.adventure.databinding.FragmentSetupBinding
 import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
 import com.myapp.adventure.ui.list.AdventureListFragment
 import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.utils.ProgressManager
+import kotlinx.coroutines.launch
 
 class SetupFragment : Fragment() {
 
@@ -102,6 +105,9 @@ class SetupFragment : Fragment() {
         if (savedUri != null && isFolderValid(Uri.parse(savedUri))) {
             Logger.init(requireContext(), savedUri)
             startStepCounterService()
+            viewLifecycleOwner.lifecycleScope.launch {
+                ProgressManager.warmUp(requireContext().applicationContext)
+            }
             parentFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, AdventureListFragment())
                 .commit()
@@ -122,6 +128,8 @@ class SetupFragment : Fragment() {
         if (!permissionsChecked) {
             checkAndRequestPermissions()
         }
+        // Start periodic polling (no-op if HC is disabled — sensor writes directly)
+        com.myapp.adventure.step.StepSourceManager.start(requireContext())
     }
 
     private fun isFolderValid(folderUri: Uri): Boolean {
@@ -187,11 +195,7 @@ class SetupFragment : Fragment() {
             val intent = Intent(requireContext(), StepCounterService::class.java).apply {
                 action = StepCounterConstants.ACTION_START
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                requireContext().startForegroundService(intent)
-            } else {
-                requireContext().startService(intent)
-            }
+            requireContext().startForegroundService(intent)
             Logger.log(requireContext(), "Сервис шагомера запущен из SetupFragment")
         }
     }

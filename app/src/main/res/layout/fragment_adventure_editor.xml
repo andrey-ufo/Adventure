@@ -167,40 +167,29 @@
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_map"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Карта"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
         </LinearLayout>
     </HorizontalScrollView>
 
-    <!-- ===== Основная прокручиваемая область ===== -->
-    <ScrollView
-        android:id="@+id/scroll_view"
+    <!-- ===== Единый скроллируемый RecyclerView ===== -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_scenes"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:padding="16dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rv_scenes"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false" />
-
-            <TextView
-                android:id="@+id/tv_empty_hint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Пока нет сцен. Нажмите «+ Сцена» в меню вверху."
-                android:textColor="#9E9E9E"
-                android:textSize="14sp"
-                android:gravity="center"
-                android:padding="32dp"
-                android:visibility="gone" />
-
-        </LinearLayout>
-    </ScrollView>
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="88dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
 
 </LinearLayout>

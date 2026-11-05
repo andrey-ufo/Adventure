@@ -1,3 +1,26 @@
 <resources>
     <string name="app_name">Adventure</string>
+
+    <!-- Statistics screen -->
+    <string name="stats_title">Статистика шагов</string>
+    <string name="stats_menu">Меню</string>
+    <string name="stats_total">Всего пройдено</string>
+    <string name="stats_today">Сегодня</string>
+    <string name="stats_last_7_days">За 7 дней</string>
+    <string name="stats_last_30_days">За 30 дней</string>
+    <string name="stats_last_14_days_title">Последние 14 дней</string>
+    <string name="stats_rank_title">Звание</string>
+    <string name="stats_rank_beginner">Начинающий путешественник</string>
+    <string name="stats_rank_progress">%1$d%% до звания «%2$s»</string>
+    <string name="stats_rank_achieved">Звание «%1$s» получено</string>
+    <string name="stats_no_data">Данных пока нет.\n\nПройдитесь с включённым шагомером — статистика появится здесь.</string>
+    <string name="stats_no_permission">Нет разрешения на физическую активность.\nШаги не будут считаться, пока разрешение не выдано.</string>
+    <string name="stats_loading">Загрузка…</string>
+
+    <plurals name="steps">
+        <item quantity="one">%d шаг</item>
+        <item quantity="few">%d шага</item>
+        <item quantity="many">%d шагов</item>
+        <item quantity="other">%d шагов</item>
+    </plurals>
 </resources>

@@ -4,168 +4,294 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-import java.time.DayOfWeek
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
+import com.myapp.adventure.data.StepBucket
+import com.myapp.adventure.data.StepHistoryData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.util.Locale
 
-data class DaySteps(
-    val date: String,
-    val dayOfWeek: String,
-    val steps: Int
-)
-
-data class WeekData(
-    val label: String,
-    val totalSteps: Int,
-    val days: List<DaySteps>
-)
-
+/**
+ * Owns the step history. Single writer, in-memory cache, batched disk flush.
+ *
+ * Data model:
+ * - [StepHistoryData.buckets] — up to 30 daily deltas, oldest first, trimmed automatically.
+ * - [StepHistoryData.totalStepsAllTime] — monotonic counter that never trims.
+ *
+ * Public API for gameplay:
+ * - [getTotalSteps]          — all-time monotonic counter.
+ * - [getTodaySteps]          — today's delta.
+ * - [getLastNDaysSum]        — rolling window sum (7 / 30 days, achievements).
+ * - [getDailyBuckets]        — last N days as a list (statistics screen).
+ * - [recordDelta]            — the only writer entry point, source-agnostic.
+ * - [flush]                  — force-persist.
+ *
+ * Future features (achievements, step-gated choices, adventure unlocks) must read
+ * history through the public getters above — never touch files or [StepCounterService].
+ * TODO(feature:achievements): a StepAchievementEngine will subscribe to history changes
+ *   (e.g. an in-process callback invoked from [recordDelta]) and evaluate rules like
+ *   "≥50 000 steps in the last 7 days".
+ */
 object StepHistoryManager {
 
-    private val gson = Gson()
     private const val HISTORY_FILE_NAME = "step_history.json"
-    private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+    private const val MAX_DAYS = 30
+    private const val SAVE_DEBOUNCE_MS = 10_000L
 
-    fun getHistory(context: Context): List<Pair<String, Int>> {
-        return loadHistory(context)
+    private val gson = Gson()
+    private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+    private val mutex = Mutex()
+
+    // ----- In-memory cache -----
+
+    @Volatile private var cache: StepHistoryData = StepHistoryData()
+    @Volatile private var cacheLoaded = false
+    @Volatile private var lastSaveAt: Long = 0L
+
+    // ==================== Public API ====================
+
+    /** Total steps ever recorded by the app (monotonic, independent of buckets). */
+    fun getTotalSteps(context: Context): Long {
+        ensureLoaded(context)
+        return cache.totalStepsAllTime
     }
 
-    fun recordCurrentSteps(context: Context, absoluteSteps: Int) {
+    /** Steps recorded today (local date). */
+    fun getTodaySteps(context: Context): Int {
+        ensureLoaded(context)
         val today = LocalDate.now().format(dateFormatter)
-        val history = loadHistory(context).toMutableList()
-
-        if (history.isNotEmpty() && history.last().first == today) {
-            val lastSteps = history.last().second
-            if (absoluteSteps > lastSteps) {
-                history[history.size - 1] = today to absoluteSteps
-                saveHistory(context, history)
-            }
-        } else {
-            history.add(today to absoluteSteps)
-            val cutoff = LocalDate.now().minusDays(14).format(dateFormatter)
-            val trimmed = history.filter { it.first >= cutoff }
-            saveHistory(context, trimmed)
-        }
+        return cache.buckets.firstOrNull { it.date == today }?.steps ?: 0
     }
 
-    fun getWeeksDetailed(context: Context): List<WeekData> {
-        val history = loadHistory(context)
-        val today = LocalDate.now()
-        val currentMonday = today.with(DayOfWeek.MONDAY)
-        val lastMonday = currentMonday.minusWeeks(1)
-        val lastSunday = currentMonday.minusDays(1)
-
-        fun getDaysOfWeek(weekLabel: String, startDate: LocalDate, endDate: LocalDate): WeekData {
-            var total = 0
-            val days = mutableListOf<DaySteps>()
-            var previousAbsolute: Int? = null
-
-            val dayBefore = startDate.minusDays(1)
-            val dayBeforeStr = dayBefore.format(dateFormatter)
-            previousAbsolute = history.find { it.first == dayBeforeStr }?.second
-
-            var currentDate = startDate
-            while (!currentDate.isAfter(endDate)) {
-                val dateStr = currentDate.format(dateFormatter)
-                val dayOfWeek = currentDate.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.forLanguageTag("ru"))
-                val absoluteAtEnd = history.find { it.first == dateStr }?.second
-                val dailySteps = if (absoluteAtEnd != null) {
-                    if (previousAbsolute != null) (absoluteAtEnd - previousAbsolute).coerceAtLeast(0)
-                    else absoluteAtEnd
-                } else {
-                    0
-                }
-                total += dailySteps
-                days.add(DaySteps(dateStr, dayOfWeek, dailySteps))
-                previousAbsolute = absoluteAtEnd
-                currentDate = currentDate.plusDays(1)
-            }
-            return WeekData(weekLabel, total, days)
-        }
-
-        return listOf(
-            getDaysOfWeek("Прошлая неделя", lastMonday, lastSunday),
-            getDaysOfWeek("Текущая неделя", currentMonday, today)
-        )
+    /** Sum of the last [days] buckets (including today). */
+    fun getLastNDaysSum(context: Context, days: Int): Int {
+        if (days <= 0) return 0
+        ensureLoaded(context)
+        val cutoff = LocalDate.now()
+            .minusDays((days - 1).toLong())
+            .format(dateFormatter)
+        return cache.buckets
+            .filter { it.date >= cutoff }
+            .sumOf { it.steps }
     }
 
-    fun getDailySteps(context: Context, days: Int = 14): List<Pair<String, Int>> {
-        val history = loadHistory(context)
+    /**
+     * Last [lastNDays] buckets, oldest first, padded with zero-step entries
+     * for days without data. Length is exactly [lastNDays].
+     */
+    fun getDailyBuckets(context: Context, lastNDays: Int): List<StepBucket> {
+        if (lastNDays <= 0) return emptyList()
+        ensureLoaded(context)
         val today = LocalDate.now()
-        val result = mutableListOf<Pair<String, Int>>()
-        for (i in days - 1 downTo 0) {
+        val result = ArrayList<StepBucket>(lastNDays)
+        for (i in (lastNDays - 1) downTo 0) {
             val date = today.minusDays(i.toLong()).format(dateFormatter)
-            val currentAbs = history.find { it.first == date }?.second
-            val prevDate = today.minusDays((i + 1).toLong()).format(dateFormatter)
-            val prevAbs = history.find { it.first == prevDate }?.second
-            val dailySteps = if (currentAbs != null && prevAbs != null) {
-                (currentAbs - prevAbs).coerceAtLeast(0)
-            } else {
-                currentAbs ?: 0
-            }
-            result.add(date to dailySteps)
+            val existing = cache.buckets.firstOrNull { it.date == date }
+            result.add(existing ?: StepBucket(date, 0))
         }
         return result
     }
 
-    fun getWeeklySteps(context: Context): List<Pair<String, Int>> {
-        val daily = getDailySteps(context, 14)
-        val today = LocalDate.now()
-        val currentWeekMonday = today.with(DayOfWeek.MONDAY)
-        val lastWeekMonday = currentWeekMonday.minusWeeks(1)
-
-        var currentWeekSum = 0
-        var lastWeekSum = 0
-
-        for ((dateStr, steps) in daily) {
-            val date = LocalDate.parse(dateStr, dateFormatter)
-            if (!date.isBefore(currentWeekMonday) && !date.isAfter(today)) {
-                currentWeekSum += steps
-            } else if (!date.isBefore(lastWeekMonday) && date.isBefore(currentWeekMonday)) {
-                lastWeekSum += steps
+    /**
+     * Record a delta of [delta] steps for today.
+     * Non-positive deltas are ignored. Safe to call from any coroutine context.
+     */
+    suspend fun recordDelta(context: Context, delta: Int) {
+        if (delta <= 0) return
+        val appContext = context.applicationContext
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                ensureLoaded(appContext)
+                applyDelta(appContext, delta)
+                maybeFlush(appContext)
             }
         }
-        return listOf(
-            "Эта неделя" to currentWeekSum,
-            "Прошлая неделя" to lastWeekSum
+    }
+
+    /** Force writing the current in-memory state to disk. */
+    suspend fun flush(context: Context) {
+        val appContext = context.applicationContext
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                ensureLoaded(appContext)
+                saveToDisk(appContext, cache)
+                lastSaveAt = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /**
+     * Apply a delta coming from Health Connect.
+     *
+     * Same semantics as [recordDelta] — increments today's bucket and the
+     * monotonic total. Kept as a separate method so callers/logs can
+     * distinguish HC-sourced steps.
+     */
+    suspend fun applyHealthConnectDelta(context: Context, delta: Int) {
+        if (delta <= 0) return
+        recordDelta(context, delta)
+    }
+
+    // ==================== Internal: load / migrate ====================
+
+    private fun ensureLoaded(context: Context) {
+        if (cacheLoaded) return
+        synchronized(this) {
+            if (cacheLoaded) return
+            cache = loadFromDisk(context)
+            cacheLoaded = true
+        }
+    }
+
+    private fun loadFromDisk(context: Context): StepHistoryData {
+        val fileUri = getHistoryFileUri(context) ?: return StepHistoryData()
+        val json: String = try {
+            context.contentResolver.openInputStream(fileUri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+        } catch (e: Exception) {
+            Logger.log(context, "Failed to read step history: ${e.message}")
+            return StepHistoryData()
+        }
+        if (json.isBlank()) return StepHistoryData()
+
+        return try {
+            val element = JsonParser.parseString(json)
+            when {
+                element.isJsonObject -> {
+                    // New format: { "totalStepsAllTime": ..., "buckets": [...] }
+                    gson.fromJson(element, StepHistoryData::class.java) ?: StepHistoryData()
+                }
+                element.isJsonArray -> {
+                    // Legacy format: [["2026-11-04", 53000], ...] with absolute values
+                    migrateLegacyFormat(context, element.asJsonArray)
+                }
+                else -> StepHistoryData()
+            }
+        } catch (e: Exception) {
+            Logger.log(context, "Failed to parse step history: ${e.message}")
+            StepHistoryData()
+        }
+    }
+
+    /**
+     * Convert legacy [["date", absoluteSteps], ...] to the new delta model.
+     *
+     * First bucket gets steps=0 because we don't know how many steps happened
+     * before the first recorded value. [totalStepsAllTime] is set to the last
+     * absolute reading — the closest approximation of "steps since phone boot",
+     * which the user perceives as "all steps".
+     */
+    private fun migrateLegacyFormat(context: Context, array: JsonArray): StepHistoryData {
+        val entries = mutableListOf<Pair<String, Int>>()
+        for (el in array) {
+            if (!el.isJsonArray) continue
+            val pair = el.asJsonArray
+            val date = safeString(pair, 0) ?: continue
+            val abs = safeInt(pair, 1) ?: continue
+            entries.add(date to abs)
+        }
+        entries.sortBy { it.first }
+
+        val buckets = mutableListOf<StepBucket>()
+        var prevAbs: Int? = null
+        var lastAbs: Int = 0
+        for ((date, abs) in entries) {
+            val delta = if (prevAbs != null) (abs - prevAbs).coerceAtLeast(0) else 0
+            buckets.add(StepBucket(date, delta))
+            prevAbs = abs
+            lastAbs = abs
+        }
+        val trimmed = trimBuckets(buckets)
+        val total = lastAbs.toLong()
+
+        Logger.log(
+            context,
+            "Migrated legacy step history: ${buckets.size} buckets, total=$total"
+        )
+        return StepHistoryData(totalStepsAllTime = total, buckets = trimmed)
+    }
+
+    private fun safeString(array: JsonArray, index: Int): String? {
+        if (index < 0 || index >= array.size()) return null
+        val el: JsonElement = array.get(index)
+        return if (el.isJsonPrimitive) el.asString else null
+    }
+
+    private fun safeInt(array: JsonArray, index: Int): Int? {
+        if (index < 0 || index >= array.size()) return null
+        val el: JsonElement = array.get(index)
+        return if (el.isJsonPrimitive && el.asJsonPrimitive.isNumber) el.asInt else null
+    }
+
+    // ==================== Internal: delta application ====================
+
+    /**
+     * Apply [delta] to today's bucket and bump the monotonic total.
+     * Must be called under [mutex] after [ensureLoaded].
+     */
+    private fun applyDelta(context: Context, delta: Int) {
+        if (delta <= 0) return
+        val today = LocalDate.now().format(dateFormatter)
+        val buckets = cache.buckets.toMutableList()
+        val idx = buckets.indexOfFirst { it.date == today }
+        if (idx >= 0) {
+            buckets[idx] = buckets[idx].copy(steps = buckets[idx].steps + delta)
+        } else {
+            buckets.add(StepBucket(today, delta))
+        }
+        val trimmed = trimBuckets(buckets.sortedBy { it.date })
+        cache = StepHistoryData(
+            totalStepsAllTime = cache.totalStepsAllTime + delta,
+            buckets = trimmed
         )
     }
 
-    private fun loadHistory(context: Context): List<Pair<String, Int>> {
-        val fileUri = getHistoryFileUri(context) ?: return emptyList()
-        return try {
-            val json = context.contentResolver.openInputStream(fileUri)?.bufferedReader()?.use { it.readText() }
-            if (json.isNullOrBlank()) emptyList()
-            else {
-                val type = object : TypeToken<List<List<Any>>>() {}.type
-                val raw = gson.fromJson<List<List<Any>>>(json, type)
-                raw.mapNotNull { entry ->
-                    val date = entry.getOrNull(0) as? String
-                    val steps = (entry.getOrNull(1) as? Double)?.toInt()
-                    if (date != null && steps != null) date to steps else null
-                }
-            }
-        } catch (e: Exception) {
-            Logger.log(context, "Ошибка загрузки истории шагов: ${e.message}")
-            emptyList()
+    private fun trimBuckets(buckets: List<StepBucket>): List<StepBucket> {
+        if (buckets.size <= MAX_DAYS) return buckets
+        return buckets
+            .sortedByDescending { it.date }
+            .take(MAX_DAYS)
+            .sortedBy { it.date }
+    }
+
+    // ==================== Internal: persistence ====================
+
+    private fun maybeFlush(context: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastSaveAt >= SAVE_DEBOUNCE_MS) {
+            saveToDisk(context, cache)
+            lastSaveAt = now
         }
     }
 
-    private fun saveHistory(context: Context, history: List<Pair<String, Int>>) {
-        val fileUri = getOrCreateHistoryFile(context) ?: return
+    private fun saveToDisk(context: Context, data: StepHistoryData) {
+        val fileUri = getOrCreateHistoryFile(context)
+        if (fileUri == null) {
+            Logger.log(context, "Cannot save step history: no history file")
+            return
+        }
         try {
-            val json = gson.toJson(history.map { listOf(it.first, it.second) })
-            context.contentResolver.openOutputStream(fileUri, "wt")?.use { outputStream ->
-                outputStream.write(json.toByteArray())
+            val json = gson.toJson(data)
+            context.contentResolver.openOutputStream(fileUri, "wt")?.use {
+                it.write(json.toByteArray())
             }
-            Logger.log(context, "История шагов сохранена, записей: ${history.size}")
+            Logger.log(
+                context,
+                "Step history saved: ${data.buckets.size} buckets, total=${data.totalStepsAllTime}"
+            )
         } catch (e: Exception) {
-            Logger.log(context, "Ошибка сохранения истории шагов: ${e.message}")
+            Logger.log(context, "Failed to save step history: ${e.message}")
         }
     }
+
+    // ==================== Internal: file access ====================
 
     private fun getHistoryFileUri(context: Context): Uri? {
         val folderUri = getBaseFolderUri(context) ?: return null
@@ -176,9 +302,13 @@ object StepHistoryManager {
         val cursor = context.contentResolver.query(childrenUri, null, null, null, null)
         cursor?.use {
             while (it.moveToNext()) {
-                val name = it.getString(it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
+                val name = it.getString(
+                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                )
                 if (name == HISTORY_FILE_NAME) {
-                    val docId = it.getString(it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
+                    val docId = it.getString(
+                        it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    )
                     return DocumentsContract.buildDocumentUriUsingTree(folderUri, docId)
                 }
             }
@@ -188,8 +318,7 @@ object StepHistoryManager {
 
     private fun getOrCreateHistoryFile(context: Context): Uri? {
         val folderUri = getBaseFolderUri(context) ?: return null
-        val existing = getHistoryFileUri(context)
-        if (existing != null) return existing
+        getHistoryFileUri(context)?.let { return it }
 
         val parentDocId = DocumentsContract.getTreeDocumentId(folderUri)
         val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(folderUri, parentDocId)
@@ -201,7 +330,7 @@ object StepHistoryManager {
                 HISTORY_FILE_NAME
             )
         } catch (e: Exception) {
-            Logger.log(context, "Ошибка создания step_history.json: ${e.message}")
+            Logger.log(context, "Failed to create step_history.json: ${e.message}")
             null
         }
     }

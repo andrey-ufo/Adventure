@@ -54,7 +54,7 @@
             android:paddingEnd="8dp" />
     </LinearLayout>
 
-    <!-- ===== Инфо-строка: ID, счётчик вариантов, бейдж главы ===== -->
+    <!-- ===== Инфо-строка: ID, счётчик вариантов, бейджи ===== -->
     <LinearLayout
         android:id="@+id/info_row"
         android:layout_width="match_parent"
@@ -106,7 +106,6 @@
                 android:contentDescription="Предпросмотр сцены в читалке"
                 android:scaleType="centerInside"
                 android:padding="2dp" />
-
         </LinearLayout>
 
         <TextView
@@ -127,9 +126,19 @@
             android:textColor="#FFC107"
             android:layout_marginStart="8dp"
             android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tv_death_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💀 Смерть"
+            android:textSize="11sp"
+            android:textColor="#F44336"
+            android:layout_marginStart="8dp"
+            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- ===== Тело: скрывается при сворачивании ===== -->
+    <!-- ===== Тело ===== -->
     <LinearLayout
         android:id="@+id/body"
         android:layout_width="match_parent"
@@ -192,6 +201,58 @@
                 android:text=""
                 android:textSize="13sp"
                 android:textColor="#FFC107" />
+        </LinearLayout>
+
+        <CheckBox
+            android:id="@+id/cb_death_scene"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💀 Сцена смерти"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:id="@+id/layout_death_options"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:paddingStart="16dp"
+            android:paddingEnd="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Какие кнопки видит игрок после смерти:"
+                android:textSize="11sp"
+                android:textColor="#9E9E9E"
+                android:layout_marginBottom="4dp" />
+
+            <CheckBox
+                android:id="@+id/cb_death_allow_step_back"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↩ Один шаг назад"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <CheckBox
+                android:id="@+id/cb_death_allow_chapter_restart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📖 В начало главы"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <CheckBox
+                android:id="@+id/cb_death_allow_adventure_restart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🏠 Начать приключение заново"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <LinearLayout

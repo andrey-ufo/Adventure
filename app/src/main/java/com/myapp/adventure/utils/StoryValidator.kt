@@ -3,6 +3,7 @@ package com.myapp.adventure.utils
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.PlayerState
+import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.ValidationIssue
 
 object StoryValidator {
@@ -76,6 +77,73 @@ object StoryValidator {
             }
         }
 
+        // ---------- ERROR: снятие ITEM/HEALTH, которое нигде не устанавливается ----------
+        val positiveEst = collectPositiveItemHealthNames(scenes, initialState)
+        for (scene in scenes) {
+            val sceneName = scene.title.ifBlank { "(без названия)" }
+
+            for (tag in scene.tags) {
+                if (tag.name.startsWith("!")) continue
+                if (tag.value >= 0) continue
+                if (tag.category != TagCategory.ITEM && tag.category != TagCategory.HEALTH) continue
+                if (tag.name !in positiveEst) {
+                    issues += ValidationIssue(
+                        severity = IssueSeverity.ERROR,
+                        sceneUid = scene.uid,
+                        title = "Снятие неустанавливаемого ресурса",
+                        description = "Сцена «$sceneName», метка «${tag.name}» (${tag.value}): уменьшает значение, " +
+                                "но «${tag.name}» нигде не устанавливается положительно " +
+                                "(ни в начальном состоянии, ни в эффектах сцен/выборов). Игрок не сможет это использовать."
+                    )
+                }
+            }
+
+            for (choice in scene.choices) {
+                val choiceLabel = choice.text.ifBlank { "(без текста)" }
+                for (tag in choice.tags) {
+                    if (tag.name.startsWith("!")) continue
+                    if (tag.value >= 0) continue
+                    if (tag.category != TagCategory.ITEM && tag.category != TagCategory.HEALTH) continue
+                    if (tag.name !in positiveEst) {
+                        issues += ValidationIssue(
+                            severity = IssueSeverity.ERROR,
+                            sceneUid = scene.uid,
+                            title = "Снятие неустанавливаемого ресурса",
+                            description = "Сцена «$sceneName», выбор «$choiceLabel», метка «${tag.name}» (${tag.value}): " +
+                                    "уменьшает значение, но «${tag.name}» нигде не устанавливается положительно. " +
+                                    "Игрок не сможет это использовать."
+                        )
+                    }
+                }
+            }
+        }
+
+        // ---------- WARNING: смерть и сцена смерти ----------
+        val hasDeathScene = scenes.any { it.isDeathScene }
+        val hasHealth = hasHealthInStats(scenes, initialState)
+
+        if (hasHealth && !hasDeathScene) {
+            issues += ValidationIssue(
+                severity = IssueSeverity.WARNING,
+                sceneUid = scenes.first().uid,
+                title = "Смерть без сцены смерти",
+                description = "В истории используется health, но сцена смерти не задана. " +
+                        "При наступлении смерти будет показан стандартный экран."
+            )
+        }
+
+        if (hasDeathScene && !hasHealth) {
+            val deathScene = scenes.first { it.isDeathScene }
+            issues += ValidationIssue(
+                severity = IssueSeverity.WARNING,
+                sceneUid = deathScene.uid,
+                title = "Сцена смерти без health",
+                description = "Сцена смерти задана, но health нигде не используется — " +
+                        "смерть никогда не наступит."
+            )
+        }
+
+
         // ---------- WARNING: тупики ----------
         for ((idx, scene) in scenes.withIndex()) {
             if (scene.choices.isEmpty() && !scene.isChapterEnd && idx < scenes.size - 1) {
@@ -132,6 +200,57 @@ object StoryValidator {
      * - в initialState.stats (только те, где значение != 0)
      * Имена с «!» (снятие флага) в множество не попадают.
      */
+
+    /**
+     * Собирает имена ITEM/HEALTH-меток, которые где-то устанавливаются в положительное значение:
+     * - initialState.stats (значение > 0)
+     * - scene.tags / choice.tags с категорией ITEM/HEALTH и value > 0
+     */
+
+    /** true, если health где-то встречается (initial_state, эффекты сцен или выборов). */
+    private fun hasHealthInStats(
+        scenes: List<EditorScene>,
+        initialState: PlayerState?
+    ): Boolean {
+        if ((initialState?.stats?.get("health") ?: -1) >= 0) return true
+
+        for (scene in scenes) {
+            if (scene.tags.any { it.name == "health" && it.value != 0 }) return true
+            for (choice in scene.choices) {
+                if (choice.tags.any { it.name == "health" && it.value != 0 }) return true
+            }
+        }
+        return false
+    }
+
+
+    private fun collectPositiveItemHealthNames(
+        scenes: List<EditorScene>,
+        initialState: PlayerState?
+    ): Set<String> {
+        val result = mutableSetOf<String>()
+
+        initialState?.stats?.forEach { (name, value) ->
+            if (value > 0) result.add(name)
+        }
+
+        fun registerTag(tag: com.myapp.adventure.data.EditorTag) {
+            if (tag.name.isBlank()) return
+            if (tag.name.startsWith("!")) return
+            if (tag.category != TagCategory.ITEM && tag.category != TagCategory.HEALTH) return
+            if (tag.value > 0) result.add(tag.name)
+        }
+
+        for (scene in scenes) {
+            for (tag in scene.tags) registerTag(tag)
+            for (choice in scene.choices) {
+                for (tag in choice.tags) registerTag(tag)
+            }
+        }
+
+        return result
+    }
+
     private fun collectEstablishableNames(
         scenes: List<EditorScene>,
         initialState: PlayerState?

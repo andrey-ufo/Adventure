@@ -2,7 +2,6 @@ package com.myapp.adventure.ui.editor
 
 import android.app.AlertDialog
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -26,8 +25,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.ConcatAdapter
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.gson.Gson
 import com.myapp.adventure.R
 import com.myapp.adventure.data.Adventure
@@ -35,9 +38,9 @@ import com.myapp.adventure.data.ChapterStats
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
-import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.ValidationIssue
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.databinding.FragmentAdventureEditorBinding
@@ -61,6 +64,7 @@ class AdventureEditorFragment : Fragment() {
 
     private lateinit var viewModel: AdventureEditorViewModel
     private lateinit var adapter: EditorSceneAdapter
+    private lateinit var initialStateAdapter: InitialStateAdapter
 
     private val debounceHandler = Handler(Looper.getMainLooper())
     private var hasUnsavedChanges = false
@@ -77,14 +81,18 @@ class AdventureEditorFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewModel = ViewModelProvider(requireActivity()).get(AdventureEditorViewModel::class.java)
+
+        val dirtyCallback: (Boolean) -> Unit = { structural ->
+            if (structural) viewModel.commitSnapshot()
+            markDirty()
+        }
+
         adapter = EditorSceneAdapter(
             viewModel = viewModel,
-            onDirty = { structural ->
-                if (structural) viewModel.commitSnapshot()
-                markDirty()
-            },
+            onDirty = dirtyCallback,
             onPreview = { uid -> openPreview(uid) }
         )
+        initialStateAdapter = InitialStateAdapter(viewModel, dirtyCallback)
     }
 
     override fun onCreateView(
@@ -97,8 +105,14 @@ class AdventureEditorFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.rvScenes.layoutManager = WrapContentLinearLayoutManager(requireContext())
-        binding.rvScenes.adapter = adapter
+        applyWindowInsetsToRoot(view)
+
+        binding.rvScenes.layoutManager = LinearLayoutManager(requireContext())
+
+        val concatAdapter = ConcatAdapter(initialStateAdapter, adapter)
+        binding.rvScenes.adapter = concatAdapter
+
+        binding.rvScenes.setItemViewCacheSize(15)
         binding.rvScenes.itemAnimator = null
 
         binding.btnMenu.setOnClickListener {
@@ -116,7 +130,12 @@ class AdventureEditorFragment : Fragment() {
             viewModel.commitSnapshot()
             markDirty()
             adapter.submitList()
-            updateEmptyHint()
+            binding.rvScenes.post {
+                if (_binding != null) {
+                    // +1 — сдвиг на позицию InitialStateAdapter (всегда первый)
+                    binding.rvScenes.scrollToPosition(viewModel.scenes.size)
+                }
+            }
         }
         binding.btnSave.setOnClickListener { saveAdventure() }
         binding.btnLoad.setOnClickListener { openFileLauncher.launch(arrayOf("application/json")) }
@@ -124,10 +143,18 @@ class AdventureEditorFragment : Fragment() {
         binding.btnValidate.setOnClickListener { showValidationDialog() }
         binding.btnSearch.setOnClickListener { showSearchDialog() }
         binding.btnStats.setOnClickListener { showStatsDialog() }
+        binding.btnMap.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, AdventureMapFragment())
+                .addToBackStack(null)
+                .commit()
+        }
+
+        (binding.rvScenes.layoutManager as? LinearLayoutManager)
+            ?.initialPrefetchItemCount = 4
 
         adapter.submitList()
         updateTitleField()
-        updateEmptyHint()
         updateUndoRedoButtons()
 
         maybeRestoreDraft()
@@ -135,6 +162,30 @@ class AdventureEditorFragment : Fragment() {
         if (!viewModel.isHistoryInitialized()) {
             viewModel.initHistory()
             updateUndoRedoButtons()
+        }
+
+        // Если редактор открывается после возврата из карты
+        val pending = viewModel.pendingJumpToSceneUid
+        if (pending != null) {
+            viewModel.pendingJumpToSceneUid = null
+            binding.rvScenes.post { jumpToScene(pending) }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pending = viewModel.pendingJumpToSceneUid
+        if (pending != null && _binding != null) {
+            viewModel.pendingJumpToSceneUid = null
+            jumpToScene(pending)
+        }
+    }
+
+    private fun applyWindowInsetsToRoot(view: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
+            val topInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            v.setPadding(0, topInset, 0, 0)
+            insets
         }
     }
 
@@ -148,11 +199,6 @@ class AdventureEditorFragment : Fragment() {
     private fun updateTitleField() {
         if (_binding == null) return
         binding.tvAdventureTitle.text = viewModel.title.ifBlank { "Без названия" }
-    }
-
-    private fun updateEmptyHint() {
-        if (_binding == null) return
-        binding.tvEmptyHint.visibility = if (viewModel.scenes.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun updateUndoRedoButtons() {
@@ -212,8 +258,8 @@ class AdventureEditorFragment : Fragment() {
     private fun refreshAfterHistoryChange() {
         if (_binding == null) return
         adapter.submitList()
+        initialStateAdapter.notifyDataSetChanged()
         updateTitleField()
-        updateEmptyHint()
         updateUndoRedoButtons()
     }
 
@@ -241,6 +287,7 @@ class AdventureEditorFragment : Fragment() {
             viewModel.title,
             viewModel.author,
             viewModel.description,
+            viewModel.initialStateTags,
             viewModel.scenes
         )
         hasUnsavedChanges = false
@@ -256,11 +303,12 @@ class AdventureEditorFragment : Fragment() {
         if (viewModel.scenes.isNotEmpty() ||
             viewModel.title.isNotEmpty() ||
             viewModel.author.isNotEmpty() ||
-            viewModel.description.isNotEmpty()
+            viewModel.description.isNotEmpty() ||
+            viewModel.initialStateTags.isNotEmpty()
         ) return
 
         val draft = EditorDraftManager.loadDraft(requireContext()) ?: return
-        if (draft.scenes.isEmpty() && draft.title.isEmpty()) {
+        if (draft.scenes.isEmpty() && draft.title.isEmpty() && draft.initialStateTags.isEmpty()) {
             EditorDraftManager.clearDraft(requireContext())
             return
         }
@@ -279,16 +327,18 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.title = draft.title
                 viewModel.author = draft.author
                 viewModel.description = draft.description
+                viewModel.initialStateTags.clear()
+                viewModel.initialStateTags.addAll(draft.initialStateTags.map { it.copy() })
                 viewModel.scenes.clear()
                 viewModel.scenes.addAll(draft.scenes.map { it.deepCopy() })
+
                 viewModel.initHistory()
                 viewModel.collapseAllScenes()
                 viewModel.collapseAllChoices()
-                viewModel.scenes.firstOrNull()?.let { viewModel.expandScene(it.uid) }
 
                 adapter.submitList()
+                initialStateAdapter.notifyDataSetChanged()
                 updateTitleField()
-                updateEmptyHint()
                 updateUndoRedoButtons()
 
                 hasUnsavedChanges = false
@@ -319,10 +369,42 @@ class AdventureEditorFragment : Fragment() {
             viewModel.title = adventure.title
             viewModel.author = adventure.author
             viewModel.description = adventure.description
-            viewModel.initialState = adventure.initialState
             viewModel.scenes.clear()
 
             val tagDefs = adventure.tags.orEmpty().associateBy { it.name }
+
+            // Восстанавливаем initialStateTags из adventure.initialState
+            viewModel.initialStateTags.clear()
+            val init = adventure.initialState
+            if (init != null) {
+                init.flags?.forEach { flag ->
+                    val def = tagDefs[flag]
+                    viewModel.initialStateTags.add(
+                        EditorTag(
+                            name = flag,
+                            value = 0,
+                            isStatModifier = false,
+                            category = def?.category ?: TagCategory.JOURNAL,
+                            displayName = def?.displayName ?: flag,
+                            visible = def?.visible ?: false
+                        )
+                    )
+                }
+                init.stats?.forEach { (name, value) ->
+                    val def = tagDefs[name]
+                    val cat = def?.category ?: TagCategory.JOURNAL
+                    viewModel.initialStateTags.add(
+                        EditorTag(
+                            name = name,
+                            value = value,
+                            isStatModifier = true,
+                            category = cat,
+                            displayName = def?.displayName ?: name,
+                            visible = def?.visible ?: false
+                        )
+                    )
+                }
+            }
 
             for (chapter in adventure.chapters.orEmpty()) {
                 for (scene in chapter.scenes.orEmpty()) {
@@ -347,14 +429,37 @@ class AdventureEditorFragment : Fragment() {
                 }
             }
 
+            // Восстанавливаем сцену смерти из adventure.deathScene
+            val deathDef = adventure.deathScene
+            if (deathDef != null) {
+                val existingScene = viewModel.scenes.find { it.id == deathDef.id }
+                if (existingScene != null) {
+                    existingScene.isDeathScene = true
+                    existingScene.deathAllowStepBack = deathDef.allowStepBack
+                    existingScene.deathAllowChapterRestart = deathDef.allowChapterRestart
+                    existingScene.deathAllowAdventureRestart = deathDef.allowAdventureRestart
+                } else {
+                    val deathSceneEditor = EditorScene(
+                        id = deathDef.id,
+                        idIsAuto = false,
+                        title = "Сцена смерти",
+                        text = deathDef.text,
+                        isDeathScene = true,
+                        deathAllowStepBack = deathDef.allowStepBack,
+                        deathAllowChapterRestart = deathDef.allowChapterRestart,
+                        deathAllowAdventureRestart = deathDef.allowAdventureRestart
+                    )
+                    viewModel.scenes.add(deathSceneEditor)
+                }
+            }
+
             viewModel.initHistory()
             viewModel.collapseAllScenes()
             viewModel.collapseAllChoices()
-            viewModel.scenes.firstOrNull()?.let { viewModel.expandScene(it.uid) }
 
             adapter.submitList()
+            initialStateAdapter.notifyDataSetChanged()
             updateTitleField()
-            updateEmptyHint()
             updateUndoRedoButtons()
 
             binding.tvSaveStatus.text = "Загружено из файла"
@@ -544,7 +649,7 @@ class AdventureEditorFragment : Fragment() {
     // ---------- Валидатор ----------
 
     private fun showValidationDialog() {
-        val issues = StoryValidator.validate(viewModel.scenes, viewModel.initialState)
+        val issues = StoryValidator.validate(viewModel.scenes, viewModel.buildInitialState())
 
         if (issues.isEmpty()) {
             AlertDialog.Builder(requireContext())
@@ -890,22 +995,13 @@ class AdventureEditorFragment : Fragment() {
 
         binding.rvScenes.post {
             if (_binding == null) return@post
-            binding.rvScenes.post {
-                if (_binding == null) return@post
-                val childView = binding.rvScenes.layoutManager?.findViewByPosition(pos)
+            (binding.rvScenes.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(pos + 1, 50)  // +1 — InitialStateAdapter
 
-                if (childView != null) {
-                    val rect = Rect()
-                    childView.getDrawingRect(rect)
-                    binding.scrollView.offsetDescendantRectToMyCoords(childView, rect)
-                    binding.scrollView.smoothScrollTo(0, (rect.top - 50).coerceAtLeast(0))
-                }
-
-                adapter.setHighlighted(uid)
-                debounceHandler.postDelayed({
-                    if (_binding != null) adapter.setHighlighted(null)
-                }, 2500L)
-            }
+            adapter.setHighlighted(uid)
+            debounceHandler.postDelayed({
+                if (_binding != null) adapter.setHighlighted(null)
+            }, 2500L)
         }
     }
 
@@ -977,6 +1073,7 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.title,
                 viewModel.author,
                 viewModel.description,
+                viewModel.initialStateTags,
                 viewModel.scenes
             )
             Logger.log(requireContext(), "Черновик сохранён при выходе из редактора")

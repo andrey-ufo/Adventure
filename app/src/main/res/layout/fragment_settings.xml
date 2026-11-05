@@ -22,7 +22,26 @@
         android:layout_height="wrap_content"
         android:text="Включить запись лога в файл"
         android:textColor="#FFFFFF"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="16dp" />
+
+    <!-- Health Connect -->
+    <CheckBox
+        android:id="@+id/cb_health_connect"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Синхронизация с Health Connect"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_health_connect_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="12sp"
+        android:textColor="#9E9E9E"
+        android:layout_marginBottom="24dp"
+        android:visibility="gone" />
 
     <!-- Размер шрифта -->
     <TextView

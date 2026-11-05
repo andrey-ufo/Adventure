@@ -10,6 +10,10 @@ data class EditorScene(
     var text: String = "",
     var isChapterEnd: Boolean = false,
     var requiredSteps: Int = 0,
+    var isDeathScene: Boolean = false,
+    var deathAllowStepBack: Boolean = true,
+    var deathAllowChapterRestart: Boolean = true,
+    var deathAllowAdventureRestart: Boolean = true,
     val tags: MutableList<EditorTag> = mutableListOf(),
     val choices: MutableList<EditorChoice> = mutableListOf()
 )
