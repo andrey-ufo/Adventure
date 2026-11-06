@@ -6,6 +6,8 @@
 **Status:** pre-alpha. Features, data formats, UI and public APIs may change
 without notice. The repository is under active development.
 
+Сейчас работа над приложением ведется по плану в файле docs/checklist-tracker.md
+
 ## What is this?
 
 Adventure is an Android app for people who enjoy text adventures (such as

@@ -31,7 +31,8 @@ Concepts that appear across code, JSON and documentation.
 | English            | Russian                   | Notes                                                                 |
 |--------------------|---------------------------|-----------------------------------------------------------------------|
 | Adventure          | Приключение               | Also the project's name. Never translate "Adventure" when it refers to the app or the project. |
-| Chapter            | Глава                     | A group of scenes, separated by a step gate.                          |
+| Chapter            | Глава                     | A group of scenes. **Pure narrative grouping** — no gate of its own. Gates live on scenes (see Gate, Ф1.5.4). |
+| Gate               | Шлюз                      | A step requirement on a single scene (`scenes[].gate`). The player must walk N steps after entering the scene before any exit is allowed. Can sit anywhere in a chapter (first, middle, last), or be absent. |
 | Scene              | Сцена                     | One screen of text and (optionally) choices.                          |
 | Choice             | Выбор / вариант действия  | A single selectable action in a scene.                                |
 | Next scene         | Следующая сцена           | The scene a choice leads to (`next_scene`).                           |
@@ -46,8 +47,8 @@ Concepts that appear across code, JSON and documentation.
 | Player state       | Состояние игрока          | Current flags + stats + inventory of the player.                      |
 | Death scene        | Сцена смерти              | Special scene shown when the player dies (`death_scene`).             |
 | Chapter end        | Конец главы               | A scene that closes a chapter (`isChapterEnd`).                       |
-| Step gate          | Шаговый шлюз              | Number of steps required to open the next chapter.                    |
-| Required steps     | Требуемые шаги            | The threshold of a step gate (`required_steps`).                      |
+| Step gate / Gate   | Шаговый шлюз / Гейт       | A step requirement on a **scene** (`scenes[].gate`), not on a chapter. The player must walk N steps after entering the scene before any exit is allowed. Can sit anywhere in a chapter. See also `Gate`. |
+| Required steps     | Требуемые шаги            | The numeric threshold of a `Gate` (`gate.requiredSteps`). In v1 files this lived on `chapters[].required_steps`; the v1→v2 migration moves it to the last scene of the previous chapter. |
 | Remaining steps    | Осталось шагов            | Steps left until the gate opens.                                      |
 | Death (state)      | Смерть                    | The player's health has reached zero.                                 |
 | Draft (editor)     | Черновик                  | Unsaved editor state, saved in `editor_draft_prefs`.                  |
@@ -81,7 +82,8 @@ the file format and must not be renamed without a migration plan.
 | `chapters`                            | Ordered list of chapters.                                   |
 | `chapters[].id`                       | Chapter ID.                                                 |
 | `chapters[].title`                    | Chapter title.                                              |
-| `chapters[].required_steps`           | Steps needed to open the next chapter (0 for the last one). |
+| `chapters[].required_steps`           | **Legacy (v1 only).** Steps needed to enter this chapter. Migrated on load to `scenes[].gate` on the last scene of the previous chapter. Ignored in v2 files. |
+| `scenes[].gate`                       | **v2+.** Positive integer: steps the player must walk after entering this scene before any exit is allowed. Absent = no gate. See `Gate`. |
 | `chapters[].scenes`                   | Scenes in this chapter.                                     |
 | `scenes[].id`                         | Scene ID (unique per adventure).                            |
 | `scenes[].text`                       | Scene body text.                                            |

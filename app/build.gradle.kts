@@ -30,6 +30,15 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        checkReleaseBuilds = false
+        htmlReport = true
+        xmlReport = true
+        textReport = true
+    }
 }
 
 dependencies {
@@ -39,13 +48,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
     implementation("com.google.code.gson:gson:2.10.1")
-    // Fragment для переключения экранов
     implementation("androidx.fragment:fragment-ktx:1.6.2")
-    // RecyclerView для списков
     implementation("androidx.recyclerview:recyclerview:1.3.2")
-    // ViewModel для хранения логики
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
-    // LiveData для обновления интерфейса
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.2")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

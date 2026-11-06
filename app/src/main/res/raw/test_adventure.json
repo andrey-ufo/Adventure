@@ -1,4 +1,5 @@
 {
+  "_comment": "Sample adventure and golden test input. Before editing, see docs/test-adventure-policy.md.",
   "title": "Тестовое приключение",
   "author": "Claude (AI-ассистент)",
   "description": "Приключение создано исключительно для тестирования функций приложения Adventure. Не является связной историей. Сцены, метки и переходы предназначены для проверки редактора, читалки, отладочной панели и шаговых шлюзов.",
@@ -36,7 +37,6 @@
     {
       "id": "chapter_1",
       "title": "Начало",
-      "required_steps": 0,
       "scenes": [
         {
           "id": "start",
@@ -51,7 +51,8 @@
         },
         {
           "id": "health_test",
-          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть.",
+          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Выход из этой сцены требует 100 шагов — демонстрация шагового шлюза в середине главы (не привязан к концу главы).",
+          "gate": 100,
           "choices": [
             { "text": "Получить урон (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
             { "text": "Получить лечение (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
@@ -86,7 +87,8 @@
         },
         {
           "id": "chapter_end_1",
-          "text": "Конец первой главы. Чтобы открыть следующую, нужно 5 шагов.",
+          "text": "Конец первой главы. Выход из этой сцены требует 5 шагов — эквивалент старого required_steps на главе 2.",
+          "gate": 5,
           "choices": []
         }
       ]
@@ -94,21 +96,21 @@
     {
       "id": "chapter_2",
       "title": "Проверка условий",
-      "required_steps": 5,
       "scenes": [
         {
           "id": "conditions_test",
-          "text": "Здесь тестируются условия.",
+          "text": "Здесь тестируются условия. Один из вариантов демонстрирует межглавный переход: можно прыгнуть сразу в финальную главу, минуя гейт 4000 шагов на конце главы 2.",
           "choices": [
-            { "text": "Только если здоровье ≥ 50", "next_scene": "healthy", "condition": "health >= 50" },
+            { "text": "Только если здоровье >= 50", "next_scene": "healthy", "condition": "health >= 50" },
             { "text": "Только если здоровье < 50", "next_scene": "unhealthy", "condition": "health < 50" },
             { "text": "Только если есть меч", "next_scene": "has_sword_node", "condition": "has_sword" },
-            { "text": "Продолжить", "next_scene": "chapter_end_2" }
+            { "text": "Продолжить", "next_scene": "chapter_end_2" },
+            { "text": "В финал (демо межглавного перехода)", "next_scene": "final" }
           ]
         },
         {
           "id": "healthy",
-          "text": "У вас health ≥ 50.",
+          "text": "У вас health >= 50.",
           "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
         },
         {
@@ -123,7 +125,8 @@
         },
         {
           "id": "chapter_end_2",
-          "text": "Конец второй главы. 4000 шагов до финала.",
+          "text": "Конец второй главы. Выход из этой сцены требует 4000 шагов — эквивалент старого required_steps на главе 3.",
+          "gate": 4000,
           "choices": []
         }
       ]
@@ -131,7 +134,6 @@
     {
       "id": "chapter_3",
       "title": "Финальная",
-      "required_steps": 4000,
       "scenes": [
         {
           "id": "final",
