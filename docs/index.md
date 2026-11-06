@@ -32,6 +32,21 @@ You extend the app, add features, or integrate new step sources.
 - [`README.md`](../README.md) — short overview, quick start, links.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to contribute to the project.
 - [`ROADMAP.md`](../ROADMAP.md) — what's planned, one page.
+- [`roadmap.md`](./roadmap.md) — full post-Ф10 roadmap: gamebook mechanics
+  (Ф12+), Nice-to-have from the checklist, distribution.
+
+### Research
+
+Background material — classifications of external systems, surveys,
+glossaries of other projects' vocabulary. Not user- or developer-facing
+documentation; see [`documentation-rules.md` §11](./documentation-rules.md#11-research-docs)
+for exemptions. Content may be in Russian, following the source.
+
+- [`gamebooks-classification.md`](./research/gamebooks-classification.md) —
+  faceted classification of gamebooks (7 axes A–G).
+- [`gamebook-mechanics.md`](./research/gamebook-mechanics.md) — faceted
+  classification of gamebook mechanics (34 mechanics, M1–M5), with
+  cross-reference to the classification axes.
 
 ## Status legend
 

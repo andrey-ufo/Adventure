@@ -33,6 +33,12 @@ import kotlinx.serialization.Serializable
  * @property initialState player state before the first scene.
  * @property deathScene optional death screen; `null` means the runtime
  *   uses built-in defaults.
+ * @property startScene scene the player begins in. Explicit since IR v3;
+ *   in v1/v2 files the field was absent and the parser inferred it from
+ *   `chapters.first().scenes.first()`. Making it explicit lets authors
+ *   start in a scene that is not the first in the first chapter (for
+ *   example: a dramatic teaser, then a prologue via `nextScene`). The
+ *   analyzer's reachability (Ф1.6.1) uses this as the root of the graph.
  * @property chapters ordered list of chapters. Must be non-empty; enforced
  *   by the parser (Ф1.3).
  */
@@ -48,8 +54,10 @@ public data class Adventure(
     public val initialState: InitialState = InitialState(),
     @SerialName("death_scene")
     public val deathScene: DeathScene? = null,
+    @SerialName("start_scene")
+    public val startScene: SceneId,
     public val chapters: List<Chapter>,
-) {
+){
     public companion object {
         /**
          * Current IR schema version. Increment when the on-disk format
@@ -67,7 +75,15 @@ public data class Adventure(
          *   is added. Migration in `JsonToIr`: `chapter[i].required_steps
          *   = N > 0` becomes `Gate(N)` on the last scene of chapter `i-1`.
          *   Files without `version` are migrated from v1.
+         * - `3` (Ф1.6.0) — `Adventure.start_scene: SceneId` added.
+         *   Before v3, the start scene was inferred from
+         *   `chapters.first().scenes.first()`; the analyzer's reachability
+         *   (Ф1.6.1) needs an explicit root, because an author may start
+         *   in a scene that is not the first in the first chapter.
+         *   Migration in `JsonToIr`: `start_scene` absent → inferred from
+         *   `chapters.first().scenes.first()` (identity for all existing
+         *   files). Files without `version` are migrated from v1.
          */
-        public const val CURRENT_VERSION: Int = 2
+        public const val CURRENT_VERSION: Int = 3
     }
 }

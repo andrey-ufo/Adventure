@@ -47,6 +47,26 @@ Desirable, but dependent on earlier work:
 - **Screenshots and tutorials** for the authoring guide — deliberately
   deferred until the UI stabilises.
 
+## Post-Ф10
+
+Everything after the checklist 2.1 is accepted lives in
+[`docs/roadmap.md`](./docs/roadmap.md). It covers three groups:
+
+- **Gamebook mechanics** (Ф12–Ф18) — support for more formats and
+  mechanics from gamebooks beyond the current feature set: RNG, combat,
+  character initialization, external outcomes (physical dexterity,
+  puzzles), cross-adventure state, meta-mechanics, authoring UI for all
+  of the above. Each mechanic's current status is in
+  [`docs/gamebook-mechanics-coverage.md`](./docs/gamebook-mechanics-coverage.md).
+- **Nice-to-have** — the 17 explicit Nice items + 10 `.advanced`
+  extensions from the checklist, each with an entry trigger.
+- **Distribution / community** — Play Store, F-Droid, Steam (conditional
+  on a JS runtime), community docs.
+
+No dates. No promises. Every item there is triggered by a concrete
+question, not by a calendar. This one-page `ROADMAP.md` stays the
+high-level summary; `docs/roadmap.md` is the full plan.
+
 ## Not planned (for now)
 
 Explicitly out of scope at this stage:

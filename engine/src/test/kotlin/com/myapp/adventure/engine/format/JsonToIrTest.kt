@@ -47,7 +47,7 @@ class JsonToIrTest {
         """.trimIndent()
         val adv = success(json)
         assertEquals("Test", adv.title)
-        assertEquals(2, adv.version) // CURRENT_VERSION after Ф1.5.4
+        assertEquals(3, adv.version) // CURRENT_VERSION after Ф1.6.0
         assertEquals(1, adv.chapters.size)
         assertEquals("c1", adv.chapters[0].id)
         assertEquals("s1", adv.chapters[0].scenes[0].id.value)
@@ -323,6 +323,29 @@ class JsonToIrTest {
         assertEquals(42, adv.chapters[0].scenes[0].gate?.requiredSteps)
     }
 
+
+    @Test
+    fun `v2 file without start_scene migrates from chapters`() {
+        val json = """
+            {"version":2,"title":"T","chapters":[
+              {"id":"c1","scenes":[{"id":"first","text":"A"},{"id":"second","text":"B"}]},
+              {"id":"c2","scenes":[{"id":"third","text":"C"}]}
+            ]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(SceneId("first"), adv.startScene)
+    }
+
+    @Test
+    fun `v2 file with explicit start_scene preserves it`() {
+        val json = """
+            {"version":2,"title":"T","start_scene":"second","chapters":[
+              {"id":"c1","scenes":[{"id":"first","text":"A"},{"id":"second","text":"B"}]}
+            ]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(SceneId("second"), adv.startScene)
+    }
 
     @Test
     fun `unknown next_scene parses as SceneId - reachability is F2`() {

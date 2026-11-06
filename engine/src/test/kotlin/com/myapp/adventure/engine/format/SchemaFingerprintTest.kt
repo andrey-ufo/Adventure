@@ -63,7 +63,8 @@ class SchemaFingerprintTest {
     private val expectedFlatFields: Map<String, Set<String>> = mapOf(
         "Adventure" to setOf(
             "version", "title", "author", "description",
-            "variables", "tags", "initial_state", "death_scene", "chapters",
+            "variables", "tags", "initial_state", "death_scene",
+            "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
         "Scene" to setOf("id", "text", "effects", "choices", "gate"),

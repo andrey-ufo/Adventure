@@ -1,5 +1,6 @@
 {
   "_comment": "Sample adventure and golden test input. Before editing, see docs/test-adventure-policy.md.",
+  "start_scene": "start",
   "title": "Тестовое приключение",
   "author": "Claude (AI-ассистент)",
   "description": "Приключение создано исключительно для тестирования функций приложения Adventure. Не является связной историей. Сцены, метки и переходы предназначены для проверки редактора, читалки, отладочной панели и шаговых шлюзов.",
@@ -89,7 +90,9 @@
           "id": "chapter_end_1",
           "text": "Конец первой главы. Выход из этой сцены требует 5 шагов — эквивалент старого required_steps на главе 2.",
           "gate": 5,
-          "choices": []
+          "choices": [
+            { "text": "Продолжить", "next_scene": "conditions_test" }
+          ]
         }
       ]
     },
@@ -127,7 +130,9 @@
           "id": "chapter_end_2",
           "text": "Конец второй главы. Выход из этой сцены требует 4000 шагов — эквивалент старого required_steps на главе 3.",
           "gate": 4000,
-          "choices": []
+          "choices": [
+            { "text": "Продолжить", "next_scene": "final" }
+          ]
         }
       ]
     },

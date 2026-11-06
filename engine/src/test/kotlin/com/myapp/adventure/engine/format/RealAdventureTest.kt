@@ -60,6 +60,12 @@ class RealAdventureTest {
     }
 
     @Test
+    fun `start scene is start`() {
+        val adv = parseRealFile()
+        assertEquals(SceneId("start"), adv.startScene)
+    }
+
+    @Test
     fun `metadata`() {
         val adv = parseRealFile()
         assertEquals("Тестовое приключение", adv.title)

@@ -39,9 +39,21 @@ public object Engine {
      * the cost is amortized over many steps.
      *
      * @return [CompileResult.Success] with the compiled form, or
-     *   [CompileResult.Failure] with one or more [CompileError]s. Only
-     *   errors that prevent building the indexes are reported; semantic
-     *   issues belong to `Analyzer` (Ф1.6).
+     *   [CompileResult.Failure] with one or more [CompileError]s.
+     *
+     * **What is a compile error.** Anything that makes the adventure
+     * **unplayable as a whole**:
+     * - [CompileError.DuplicateSceneId] — the index cannot be built;
+     * - [CompileError.MissingStartScene] — there is nowhere to start;
+     * - [CompileError.MissingNextScene] — the player will reach a choice
+     *   that crashes mid-game (loss of progress).
+     *
+     * **What is NOT a compile error.** "Opens and plays, but the author
+     * probably made a mistake": unreachable scenes, removing an item that
+     * is never given, death scene without health, etc. — those are
+     * [com.myapp.adventure.engine.analyze.LintIssue] (Ф1.6.2), reported in
+     * the editor but **not** blocking the reader. A lint-only issue must
+     * never prevent the user from opening a file they can play.
      */
     public fun compile(adventure: Adventure): CompileResult {
         val errors = mutableListOf<CompileError>()
@@ -72,6 +84,31 @@ public object Engine {
                 )
             }
         }
+
+        // Ф1.6.2.1: reference integrity is a compile error, not a lint
+        // warning (see CompileError.MissingNextScene KDoc for rationale).
+        if (adventure.startScene !in scenesById) {
+            errors += CompileError.MissingStartScene(adventure.startScene)
+        }
+        val missingNextScenes = mutableListOf<CompileError.MissingNextScene>()
+        adventure.chapters.forEach { chapter ->
+            chapter.scenes.forEach { scene ->
+                scene.choices.forEach { choice ->
+                    if (choice.nextScene !in scenesById) {
+                        missingNextScenes += CompileError.MissingNextScene(
+                            sceneId = scene.id,
+                            choiceId = choice.id,
+                            targetSceneId = choice.nextScene,
+                        )
+                    }
+                }
+            }
+        }
+        // Stable order: by scene id, then by choice id.
+        missingNextScenes.sortWith(
+            compareBy({ it.sceneId.value }, { it.choiceId.value }),
+        )
+        errors += missingNextScenes
 
         return if (errors.isEmpty()) {
             CompileResult.Success(

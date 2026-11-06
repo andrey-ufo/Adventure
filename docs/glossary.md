@@ -54,6 +54,9 @@ Concepts that appear across code, JSON and documentation.
 | Draft (editor)     | Черновик                  | Unsaved editor state, saved in `editor_draft_prefs`.                  |
 | Validation issue   | Проблема валидации        | A warning or error reported by `StoryValidator`.                      |
 | Story stats        | Статистика истории        | Scene/word/choice counts shown in the editor.                         |
+| RandomSource       | Источник случайности      | **Planned (Ф12+).** Abstraction over randomness in `Engine.step`; injected so tests are deterministic. See `docs/roadmap.md`. |
+| Procedure          | Процедура                 | **Planned (Ф13+).** A multi-step computation invoked from a scene or choice (e.g. combat rounds), modelled as a dedicated IR node. See `docs/roadmap.md`. |
+| Combat             | Бой                       | **Planned (Ф13+).** A procedure that resolves a fight between player and enemy over several rounds. Requires RNG (Ф12) and procedures (Ф13). See `docs/roadmap.md`. |
 
 ## 2. JSON field names
 

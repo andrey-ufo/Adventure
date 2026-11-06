@@ -42,6 +42,9 @@ internal data class AdventureDto(
     val tags: List<TagDefinitionDto> = emptyList(),
     @SerialName("death_scene")
     val deathScene: DeathSceneDto? = null,
+    /** v3+; absent in v1/v2 files (migrated in `JsonToIr`). */
+    @SerialName("start_scene")
+    val startScene: String? = null,
     val chapters: List<ChapterDto> = emptyList(),
 )
 

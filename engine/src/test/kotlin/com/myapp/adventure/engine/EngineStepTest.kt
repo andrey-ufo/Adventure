@@ -13,6 +13,7 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.toPlayerState
 import com.myapp.adventure.engine.parse.ParseResult
+import com.myapp.adventure.engine.CompiledAdventure
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -52,8 +53,11 @@ class EngineStepTest {
     private fun chapter(id: String, vararg scenes: Scene): Chapter =
         Chapter(id = id, title = id, scenes = scenes.toList())
 
-    private fun adventure(vararg chapters: Chapter): Adventure =
-        Adventure(title = "T", chapters = chapters.toList())
+    private fun adventure(vararg chapters: Chapter): Adventure = Adventure(
+        title = "T",
+        startScene = chapters.firstOrNull()?.scenes?.firstOrNull()?.id ?: SceneId(""),
+        chapters = chapters.toList(),
+    )
 
     private fun compile(adventure: Adventure): CompiledAdventure =
         assertIs<CompileResult.Success>(Engine.compile(adventure)).compiled
@@ -171,14 +175,35 @@ class EngineStepTest {
 
     @Test
     fun `next scene not found - bug`() {
-        // choice.nextScene points to a nonexistent scene. The engine returns
-        // Rejected(SceneNotFound) BEFORE applying choice effects, so nothing
-        // happens to the state.
-        val a = scene("a", listOf(choice("c", next = "ghost", effects = listOf(Effect.ModifyStat("health", -50)))))
-        val compiled = compile(adventure(chapter("ch", a)))
+        // Engine.compile rejects this (Ф1.6.2.1:
+        // CompileError.MissingNextScene), so in production the reader
+        // never sees this state. But CompiledAdventure is a public data
+        // class; anyone can construct one by hand (tests, future tooling).
+        // This test documents that Engine.step is **defensive**: with a
+        // manually-built CompiledAdventure that has a dangling nextScene,
+        // step returns Rejected(SceneNotFound) and does NOT apply choice
+        // effects (otherwise the player's health would drain into the void
+        // before the reader notices the missing scene).
+        val a = scene(
+            "a",
+            listOf(
+                choice("c", next = "ghost", effects = listOf(Effect.ModifyStat("health", -50))),
+            ),
+        )
+        val adv = adventure(chapter("ch", a))
+        val compiled = CompiledAdventure(
+            adventure = adv,
+            scenesById = mapOf(SceneId("a") to a),
+            chapterIndexBySceneId = mapOf(SceneId("a") to 0),
+        )
 
         val reason = rejected(
-            Engine.step(compiled, state(stats = mapOf("health" to 100)), SceneId("a"), ChoiceId("c")),
+            Engine.step(
+                compiled,
+                state(stats = mapOf("health" to 100)),
+                SceneId("a"),
+                ChoiceId("c"),
+            ),
         )
         assertIs<RejectReason.SceneNotFound>(reason)
         assertEquals(SceneId("ghost"), reason.sceneId)
@@ -373,34 +398,61 @@ class EngineStepTest {
     // ---------- real test_adventure.json: documented pre-Continue state ----------
 
     @Test
-    fun `chapter_end_1 has no choices yet - player cannot proceed (until Continue is added in F1_5_5_0)`() {
-        // Ф1.5.5.0 will add an explicit "Continue" choice to chapter_end_1
-        // and chapter_end_2 in test_adventure.json. Until then, step() from
-        // chapter_end_1 returns ChoiceNotFound for any choice id. This test
-        // documents the current state; it will be rewritten in Ф1.5.5.0.
-        //
-        // If this test starts failing because someone added a choice to
-        // chapter_end_1 without updating the test, update this test in the
-        // same PR (that's the whole point of "test first, then fix").
+    fun `chapter_end_1 has explicit Continue choice - player can proceed after gate`() {
+        // Ф1.5.5.0: chapter_end_1 and chapter_end_2 now have explicit
+        // "Continue" choices. This is the "test first, then fix" pattern:
+        // the previous test asserted "no choices"; after the fix, the
+        // scene must have exactly one Continue choice, and step() with it
+        // must succeed once the gate (5 steps) is passed.
         val json = loadResource("/test_adventure.json")
         val parseResult = JsonToIr.parse(json)
         val adventure = assertIs<ParseResult.Success<Adventure>>(parseResult).value
         val compiled = assertIs<CompileResult.Success>(Engine.compile(adventure)).compiled
 
         val chapterEnd1 = assertNotNull(compiled.scenesById[SceneId("chapter_end_1")])
-        assertTrue(
-            chapterEnd1.choices.isEmpty(),
-            "chapter_end_1 currently has no choices; Ф1.5.5.0 will add them",
-        )
+        assertEquals(1, chapterEnd1.choices.size, "chapter_end_1 should have one Continue choice")
+        val continueChoice = chapterEnd1.choices.single()
+        assertEquals("Продолжить", continueChoice.text)
+        assertEquals(SceneId("conditions_test"), continueChoice.nextScene)
 
-        val result = Engine.step(
-            compiled,
-            state = adventure.initialState.toPlayerState(),
-            sceneId = SceneId("chapter_end_1"),
-            choiceId = ChoiceId("anything"),
-            stepsInScene = 5,
+        // Gate 5, stepsInScene = 4 → blocked.
+        val blocked = rejected(
+            Engine.step(
+                compiled,
+                state = adventure.initialState.toPlayerState(),
+                sceneId = SceneId("chapter_end_1"),
+                choiceId = continueChoice.id,
+                stepsInScene = 4,
+            ),
         )
-        assertIs<RejectReason.ChoiceNotFound>(rejected(result))
+        val blockedReason = assertIs<RejectReason.Blocked>(blocked)
+        assertEquals(1, (blockedReason.blockers.single() as Blocker.GateNotPassed).remainingSteps)
+
+        // Gate 5, stepsInScene = 5 → success, moves to conditions_test.
+        val success = assertIs<StepResult.Success>(
+            Engine.step(
+                compiled,
+                state = adventure.initialState.toPlayerState(),
+                sceneId = SceneId("chapter_end_1"),
+                choiceId = continueChoice.id,
+                stepsInScene = 5,
+            ),
+        )
+        assertEquals(SceneId("conditions_test"), success.currentScene.id)
+    }
+
+    @Test
+    fun `chapter_end_2 has explicit Continue choice going to final`() {
+        val json = loadResource("/test_adventure.json")
+        val parseResult = JsonToIr.parse(json)
+        val adventure = assertIs<ParseResult.Success<Adventure>>(parseResult).value
+        val compiled = assertIs<CompileResult.Success>(Engine.compile(adventure)).compiled
+
+        val chapterEnd2 = assertNotNull(compiled.scenesById[SceneId("chapter_end_2")])
+        assertEquals(1, chapterEnd2.choices.size)
+        val continueChoice = chapterEnd2.choices.single()
+        assertEquals("Продолжить", continueChoice.text)
+        assertEquals(SceneId("final"), continueChoice.nextScene)
     }
 
     private fun loadResource(path: String): String {

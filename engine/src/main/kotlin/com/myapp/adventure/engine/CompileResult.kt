@@ -1,5 +1,6 @@
 package com.myapp.adventure.engine
 
+import com.myapp.adventure.engine.ir.ChoiceId
 import com.myapp.adventure.engine.ir.SceneId
 
 /**
@@ -70,5 +71,48 @@ public sealed class CompileError {
             "Duplicate scene id '${sceneId.value}' in chapters " +
                     chapterIndices.joinToString(", ") { (it + 1).toString() } +
                     ". Rename one of them or merge them into a single scene."
+    }
+
+    /**
+     * `Adventure.startScene` does not exist in any chapter.
+     *
+     * Without this check, `Engine.step` would be called with an id the
+     * runtime has no scene for — the reader would show an empty screen or
+     * crash. `compile` refuses to produce a `CompiledAdventure` for such
+     * an adventure, so the reader never sees it.
+     *
+     * @property startSceneId the id that failed to resolve.
+     */
+    public data class MissingStartScene(
+        public val startSceneId: SceneId,
+    ) : CompileError() {
+        override val message: String =
+            "Start scene '${startSceneId.value}' does not exist in any chapter."
+    }
+
+    /**
+     * A [com.myapp.adventure.engine.ir.Choice.nextScene] points to a scene
+     * that does not exist in any chapter.
+     *
+     * **Why this is a compile error and not a lint warning.** A dangling
+     * reference is not "the adventure opens but something is odd"; it is
+     * "the reader cannot complete this transition — if the player reaches
+     * this choice, the runtime will fail mid-game, with progress already
+     * spent". The reader must never see such an adventure. Reporting it at
+     * compile time means the author sees it in the editor (Ф9.2) before
+     * pressing "play", not after losing 30 minutes of reading.
+     *
+     * @property sceneId scene that contains the dangling choice.
+     * @property choiceId the dangling choice itself.
+     * @property targetSceneId the missing scene id it points to.
+     */
+    public data class MissingNextScene(
+        public val sceneId: SceneId,
+        public val choiceId: ChoiceId,
+        public val targetSceneId: SceneId,
+    ) : CompileError() {
+        override val message: String =
+            "Choice '${choiceId.value}' in scene '${sceneId.value}' points " +
+                    "to missing scene '${targetSceneId.value}'."
     }
 }

@@ -162,6 +162,23 @@ public object JsonToIr {
                 allowAdventureRestart = d.allowAdventureRestart,
             )
         }
+        // start_scene: explicit since v3; migrated from chapters in v1/v2.
+        // - explicit value wins (v3+);
+        // - v1/v2 without explicit value: infer from chapters;
+        // - v3+ without explicit value: structural error (the field is
+        //   required from v3 onward); fall back to SceneId("") so that
+        //   Adventure can still be constructed, but `errors` is non-empty,
+        //   so `JsonToIr.parse` returns Failure and the IR is not used.
+        val startScene = dto.startScene?.takeIf { it.isNotBlank() }?.let { SceneId(it) }
+            ?: if (effectiveVersion < 3) {
+                chapters.firstOrNull()?.scenes?.firstOrNull()?.id ?: SceneId("")
+            } else {
+                errors += ParseError.Structure(
+                    message = "Adventure has no start_scene (required since v3)",
+                    path = null,
+                )
+                SceneId("")
+            }
         return Adventure(
             version = dto.version ?: Adventure.CURRENT_VERSION,
             title = dto.title,
@@ -181,6 +198,7 @@ public object JsonToIr {
                 stats = dto.initialState.stats,
             ),
             deathScene = deathScene,
+            startScene = startScene,
             chapters = chapters,
         )
     }

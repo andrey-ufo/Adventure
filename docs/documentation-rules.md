@@ -16,7 +16,11 @@ written, structured and maintained. It is expected to change rarely.
 
 ## 2. File format and naming
 
-- Plain **Markdown** (GitHub-flavoured). No HTML unless strictly needed.
+- **GitHub Flavored Markdown (GFM)**. This is what GitHub renders, and it
+  is what every document in `docs/` and `README.md` must use. GFM includes
+  tables, task lists, fenced code blocks with language hints, strikethrough.
+  No raw HTML unless strictly needed (e.g. a complex table that GFM cannot
+  express).
 - File names are **kebab-case** and end with `.md`, e.g.
   `authoring-guide.md`, `documentation-rules.md`.
 - One topic per file. If a file grows past ~15 KB or starts mixing topics,
@@ -122,3 +126,42 @@ When a feature or document stabilizes:
 Migration to a static-site generator (MkDocs, Docusaurus, …) happens only if
 `docs/` exceeds roughly fifteen files or needs full-text search. Until then,
 plain Markdown on GitHub is the source of truth.
+
+## 11. Research docs
+
+`docs/research/` holds background material — classifications of external
+systems, surveys, glossaries of other projects' vocabulary — that informs
+Adventure but is **not part of its user-facing or developer-facing
+documentation**. Research docs are **exempt** from three rules above:
+
+| Rule | Exemption | Why |
+|---|---|---|
+| §1 Language — English | May be in any language, including Russian | Often a survey of Russian-language sources; translation loses precision on the source's own terms |
+| §3 Status marker | `**Status:**` optional; `**Status:** reference` recommended when present | Research is not a contract; it can be stale without being wrong |
+| §6 Glossary is authoritative | Not required to add its terms to the main glossary | It is **about** external systems, not about this project's own vocabulary |
+
+Still required:
+
+- **GFM** (§2) — same rendering on GitHub as everything else.
+- **File naming** (§2) — kebab-case `.md`.
+- **Reachable from `docs/index.md`** (§5) — under a **"Research"** section,
+  not in the "Start here" sections.
+
+Research docs are **not** linked from `CONTRIBUTING.md` or `README.md`.
+They are for readers who want background, not for those who want to use or
+contribute to Adventure. If a research doc's content becomes load-bearing
+for the project (a term enters the glossary, a mechanic enters the roadmap),
+the **relevant fragment** is copied into the appropriate non-research doc;
+the research doc itself stays as the source.
+
+### 11.1. When to promote a research doc
+
+A research doc stays under `docs/research/` while it is:
+- background context for design decisions, **or**
+- a reference for external systems, **or**
+- a survey whose subject may change independently of Adventure.
+
+It is promoted to `docs/` (and must then follow all rules) when it becomes:
+- a specification Adventure code must conform to, **or**
+- user-facing documentation, **or**
+- an authoritative glossary of Adventure's own terms.
