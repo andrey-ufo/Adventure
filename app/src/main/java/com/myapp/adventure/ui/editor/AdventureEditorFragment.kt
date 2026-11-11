@@ -406,15 +406,53 @@ class AdventureEditorFragment : Fragment() {
                 }
             }
 
-            for (chapter in adventure.chapters.orEmpty()) {
-                for (scene in chapter.scenes.orEmpty()) {
+            // b2: per-scene gate + chapter-boundary as two independent
+            // concepts.
+            //
+            // Reading order: scenes are grouped into chapters exactly as
+            // before (`chapter.scenes`). Within a chapter, the **last**
+            // scene is marked as the narrative chapter boundary
+            // (`isChapterEnd = true`) — this is what the map / stats /
+            // validator use for grouping and the "🏁 Конец главы" badge.
+            //
+            // The gate is now a **scene property** (`scene.gate` in v5
+            // JSON), not a chapter property. For files that predate v5
+            // (no `scene.gate`, but `chapter.required_steps` present on
+            // the *next* chapter), we migrate: the legacy v1 gate on
+            // `chapter[i+1]` becomes `gateRequiredSteps` on the last
+            // scene of chapter `i`. Same migration `JsonToIr.parse`
+            // does — kept here so the editor sees the same data before
+            // and after the "load → save" round-trip.
+            val allChapters = adventure.chapters.orEmpty()
+            for ((chapterIndex, chapter) in allChapters.withIndex()) {
+                val scenes = chapter.scenes.orEmpty()
+                // v1 migration: `chapter[i+1].required_steps` → gate on
+                // the last scene of chapter `i`. `null` (field absent)
+                // and `0` both mean "no gate".
+                val v1GateForLastScene =
+                    allChapters.getOrNull(chapterIndex + 1)?.requiredSteps ?: 0
+                for ((sceneIndex, scene) in scenes.withIndex()) {
+                    val isLastInChapter = sceneIndex == scenes.lastIndex
+                    val v5Gate = scene.gate ?: 0
+                    val effectiveGate =
+                        if (v5Gate > 0) v5Gate
+                        else if (isLastInChapter) v1GateForLastScene
+                        else 0
                     val editorScene = EditorScene(
                         id = scene.id,
                         idIsAuto = false,
                         title = scene.id,
                         text = scene.text,
-                        isChapterEnd = chapter.requiredSteps > 0,
-                        requiredSteps = chapter.requiredSteps,
+                        isChapterEnd = isLastInChapter,
+                        gateRequiredSteps = effectiveGate,
+                        gateRepeatable = scene.gateRepeatable ?: false,
+                        // Ф1.7.5: read `"is_ending"` from the JSON.
+                        // `:app/data/Scene.isEnding` is nullable
+                        // (absent on pre-v4 files, or on files the
+                        // editor itself writes without the flag);
+                        // map `null` to `false` — the same identity
+                        // migration that `JsonToIr` applies.
+                        isEnding = scene.isEnding ?: false,
                         tags = extractTags(scene, tagDefs),
                         choices = scene.choices?.map { choice ->
                             EditorChoice(

@@ -39,6 +39,26 @@ android {
         lintConfig = file("lint.xml")
         // Именно disable исключает детектор из запуска;
         // severity="ignore" в lint.xml только подавляет отчёт после выполнения.
+        // 2026-11-10: TEMPORARY WORKAROUND — remove when fixed upstream.
+        //
+        // UnsafeFragmentLifecycleObserverDetector (androidx.fragment:fragment-ktx
+        // 1.9.1) infinite-recurses through viewLifecycleOwner.lifecycleScope
+        // .launch { ... } lambdas: RecursiveMethodVisitor.visitCallExpression
+        // :183 <-> :187 loops with no depth limit, pinning one WorkerExecutor
+        // thread at 98% CPU and making lintAnalyzeDebug hang for 10+ minutes.
+        //
+        // The upstream fix exists in AndroidX main but is not in any stable
+        // release yet. Relevant commits:
+        //   - caa8296 "Avoid duplicate reports in UnsafeFragmentLifecycleObserverDetector"
+        //   - 1ff2f34 "Limit the call depth to search"
+        //   - (unnamed) "Short-circuit Compose boundaries"
+        //
+        // ACTION WHEN UPDATING fragment-ktx: once fragment 1.10.0+ (or a
+        // 1.9.x point release that mentions these commits in its release
+        // notes) is available, bump the version and DELETE the four
+        // `disable +=` lines below and the matching entries in
+        // app/lint.xml. Verify by running `./gradlew :app:lintDebug
+        // --rerun-tasks` — it should finish in well under a minute.
         disable += "FragmentAddMenuProvider"
         disable += "FragmentBackPressedCallback"
         disable += "FragmentLiveDataObserve"

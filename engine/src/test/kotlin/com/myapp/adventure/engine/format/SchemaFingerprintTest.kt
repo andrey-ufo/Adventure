@@ -11,6 +11,7 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.ir.VarDecl
 import com.myapp.adventure.engine.ir.VarType
+import com.myapp.adventure.engine.ir.Gate
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -67,7 +68,7 @@ class SchemaFingerprintTest {
             "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
-        "Scene" to setOf("id", "text", "effects", "choices", "gate"),
+        "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending"),
         "Choice" to setOf("id", "text", "next_scene", "condition", "effects"),
         "TagDefinition" to setOf("name", "display_name", "category", "visible"),
         "InitialState" to setOf("flags", "stats"),
@@ -75,6 +76,7 @@ class SchemaFingerprintTest {
             "id", "text", "allow_step_back", "allow_chapter_restart", "allow_adventure_restart",
         ),
         "VarDecl" to setOf("name", "type"),
+        "Gate" to setOf("required_steps", "repeatable"),
     )
 
     /** Serialized variant name (from `@SerialName`) → its serialized fields. */
@@ -161,6 +163,7 @@ class SchemaFingerprintTest {
         assertFlat("InitialState", InitialState.serializer().descriptor)
         assertFlat("DeathScene", DeathScene.serializer().descriptor)
         assertFlat("VarDecl", VarDecl.serializer().descriptor)
+        assertFlat("Gate", Gate.serializer().descriptor)
     }
 
     @Test

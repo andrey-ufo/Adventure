@@ -24,7 +24,9 @@ You write and edit interactive adventures inside the app.
 You extend the app, add features, or integrate new step sources.
 
 - [Getting started](./getting-started.md) — clone, build, run, folder layout.
-- [Architecture](./architecture.md) — high-level packages and data flow.
+- [Architecture](./architecture.md) — high-level layers, data flow, invariants.
+- [Engine architecture](./engine-architecture.md) — deep dive into the
+  `:engine` module: IR, parser, runtime, analyzer.
 - [Documentation rules](./documentation-rules.md) — how docs are written.
 
 ### For everyone

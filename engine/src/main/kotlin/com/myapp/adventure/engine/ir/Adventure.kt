@@ -83,7 +83,28 @@ public data class Adventure(
          *   Migration in `JsonToIr`: `start_scene` absent → inferred from
          *   `chapters.first().scenes.first()` (identity for all existing
          *   files). Files without `version` are migrated from v1.
+         * - `4` (Ф1.7.0) — `Scene.is_ending: Boolean` added. The reader
+         *   no longer guesses "no choices = end of chapter, auto-advance";
+         *   an ending **must** be explicit. Multiple scenes may be marked
+         *   `is_ending = true` (multiple endings). Migration v3 → v4:
+         *   identity — v3 files have no `is_ending`, so the field defaults
+         *   to `false`. Old files that relied on "no choices = end" now
+         *   produce `DeadEnd` ERROR (per project decision 2026-11-07:
+         *   pre-alpha drops backward compatibility, authors fix files).
+         *   `test_adventure.json` is updated in the same release to mark
+         *   its `final` scene as `is_ending = true`.
+         * - `5` (Ф1.7.0.4) — `Gate.repeatable: Boolean` added. Default
+         *   `false` ("once walked, stays open in this playthrough"),
+         *   matching the common case "walk N steps to unlock the next
+         *   chapter". `true` = per-visit ("travelled a path; the same
+         *   path back costs the same steps"). The author picks the
+         *   mode in the editor. `Gate` changed from `value class` to
+         *   `data class`; IR serialization wraps the gate as
+         *   `{"required_steps": N, "repeatable": bool}`. Adventure file
+         *   format stays flat: `"gate": N` + optional
+         *   `"gate_repeatable": true`. Migration v4 → v5: identity —
+         *   v4 files have no `gate_repeatable`, so `repeatable = false`.
          */
-        public const val CURRENT_VERSION: Int = 3
+        public const val CURRENT_VERSION: Int = 5
     }
 }

@@ -1,7 +1,10 @@
 package com.myapp.adventure.engine.analyze
 
 import com.myapp.adventure.engine.CompiledAdventure
+import com.myapp.adventure.engine.ir.Condition
+import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.TagCategory
 
 /**
  * Semantic analysis of an adventure that **compiles successfully**.
@@ -125,6 +128,22 @@ public object Analyzer {
      * never returns `WARNING`s for things the author cannot control.
      */
     public fun lint(compiled: CompiledAdventure): List<LintIssue> {
+        val issues = mutableListOf<LintIssue>()
+        issues += lintUnreachable(compiled)
+        issues += lintRemovingUnestablishedItem(compiled)
+        issues += lintDeathSceneWithoutHealth(compiled)
+        issues += lintConditionOnUnestablishedFlag(compiled)
+        issues += lintDeathWithoutDeathScene(compiled)
+        issues += lintDeadEnd(compiled)
+        issues += lintEndingSceneWithChoices(compiled)
+        return issues.sortedWith(
+            compareBy<LintIssue> { it.sceneId == null }
+                .thenBy { it.sceneId?.value ?: "" }
+                .thenBy { it.message },
+        )
+    }
+
+    private fun lintUnreachable(compiled: CompiledAdventure): List<LintIssue> {
         val report = reachable(compiled)
         val startId = compiled.adventure.startScene.value
         return report.unreachable.map { sceneId ->
@@ -136,5 +155,220 @@ public object Analyzer {
                 severity = Severity.WARNING,
             )
         }
+    }
+
+    private fun lintRemovingUnestablishedItem(compiled: CompiledAdventure): List<LintIssue> {
+        val tags = compiled.adventure.tags.associateBy { it.name }
+        val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        val allChoices = allScenes.flatMap { it.choices }
+
+        // Establish what is "given": positive initial stats and positive
+        // ModifyStat effects anywhere. If an ITEM/HEALTH variable is in
+        // this set, reducing it is legitimate.
+        val positiveSet = mutableSetOf<String>()
+        compiled.adventure.initialState.stats.forEach { (name, value) ->
+            if (value > 0) positiveSet.add(name)
+        }
+        for (effect in allScenes.flatMap { it.effects }) {
+            if (effect is Effect.ModifyStat && effect.delta > 0) positiveSet.add(effect.name)
+        }
+        for (effect in allChoices.flatMap { it.effects }) {
+            if (effect is Effect.ModifyStat && effect.delta > 0) positiveSet.add(effect.name)
+        }
+
+        fun isItemOrHealth(name: String): Boolean {
+            val tag = tags[name] ?: return false
+            return tag.category == TagCategory.ITEM || tag.category == TagCategory.HEALTH
+        }
+
+        val reported = mutableSetOf<Pair<SceneId, String>>()
+        val issues = mutableListOf<LintIssue>()
+
+        fun check(sceneId: SceneId, effect: Effect) {
+            if (effect !is Effect.ModifyStat) return
+            if (effect.delta >= 0) return
+            if (!isItemOrHealth(effect.name)) return
+            if (effect.name in positiveSet) return
+            val key = sceneId to effect.name
+            if (!reported.add(key)) return
+            issues += LintIssue(
+                kind = LintKind.RemovingUnestablishedItem(effect.name),
+                message = "Scene '${sceneId.value}' reduces '${effect.name}' " +
+                        "by ${-effect.delta}, but '${effect.name}' is never established " +
+                        "(not in initial_state with a positive value, no positive change " +
+                        "in any scene or choice). The player cannot use it.",
+                sceneId = sceneId,
+                severity = Severity.WARNING,
+            )
+        }
+
+        for (scene in allScenes) {
+            for (effect in scene.effects) check(scene.id, effect)
+            for (choice in scene.choices) {
+                for (effect in choice.effects) check(scene.id, effect)
+            }
+        }
+        return issues
+    }
+
+    private fun lintDeathSceneWithoutHealth(compiled: CompiledAdventure): List<LintIssue> {
+        if (compiled.adventure.deathScene == null) return emptyList()
+        if (compiled.adventure.initialState.stats.containsKey("health")) return emptyList()
+        val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        val hasHealthEffect = allScenes.any { scene ->
+            scene.effects.any { it is Effect.ModifyStat && it.name == "health" } ||
+                    scene.choices.any { choice ->
+                        choice.effects.any { it is Effect.ModifyStat && it.name == "health" }
+                    }
+        }
+        if (hasHealthEffect) return emptyList()
+        return listOf(
+            LintIssue(
+                kind = LintKind.DeathSceneWithoutHealth,
+                message = "Adventure has a death scene, but 'health' is never " +
+                        "initialized (not in initial_state.stats) and never modified " +
+                        "(no ModifyStat for 'health' in any scene or choice). " +
+                        "Death will never occur.",
+                sceneId = null,
+                severity = Severity.WARNING,
+            ),
+        )
+    }
+
+    // ----- Ф1.6.2.3: condition on unestablished flag (port of :app check #4) -----
+
+    private fun lintConditionOnUnestablishedFlag(
+        compiled: CompiledAdventure,
+    ): List<LintIssue> {
+        // "Established" = the name appears somewhere the runtime can see it:
+        //   - initial_state.flags (Bool flag set from the start)
+        //   - initial_state.stats keys (numeric value set from the start;
+        //     shim until Ф2.2, see LintKind.ConditionOnUnestablishedFlag KDoc)
+        //   - any Effect.SetFlag in any scene or choice
+        val establishable = mutableSetOf<String>()
+        establishable += compiled.adventure.initialState.flags
+        establishable += compiled.adventure.initialState.stats.keys
+        val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        for (scene in allScenes) {
+            for (effect in scene.effects) {
+                if (effect is Effect.SetFlag) establishable.add(effect.name)
+            }
+            for (choice in scene.choices) {
+                for (effect in choice.effects) {
+                    if (effect is Effect.SetFlag) establishable.add(effect.name)
+                }
+            }
+        }
+
+        val issues = mutableListOf<LintIssue>()
+        for (scene in allScenes) {
+            for (choice in scene.choices) {
+                val condition = choice.condition ?: continue
+                val flags = collectHasFlags(condition)
+                for (flag in flags.sorted()) {
+                    if (flag in establishable) continue
+                    issues += LintIssue(
+                        kind = LintKind.ConditionOnUnestablishedFlag(flag),
+                        message = "Choice '${choice.text}' in scene '${scene.id.value}' " +
+                                "has condition referencing flag '$flag', but '$flag' never " +
+                                "appears anywhere in the adventure (not in initial_state, " +
+                                "no SetFlag effect in any scene or choice). The condition " +
+                                "cannot behave as intended.",
+                        sceneId = scene.id,
+                        severity = Severity.WARNING,
+                    )
+                }
+            }
+        }
+        return issues
+    }
+
+    /** Recursively collects every [Condition.Has] name (also inside Not/And/Or). */
+    private fun collectHasFlags(condition: Condition): Set<String> {
+        val result = mutableSetOf<String>()
+        fun visit(c: Condition) {
+            when (c) {
+                is Condition.Has -> result.add(c.name)
+                is Condition.Not -> visit(c.inner)
+                is Condition.And -> { visit(c.left); visit(c.right) }
+                is Condition.Or -> { visit(c.left); visit(c.right) }
+                is Condition.Compare -> Unit // numeric, not a flag
+                is Condition.InRange -> Unit // numeric, not a flag
+            }
+        }
+        visit(condition)
+        return result
+    }
+
+    // ----- Ф1.6.2.3: death without death scene (port of :app check #6) -----
+
+    private fun lintDeathWithoutDeathScene(compiled: CompiledAdventure): List<LintIssue> {
+        if (compiled.adventure.deathScene != null) return emptyList()
+        val hasHealthInInitial = compiled.adventure.initialState.stats.containsKey("health")
+        val hasHealthEffect = compiled.adventure.chapters.flatMap { it.scenes }.any { scene ->
+            scene.effects.any { it is Effect.ModifyStat && it.name == "health" } ||
+                    scene.choices.any { choice ->
+                        choice.effects.any { it is Effect.ModifyStat && it.name == "health" }
+                    }
+        }
+        if (!hasHealthInInitial && !hasHealthEffect) return emptyList()
+        return listOf(
+            LintIssue(
+                kind = LintKind.DeathWithoutDeathScene,
+                message = "Adventure uses 'health' but does not define a death_scene. " +
+                        "When the player's health reaches 0, a default death screen will be " +
+                        "shown. Add a death_scene to customize the message and the recovery " +
+                        "options.",
+                sceneId = null,
+                severity = Severity.WARNING,
+            ),
+        )
+    }
+
+    // ----- Ф1.6.2.3: dead end (port of :app check #8, adapted to IR v3) -----
+
+    private fun lintDeadEnd(compiled: CompiledAdventure): List<LintIssue> {
+        val reachable = reachable(compiled).reachable
+        val issues = mutableListOf<LintIssue>()
+        for (chapter in compiled.adventure.chapters) {
+            for (scene in chapter.scenes) {
+                if (scene.choices.isNotEmpty()) continue
+                if (scene.isEnding) continue // explicitly marked as an ending — ok
+                if (scene.id !in reachable) continue // UnreachableScene covers this
+                issues += LintIssue(
+                    kind = LintKind.DeadEnd,
+                    message = "Scene '${scene.id.value}' has no choices and is not marked " +
+                            "as an ending. The player will see \"the end\" here and will not " +
+                            "reach the remaining scenes. Either add choices or set " +
+                            "\"is_ending\": true on this scene.",
+                    sceneId = scene.id,
+                    severity = Severity.WARNING,
+                )
+            }
+        }
+        return issues
+    }
+
+    // ----- Ф1.7.0: ending scene with choices -----
+
+    private fun lintEndingSceneWithChoices(compiled: CompiledAdventure): List<LintIssue> {
+        val issues = mutableListOf<LintIssue>()
+        for (chapter in compiled.adventure.chapters) {
+            for (scene in chapter.scenes) {
+                if (!scene.isEnding) continue
+                if (scene.choices.isEmpty()) continue
+                issues += LintIssue(
+                    kind = LintKind.EndingSceneWithChoices(scene.id),
+                    message = "Scene '${scene.id.value}' is marked as an ending " +
+                            "(\"is_ending\": true) but has ${scene.choices.size} choice(s). " +
+                            "The reader shows the 'the end' screen and ignores the choices, " +
+                            "so the player sees dead buttons. Either remove the choices or " +
+                            "clear \"is_ending\".",
+                    sceneId = scene.id,
+                    severity = Severity.ERROR,
+                )
+            }
+        }
+        return issues
     }
 }

@@ -48,6 +48,9 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest
 
+      - name: Run engine tests
+        run: ./gradlew :engine:test
+
       - name: Upload lint reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,4 +70,14 @@ jobs:
           path: |
             app/build/test-results/testDebugUnitTest/
             app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+
+      - name: Upload engine test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-test-reports
+          path: |
+            engine/build/test-results/test/
+            engine/build/reports/tests/test/
           if-no-files-found: warn

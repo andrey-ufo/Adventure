@@ -22,15 +22,30 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.google.gson.Gson
 import com.myapp.adventure.R
-import com.myapp.adventure.data.Adventure
-import com.myapp.adventure.data.Choice
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
-import com.myapp.adventure.data.TagCategory
-import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.databinding.FragmentAdventureReadBinding
+import com.myapp.adventure.engine.CompileResult
+import com.myapp.adventure.engine.CompiledAdventure
+import com.myapp.adventure.engine.EffectsApplier
+import com.myapp.adventure.engine.Engine
+import com.myapp.adventure.engine.Evaluator
+import com.myapp.adventure.engine.analyze.Analyzer
+import com.myapp.adventure.engine.analyze.LintIssue
+import com.myapp.adventure.engine.analyze.LintKind
+import com.myapp.adventure.engine.analyze.Severity
+import com.myapp.adventure.engine.format.JsonToIr
+import com.myapp.adventure.engine.ir.Adventure
+import com.myapp.adventure.engine.ir.Choice
+import com.myapp.adventure.engine.ir.Condition
+import com.myapp.adventure.engine.ir.Effect
+import com.myapp.adventure.engine.ir.PlayerState
+import com.myapp.adventure.engine.ir.Scene
+import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.TagCategory
+import com.myapp.adventure.engine.ir.TagDefinition
+import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
 import com.myapp.adventure.ui.MenuFragment
@@ -46,29 +61,46 @@ class AdventureReaderFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var adventure: Adventure
+
+    /**
+     * Pre-compiled runtime view of [adventure] — indexes for O(1)
+     * scene lookups. Built once in [onCreate] (see Engine.compile) and
+     * never rebuilt. All `scenesById[...]` calls go through this instead
+     * of a linear scan of `adventure.chapters`.
+     */
+    private lateinit var compiled: CompiledAdventure
+
     private var adventureFileUri: Uri? = null
 
-    private var currentChapterIndex = 0
+    /**
+     * Currently-rendered scene id. `String` (not `SceneId`) to minimize
+     * the diff in this migration; `.value` when calling IR APIs, wrap
+     * back in `SceneId(...)` for `step` / `findScene`. Full migration
+     * to `SceneId` across the reader is out of scope here (Ф5.5, with
+     * save/load) — the type is already correct at the boundary where
+     * it matters.
+     */
     private var currentSceneId = ""
 
     // ----- Steps gate state -----
 
-    /** Steps remaining until the next chapter opens. */
+    /** Steps remaining until the current scene's gate is satisfied. */
     private var remainingSteps = 0
 
-    /** Whether a steps gate is currently active. */
+    /** Whether a gate is currently active on the current scene. */
     private var isGateActive = false
 
     /**
-     * Raw sensor reading at the moment this fragment last synchronized with the sensor.
-     * -1 means "not yet known" — we wait for the first broadcast or fall back to
-     * [lastAbsoluteAtSaveFromProgress] for catch-up.
+     * Raw sensor reading at the moment this fragment last synchronized
+     * with the sensor. -1 means "not yet known" — we wait for the first
+     * broadcast or fall back to [lastAbsoluteAtSaveFromProgress] for
+     * catch-up.
      */
     private var lastKnownAbsolute = -1
 
     /**
-     * lastAbsoluteAtSave restored from ProgressData at load.
-     * Used once to catch up steps taken while the app was closed.
+     * lastAbsoluteAtSave restored from ProgressData at load. Used once
+     * to catch up steps taken while the app was closed.
      */
     private var lastAbsoluteAtSaveFromProgress = -1
 
@@ -77,6 +109,11 @@ class AdventureReaderFragment : Fragment() {
 
     private var previewMode = false
     private var previewStartSceneId = ""
+    // Chapter index is not used in preview anymore (startScene is
+    // explicit in IR v3+); kept for ProgressData compatibility and
+    // `advanceToNextChapter` has been removed — chapters are pure
+    // narrative grouping. Kept to avoid touching ProgressData shape in
+    // this migration (Ф5.5 will remove it).
     private var previewStartChapterIndex = 0
 
     private var isDead = false
@@ -89,15 +126,60 @@ class AdventureReaderFragment : Fragment() {
     private val itemOrder = mutableListOf<String>()
     private val appliedSceneEffects = mutableSetOf<String>()
 
+    /**
+     * Scene ids whose gates have been passed in this session
+     * (`repeatable = false` only). An entry is added by [onGatePassed]
+     * when a non-repeatable gate is satisfied; [loadCurrentScene]
+     * checks this set before re-activating a gate. `repeatable = true`
+     * gates are **never** added — they re-engage on every visit.
+     *
+     * **Not persisted** in this batch: in-memory only. Restarting the
+     * adventure (`onRestartAdventure`) clears this set; restarting the
+     * app loses it, so gates reset on app restart. Persistence goes
+     * with `ProgressData.passedGates` in Ф1.7.1b.
+     */
+    private val passedGates = mutableSetOf<String>()
+
+    /**
+     * Player-visible analyzer warnings (currently only
+     * [LintKind.DeadEnd]), computed in [onCreate] after the file is
+     * parsed and compiled. Empty when the file is clean (or preview
+     * mode). Shown once per new set via [showWarningDialog]; the player
+     * can re-open the list from the reader menu ("Предупреждения (N)").
+     */
+    private var cachedPlayerWarnings: List<LintIssue> = emptyList()
+
+    /**
+     * Fingerprint of [cachedPlayerWarnings], computed once in [onCreate].
+     * Stable across runs on the same file; changes whenever the set of
+     * warnings changes (see [ProgressData.warningsFingerprint] KDoc).
+     */
+    private var currentWarningsFingerprint: String = ""
+
+    /**
+     * Fingerprint of the last set the player acknowledged
+     * ("Продолжить игру"), restored from [ProgressData] in
+     * [initNormalState]. Empty on first open, or after "restart
+     * adventure" (which clears it so the player sees warnings for the
+     * fresh playthrough).
+     */
+    private var savedWarningsFingerprint: String = ""
+
+    /**
+     * Tag lookup built from [adventure]. Non-nullable because IR's
+     * `Adventure.tags` is a non-null list with default `emptyList()`.
+     */
     private val tagRegistry: Map<String, TagDefinition>
-        get() = adventure.tags.orEmpty().associateBy { it.name }
+        get() = adventure.tags.associateBy { it.name }
 
     private val stepReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (!isGateActive) return
             val absoluteSteps = intent?.getIntExtra(StepCounterConstants.EXTRA_ABSOLUTE_STEPS, 0) ?: 0
-            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
-            if (nextChapter.requiredSteps <= 0) return
+            val scene = compiled.scenesById[SceneId(currentSceneId)] ?: return
+            // `gate` is guaranteed non-null because `isGateActive` is
+            // set true only by `startSceneGate`, which requires a gate.
+            scene.gate ?: return
 
             if (lastKnownAbsolute < 0) {
                 // First event since fragment opened. Catch up from saved baseline.
@@ -115,36 +197,272 @@ class AdventureReaderFragment : Fragment() {
             }
 
             if (remainingSteps <= 0) {
-                onStepsCompleted(nextChapter)
+                onGatePassed(scene)
             } else {
-                updateStepsProgressUi(nextChapter)
+                updateStepsProgressUi(scene)
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val adventureJson = arguments?.getString("adventure_json")
+
+        // Read the adventure JSON. When `adventure_file_uri` is present,
+        // prefer reading the file over the `adventure_json` argument:
+        // `AdventureListFragment` builds that argument by round-tripping
+        // through `:app/data/Adventure` (Gson), which silently drops all
+        // IR-only fields — `is_ending`, `version`, `gate_repeatable`, …
+        // The reader would then see `isEnding = false` on every scene and
+        // the analyzer would (correctly) reject the file as a DeadEnd.
+        // Reading from the URI avoids that lossy path. The argument is
+        // kept as a fallback for callers that only pass JSON (preview
+        // from the editor, Ф1.7.5).
+        //
+        // Related: `AdventureListFragment` still caches `:app/data/Adventure`
+        // for the list display (title/author). That cache is **not**
+        // invalidated when the file changes — a separate issue, not the
+        // one this fix addresses.
+        val adventureJsonFromFile = readAdventureJsonFromFile()
+        val adventureJsonFromArgs = arguments?.getString("adventure_json")
+        val adventureJson = adventureJsonFromFile ?: adventureJsonFromArgs
         if (adventureJson == null) {
             Toast.makeText(requireContext(), "Ошибка: нет данных приключения", Toast.LENGTH_SHORT).show()
             parentFragmentManager.popBackStack()
             return
         }
 
-        try {
-            adventure = Gson().fromJson(adventureJson, Adventure::class.java)
-            previewMode = arguments?.getBoolean("preview_mode", false) ?: false
-
-            if (previewMode) {
-                initPreviewState()
-            } else {
-                initNormalState()
+        // Step 1: parse JSON → IR. `JsonToIr` is the single entry point
+        // for JSON in the whole project (Ф1.3); the reader never parses
+        // JSON by hand.
+        when (val parseResult = JsonToIr.parse(adventureJson)) {
+            is ParseResult.Failure -> {
+                val firstError = parseResult.errors.firstOrNull()?.message ?: "unknown error"
+                Logger.log(requireContext(), "Parse error: $firstError")
+                Toast.makeText(
+                    requireContext(),
+                    "Ошибка разбора файла: $firstError",
+                    Toast.LENGTH_LONG,
+                ).show()
+                parentFragmentManager.popBackStack()
+                return
             }
-        } catch (e: Exception) {
-            Logger.log(requireContext(), "Error loading adventure: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
-            parentFragmentManager.popBackStack()
+            is ParseResult.Success -> adventure = parseResult.value
         }
+
+        // Step 2: compile IR → CompiledAdventure. `Engine.compile` is the
+        // only place that can reject a well-formed file (duplicate scene
+        // ids, missing start scene, dangling nextScene — Ф1.6.2.1).
+        when (val compileResult = Engine.compile(adventure)) {
+            is CompileResult.Failure -> {
+                val firstError = compileResult.errors.firstOrNull()?.message ?: "unknown error"
+                Logger.log(requireContext(), "Compile error: $firstError")
+                Toast.makeText(
+                    requireContext(),
+                    "Ошибка компиляции: $firstError",
+                    Toast.LENGTH_LONG,
+                ).show()
+                parentFragmentManager.popBackStack()
+                return
+            }
+            is CompileResult.Success -> compiled = compileResult.compiled
+        }
+
+        previewMode = arguments?.getBoolean("preview_mode", false) ?: false
+
+        // Step 3: lint. In preview mode we **skip** the whole block —
+        // the author is still editing, and Ф9.2 (editor realtime linter)
+        // is the proper channel for surfacing errors to them.
+        //
+        // In normal mode, two severities are handled separately:
+        // - ERROR (EndingSceneWithChoices): the file is genuinely broken
+        //   — the player would see buttons that do nothing. We refuse to
+        //   load and show a blocking dialog. This is the only remaining
+        //   ERROR after the 2026-11-07 revision: DeadEnd moved to
+        //   WARNING (see LintKind.DeadEnd KDoc).
+        // - WARNING (DeadEnd today; other WARNING kinds in the future):
+        //   cached here and shown once per new set in `onViewCreated`
+        //   (after `initNormalState` has restored `savedWarningsFingerprint`).
+        //
+        // TODO(Ф9.2): in preview mode, once the realtime linter lands,
+        // replace "skip" with "N issues — continue anyway?" dialog.
+        if (!previewMode) {
+            val allIssues = Analyzer.lint(compiled)
+            val errors = allIssues.filter { it.severity == Severity.ERROR }
+            if (errors.isNotEmpty()) {
+                showBrokenAdventureDialog(errors)
+                return
+            }
+            // For now only DeadEnd is surfaced here; other WARNING kinds
+            // (UnreachableScene, RemovingUnestablishedItem, …) are
+            // author-facing and stay in the editor. The filter is
+            // explicit so that adding a new player-visible WARNING kind
+            // is a one-line change here — no risk of accidentally
+            // spamming the player with every author-facing warning.
+            cachedPlayerWarnings = allIssues.filter {
+                it.severity == Severity.WARNING && it.kind is LintKind.DeadEnd
+            }
+            currentWarningsFingerprint = computeWarningsFingerprint(cachedPlayerWarnings)
+            // The dialog itself is shown in `onViewCreated`, after
+            // `initNormalState` has restored `savedWarningsFingerprint`
+            // from saved progress.
+        }
+
+        if (previewMode) {
+            initPreviewState()
+        } else {
+            initNormalState()
+        }
+    }
+
+    /**
+     * Stable fingerprint of a warning set. Used to detect "the author
+     * changed the file since the player last acknowledged warnings"
+     * — see [ProgressData.warningsFingerprint] KDoc.
+     *
+     * Sorted by (sceneId, message) so that the same set produces the
+     * same string regardless of `Analyzer.lint`'s traversal order
+     * (today that order is deterministic, but this costs nothing and
+     * removes a future footgun).
+     */
+    private fun computeWarningsFingerprint(warnings: List<LintIssue>): String {
+        if (warnings.isEmpty()) return ""
+        return warnings
+            .sortedWith(compareBy({ it.sceneId?.value ?: "" }, { it.message }))
+            .joinToString("|") { "${it.sceneId?.value ?: ""}:${it.message}" }
+    }
+
+    /**
+     * Shows an [android.app.AlertDialog] with up to five error messages
+     * when the loaded file fails the analyzer's ERROR check. The
+     * fragment pops itself when the player taps "ОК".
+     *
+     * A dialog (not a Toast) is used on purpose: the player needs to
+     * be able to read the errors — a Toast disappears after three
+     * seconds. The dialog is not cancellable, so the only way out is
+     * "ОК" → back to the library. The file itself is not modified; the
+     * author opens it in the editor and fixes the errors.
+     */
+
+    /**
+     * Reads the adventure JSON from the file pointed to by
+     * `adventure_file_uri`, if present. Returns `null` when the URI is
+     * absent (preview mode) or when the read fails (file deleted,
+     * permission revoked) — the caller falls back to the
+     * `adventure_json` argument in both cases.
+     *
+     * **Why the reader does not trust `adventure_json` from
+     * `AdventureListFragment`.** That fragment parses the file into the
+     * `:app/data/Adventure` model (which carries only the fields needed
+     * for the list display), then re-serializes it with Gson. The
+     * round-trip silently drops every IR-only field — `is_ending`,
+     * `version`, `gate_repeatable`. Sending that through would make
+     * `JsonToIr` see `isEnding = false` everywhere, and the analyzer's
+     * `DeadEnd` check would reject valid files. See Ф1.7.1a-fix in the
+     * Progress log.
+     */
+    private fun readAdventureJsonFromFile(): String? {
+        val uriString = arguments?.getString("adventure_file_uri") ?: return null
+        return try {
+            val uri = Uri.parse(uriString)
+            requireContext().contentResolver.openInputStream(uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+        } catch (e: Exception) {
+            Logger.log(requireContext(), "Failed to read adventure file: ${e.message}")
+            null
+        }
+    }
+
+    private fun showBrokenAdventureDialog(errors: List<LintIssue>) {
+        val maxShow = 5
+        val message = buildString {
+            append("Файл повреждён (${errors.size} ошибок):\n\n")
+            errors.take(maxShow).forEach { append("• ${it.message}\n") }
+            if (errors.size > maxShow) {
+                append("\n…и ещё ${errors.size - maxShow}")
+            }
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Не удалось открыть")
+            .setMessage(message)
+            .setPositiveButton("ОК") { _, _ -> parentFragmentManager.popBackStack() }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * Non-blocking warning dialog for player-visible `WARNING`-severity
+     * issues (currently only [LintKind.DeadEnd]; the caller filters).
+     *
+     * The player decides whether to continue. "Продолжить" does nothing
+     * — the fragment is already building the UI underneath (see
+     * `onCreate`), and the player will land on the story's first scene.
+     * "Отмена" pops the fragment back to the library, so the player can
+     * choose a different adventure. "Назад" (system button) is treated
+     * as "Отмена" because the dialog is cancellable.
+     *
+     * A `WARNING` here is **not** an error: the story is readable up to
+     * the point the warning names. The message includes the scene id,
+     * so a player who chooses to report the issue has a concrete
+     * pointer.
+     */
+    private fun showWarningDialog(warnings: List<LintIssue>) {
+        val maxShow = 5
+        val message = buildString {
+            append("В приключении ${warnings.size} предупреждений:\n\n")
+            warnings.take(maxShow).forEach { append("• ${it.message}\n") }
+            if (warnings.size > maxShow) {
+                append("\n…и ещё ${warnings.size - maxShow}")
+            }
+            append("\nПродолжить игру?")
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Предупреждение")
+            .setMessage(message)
+            .setPositiveButton("Продолжить игру") { _, _ ->
+                // Acknowledge: remember this exact set for this
+                // adventure. Subsequent opens of the same file will not
+                // show the dialog; the player can still reach the list
+                // via the reader menu ("Предупреждения (N)").
+                savedWarningsFingerprint = currentWarningsFingerprint
+                saveProgress()
+            }
+            .setNegativeButton("Выйти из игры") { _, _ ->
+                // Do NOT acknowledge. The player chose not to play, so
+                // they have not seen the story — they should see the
+                // warning again on the next open.
+                parentFragmentManager.popBackStack()
+            }
+            .setCancelable(true)
+            .setOnCancelListener {
+                // System back = "Выйти из игры" (same reasoning).
+                parentFragmentManager.popBackStack()
+            }
+            .show()
+    }
+
+    /**
+     * Read-only view of the warning list, opened from the reader menu
+     * ("Предупреждения (N)"). The player is already playing, so this
+     * dialog has only a "Закрыть" button — there is no decision to make.
+     *
+     * Distinct from [showWarningDialog]: that one is shown **once per
+     * fingerprint** and asks the player to decide whether to play.
+     */
+    private fun showWarningInfoDialog(warnings: List<LintIssue>) {
+        val maxShow = 5
+        val message = buildString {
+            append("${warnings.size} предупреждений:\n\n")
+            warnings.take(maxShow).forEach { append("• ${it.message}\n") }
+            if (warnings.size > maxShow) {
+                append("\n…и ещё ${warnings.size - maxShow}")
+            }
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Предупреждения")
+            .setMessage(message)
+            .setPositiveButton("Закрыть", null)
+            .show()
     }
 
     // ==================== State init ====================
@@ -187,7 +505,11 @@ class AdventureReaderFragment : Fragment() {
 
     private fun captureSnapshot(): PlayerStateSnapshot = PlayerStateSnapshot(
         sceneId = currentSceneId,
-        chapterIndex = currentChapterIndex,
+        // `chapterIndex` in PlayerStateSnapshot is preserved for save
+        // compatibility (see ProgressData). The reader computes it on
+        // demand from `compiled.chapterIndexBySceneId`; chapters are
+        // pure narrative grouping (Ф1.5.4).
+        chapterIndex = compiled.chapterIndexBySceneId[SceneId(currentSceneId)] ?: 0,
         flags = flags.toList(),
         stats = stats.toMap(),
         itemOrder = itemOrder.toList(),
@@ -195,7 +517,35 @@ class AdventureReaderFragment : Fragment() {
     )
 
     private fun restoreSnapshot(snapshot: PlayerStateSnapshot) {
-        currentChapterIndex = snapshot.chapterIndex
+        // S3a: single-step back, per book-game tradition. After a
+        // step back, the player cannot step back again — the only
+        // ways forward are: make a choice (which captures a fresh
+        // snapshot), restart the chapter, or restart the adventure.
+        // `previousStepSnapshot` points at the scene we are about to
+        // restore, so calling step back twice would be a no-op on the
+        // second tap — not a bug per se, but it would let the player
+        // "chain" back through the whole story in reverse. Traditional
+        // gamebooks do not allow that, and the user explicitly
+        // confirmed the same policy (2026-11-07). Clearing it here is
+        // the single source of truth: any caller of `restoreSnapshot`
+        // (step back, chapter restart) leaves the player with no undo
+        // history.
+        previousStepSnapshot = null
+        // Ф1.7.1b: reset the gate state. We are leaving the current
+        // scene and will re-evaluate on the target scene:
+        //  - Non-repeatable passed gate: protected by `passedGates`,
+        //    stays passed (`loadCurrentScene` skips gate block).
+        //  - Repeatable gate: re-engages fresh on the target scene —
+        //    "step back" is a new visit, per `repeatable` semantics.
+        //  - In-progress gate on the *target* scene: starts fresh.
+        //
+        // With S3a, this reset is no longer a no-op: the player can
+        // step back from any scene, including a gated one. Leaving a
+        // gated scene mid-walk discards its gate progress — the
+        // player left the scene, so the "walk N steps here" no longer
+        // applies. Returning re-engages the gate (repeatable) or
+        // shows it already passed (non-repeatable).
+        resetGate()
         currentSceneId = snapshot.sceneId
         flags.clear()
         flags.addAll(snapshot.flags)
@@ -211,10 +561,16 @@ class AdventureReaderFragment : Fragment() {
     }
 
     private fun captureChapterStartIfNeeded() {
-        val chapter = adventure.chapters?.getOrNull(currentChapterIndex) ?: return
-        val firstSceneId = chapter.scenes?.firstOrNull()?.id ?: return
+        // "Chapter start" = current scene is the first scene of its
+        // chapter. Chapters are pure narrative grouping, but the reader
+        // still offers "restart chapter" on the death screen — that
+        // needs a snapshot of the state at chapter start. Computed via
+        // `compiled.chapterIndexBySceneId` (no linear scan).
+        val chapterIndex = compiled.chapterIndexBySceneId[SceneId(currentSceneId)] ?: return
+        val chapter = compiled.adventure.chapters.getOrNull(chapterIndex) ?: return
+        val firstSceneId = chapter.scenes.firstOrNull()?.id?.value ?: return
         if (currentSceneId != firstSceneId) return
-        if (chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIndex) return
+        if (chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == chapterIndex) return
         val health = stats["health"]
         if (health == null || health > 0) {
             chapterStartSnapshot = captureSnapshot()
@@ -234,16 +590,21 @@ class AdventureReaderFragment : Fragment() {
         previewStartChapterIndex = arguments?.getInt("preview_chapter_index", 0) ?: 0
         adventureFileUri = null
 
+        // IR: initialState is non-null with empty defaults.
         val initialState = adventure.initialState
         flags.clear()
-        initialState?.flags?.forEach { addFlagIfMissing(it) }
+        initialState.flags.forEach { addFlagIfMissing(it) }
         stats.clear()
-        if (initialState?.stats != null) stats.putAll(initialState.stats)
+        stats.putAll(initialState.stats)
         appliedSceneEffects.clear()
         rebuildItemOrder()
 
-        currentChapterIndex = previewStartChapterIndex
         currentSceneId = previewStartSceneId
+        // Preview mode does not show the warning dialog; the field is
+        // cleared so that a preview → library transition does not
+        // accidentally "acknowledge" the warnings (there is no
+        // progress file to save to in preview anyway).
+        savedWarningsFingerprint = ""
         resetGate()
         isDead = false
         previousStepSnapshot = null
@@ -251,7 +612,7 @@ class AdventureReaderFragment : Fragment() {
 
         Logger.log(
             requireContext(),
-            "Preview: chapter ${previewStartChapterIndex + 1}, scene '$previewStartSceneId'"
+            "Preview: scene '$previewStartSceneId' (hint chapter ${previewStartChapterIndex + 1})"
         )
     }
 
@@ -264,7 +625,12 @@ class AdventureReaderFragment : Fragment() {
         } else null
 
         if (saved != null) {
-            currentChapterIndex = saved.currentChapterIndex
+            // `currentChapterIndex` is not a field anymore — chapters are
+            // pure narrative grouping (Ф1.5.4); the reader gets the
+            // current chapter on demand from
+            // `compiled.chapterIndexBySceneId`. `saved.currentChapterIndex`
+            // is still written by the editor's map view; the reader
+            // ignores it.
             currentSceneId = saved.currentSceneId
             remainingSteps = saved.remainingSteps
             isGateActive = saved.isGateActive
@@ -287,29 +653,41 @@ class AdventureReaderFragment : Fragment() {
             }
             previousStepSnapshot = saved.previousStepSnapshot
             chapterStartSnapshot = saved.chapterStartSnapshot
+            savedWarningsFingerprint = saved.warningsFingerprint
+            // Ф1.7.1b: restore one-shot-gate progress across app restarts.
+            // Without this, a player who passed `chapter_end_1`'s gate,
+            // closed the app, and reopened it would see the gate active
+            // again — the entire "unlock the next chapter" mechanic
+            // would be broken across sessions.
+            passedGates.clear()
+            passedGates.addAll(saved.passedGates)
             isDead = false
             Logger.log(
                 requireContext(),
-                "Progress loaded: chapter ${currentChapterIndex + 1}, scene '$currentSceneId', " +
-                        "gate=$isGateActive, remaining=$remainingSteps, lastAbsAtSave=$lastAbsoluteAtSaveFromProgress"
+                "Progress loaded: scene '$currentSceneId', " +
+                        "gate=$isGateActive, remaining=$remainingSteps, " +
+                        "lastAbsAtSave=$lastAbsoluteAtSaveFromProgress"
             )
         } else {
+            // IR: initialState is non-null; startScene is explicit (v3+).
             val initialState = adventure.initialState
             flags.clear()
-            initialState?.flags?.forEach { addFlagIfMissing(it) }
+            initialState.flags.forEach { addFlagIfMissing(it) }
             stats.clear()
-            if (initialState?.stats != null) stats.putAll(initialState.stats)
+            stats.putAll(initialState.stats)
             appliedSceneEffects.clear()
             rebuildItemOrder()
-            currentChapterIndex = 0
-            currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+            currentSceneId = adventure.startScene.value
+            // Fresh adventure: no acknowledgment yet, the warning dialog
+            // will be shown if `cachedPlayerWarnings` is non-empty.
+            savedWarningsFingerprint = ""
             resetGate()
             previousStepSnapshot = null
             chapterStartSnapshot = null
             isDead = false
             Logger.log(
                 requireContext(),
-                "Adventure '${adventure.title}' loaded, chapter ${currentChapterIndex + 1}"
+                "Adventure '${adventure.title}' loaded, start scene '$currentSceneId'"
             )
         }
 
@@ -329,6 +707,11 @@ class AdventureReaderFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // Guard: if `onCreate` failed to parse/compile the adventure, it
+        // already showed a dialog and called `popBackStack()`. Do not
+        // build the UI on top of an uninitialized fragment.
+        if (!::adventure.isInitialized || !::compiled.isInitialized) return
 
         val fontName = FontManager.getSelectedFont(requireContext())
         FontManager.applyFontToViewTree(view, fontName, requireContext())
@@ -359,6 +742,18 @@ class AdventureReaderFragment : Fragment() {
 
             loadCurrentScene()
             updateHud()
+
+            // Show the warning dialog once per "new warnings fingerprint".
+            // `savedWarningsFingerprint` is restored in `initNormalState`
+            // (called from `onCreate`), and `currentWarningsFingerprint`
+            // is computed there too. If they match, the player already
+            // acknowledged this exact set for this adventure.
+            if (!previewMode &&
+                cachedPlayerWarnings.isNotEmpty() &&
+                currentWarningsFingerprint != savedWarningsFingerprint
+            ) {
+                showWarningDialog(cachedPlayerWarnings)
+            }
 
             if (!previewMode) {
                 ContextCompat.registerReceiver(
@@ -502,25 +897,19 @@ class AdventureReaderFragment : Fragment() {
     private fun loadCurrentScene() {
         if (isDead) return
 
-        val chapters = adventure.chapters.orEmpty()
-        val chapter = chapters.getOrNull(currentChapterIndex) ?: run {
-            showEnd("Вы прошли все главы!")
-            return
-        }
-        val scenes = chapter.scenes.orEmpty()
-        val scene = scenes.find { it.id == currentSceneId } ?: run {
-            showEnd("Сцена не найдена")
+        val scene = compiled.scenesById[SceneId(currentSceneId)] ?: run {
+            showEnd("Сцена не найдена: $currentSceneId")
             return
         }
 
         binding.tvStoryText.text = scene.text
 
-        if (!appliedSceneEffects.contains(scene.id)) {
-            applyEffects(scene.setFlags, scene.removeFlags, scene.modifyStats)
-            appliedSceneEffects.add(scene.id)
+        if (scene.id.value !in appliedSceneEffects) {
+            applyEffects(scene.effects)
+            appliedSceneEffects.add(scene.id.value)
             Logger.log(
                 requireContext(),
-                "Chapter ${currentChapterIndex + 1}, scene '${scene.id}' loaded for the first time"
+                "Scene '${scene.id.value}' loaded for the first time"
             )
         }
 
@@ -534,104 +923,139 @@ class AdventureReaderFragment : Fragment() {
 
         captureChapterStartIfNeeded()
 
-        val choices = scene.choices.orEmpty()
-        if (choices.isEmpty()) {
-            if (currentChapterIndex < chapters.size - 1) {
-                val nextChapter = chapters[currentChapterIndex + 1]
-                if (nextChapter.requiredSteps > 0) {
-                    if (isGateActive) {
-                        // Gate was restored from saved progress — keep remainingSteps.
-                        showGateWaiting(nextChapter)
-                    } else {
-                        if (previewMode) startChapterStepsInPreview(nextChapter)
-                        else startChapterSteps(nextChapter)
-                    }
-                } else {
-                    advanceToNextChapter(nextChapter)
-                }
-            } else {
-                showEnd("Вы прошли все главы!")
+        // Gate check: scene-scoped (Ф1.7.0.4). If the scene has a gate
+        // and it has not been passed in this playthrough (per
+        // `passedGates` for repeatable=false) — activate the gate.
+        // `repeatable = true` gates are never in `passedGates`, so they
+        // re-engage on every visit.
+        //
+        // Ф1.7.1b: `remainingSteps` and `isGateActive` may have been
+        // restored from a save (in-progress gate). Do **not** reset them
+        // unconditionally: that would discard the player's steps every
+        // time they close and reopen the app. Four cases:
+        //   1. No active gate (`!isGateActive`): fresh gate, start with
+        //      full requiredSteps.
+        //   2. In-progress (`isGateActive && 0 < remainingSteps <=
+        //      requiredSteps`): restore — the player was walking when
+        //      they closed the app, and the walk counts.
+        //   3. Completed via catch-up (`isGateActive && remainingSteps
+        //      <= 0`): the player walked enough steps while the app was
+        //      closed; complete the gate now.
+        //   4. Stale (`remainingSteps > requiredSteps`): author edited
+        //      the file while a playthrough was saved. Reset rather than
+        //      show "walked -X of Y".
+        val gate = scene.gate
+        if (gate != null && scene.id.value !in passedGates) {
+            if (previewMode) {
+                startSceneGateInPreview(scene)
+                return
             }
-        } else {
-            updateChoices(choices)
+            when {
+                !isGateActive -> startSceneGate(scene)
+                remainingSteps <= 0 -> onGatePassed(scene)
+                remainingSteps > gate.requiredSteps -> startSceneGate(scene)
+                else -> showGateWaiting(scene)
+            }
+            return
+        }
+
+        // Ending: explicit isEnding (Ф1.7.0). Analyzer blocks non-preview
+        // files where a scene has no choices and is not marked isEnding.
+        if (scene.isEnding) {
+            showEnd("🎉 Конец истории")
+            return
+        }
+
+        // Defensive: post-analyzer, unreachable in non-preview. In
+        // preview mode the author may be mid-edit — show the preview
+        // end marker so they know the scene has no exits.
+        if (scene.choices.isEmpty()) {
+            showEnd("▶ Конец предпросмотра")
+            return
+        }
+
+        updateChoices(scene.choices)
+    }
+
+    private fun applyEffects(effects: List<Effect>) {
+        if (effects.isEmpty()) return
+        // Single source of truth: EffectsApplier (Ф1.5) handles ordering
+        // (list order, matching parser order set→remove→modify) and
+        // clamping (>= 0 for all ModifyStat today; type-aware clamp
+        // arrives in Ф2.8).
+        val newState = EffectsApplier.apply(
+            PlayerState(flags = flags.toSet(), stats = stats.toMap()),
+            effects,
+        )
+        flags.clear()
+        flags.addAll(newState.flags)
+        stats.clear()
+        stats.putAll(newState.stats)
+        // Item order is a reader concern (itemOrder is used by the HUD
+        // to keep the player's most-recent items at the top). EffectsApplier
+        // does not touch it. Sync after the fact for every ITEM stat that
+        // changed via an effect.
+        for (effect in effects) {
+            if (effect is Effect.ModifyStat) {
+                val newValue = newState.stats[effect.name] ?: 0
+                if (getCategory(effect.name) == TagCategory.ITEM) {
+                    registerItem(effect.name, newValue)
+                }
+            }
         }
     }
 
-    private fun advanceToNextChapter(nextChapter: com.myapp.adventure.data.Chapter) {
-        try {
-            currentChapterIndex++
-            currentSceneId = nextChapter.scenes?.firstOrNull()?.id ?: ""
-            resetGate()
-            previousStepSnapshot = null
-            saveProgress()
-            if (_binding != null) loadCurrentScene()
-        } catch (e: Exception) {
-            Logger.log(requireContext(), "Error advancing chapter: ${e.message}")
-        }
-    }
-
-    private fun applyEffects(
-        setFlags: List<String>?,
-        removeFlags: List<String>?,
-        modifyStats: Map<String, Int>?
+    /**
+     * Renders [choices] as buttons. Two kinds of unavailable choice are
+     * handled uniformly:
+     *
+     * - **[forceDisabled] = true** — the current scene has an active
+     *   gate. All choices are disabled; the player sees the labels but
+     *   cannot pick until the gate is passed. The "Пройдено X из Y"
+     *   indicator lives in `tvStepsRequired` (see `showGateWaiting`).
+     * - **`choice.condition` evaluates to `false`** — the choice is
+     *   visible but disabled. Reason ("requires sword", "need 3 gold")
+     *   is planned for Ф4/N4; today it is a plain grey button.
+     *
+     * **Visible, not hidden.** Previously unavailable choices were
+     * removed from the list; the player could not tell whether an
+     * option was missing or just not shown. Showing them disabled is
+     * more honest and lets the player see what they are missing.
+     *
+     * Behaviour is identical in preview mode: the same visual, the
+     * same disabled state. The editor uses preview mode to test the
+     * reader, and the two should match.
+     */
+    private fun updateChoices(
+        choices: List<Choice>,
+        forceDisabled: Boolean = false,
     ) {
-        if (setFlags != null) {
-            for (f in setFlags) {
-                val cat = getCategory(f)
-                if (cat == TagCategory.JOURNAL) {
-                    addFlagIfMissing(f)
-                } else {
-                    Logger.log(requireContext(), "applyEffects: set_flags '$f' (category $cat) ignored")
-                }
-            }
+        // Ф1.7.1b-fix: the "Пройдено X из Y" indicator is
+        // scene-scoped — it belongs to the gate of the scene the
+        // player is currently in. When we render choices for a scene
+        // **without** an active gate (either no gate, or the gate was
+        // just passed), the previous scene's text is stale and must be
+        // hidden. Without this, walking `health_test` (gate 50) →
+        // `start` → `journal_test` would show `health_test`'s
+        // "Пройдено 30 из 50" on `journal_test` — visible bug,
+        // reported in smoke. `showGateWaiting` passes
+        // `forceDisabled = true` and sets `VISIBLE` itself, so the
+        // indicator still shows during a gate.
+        if (!forceDisabled) {
+            binding.tvStepsRequired.visibility = View.GONE
         }
-
-        if (removeFlags != null) {
-            for (f in removeFlags) {
-                val cat = getCategory(f)
-                if (cat == TagCategory.JOURNAL) {
-                    flags.remove(f)
-                } else {
-                    Logger.log(requireContext(), "applyEffects: remove_flags '$f' (category $cat) ignored")
-                }
-            }
-        }
-
-        if (modifyStats != null) {
-            modifyStats.forEach { (key, value) ->
-                val oldValue = stats[key] ?: 0
-                val rawNew = oldValue + value
-                val cat = getCategory(key)
-                val newValue = when (cat) {
-                    TagCategory.HEALTH, TagCategory.ITEM -> rawNew.coerceAtLeast(0)
-                    TagCategory.JOURNAL -> rawNew
-                }
-                stats[key] = newValue
-                if (cat == TagCategory.ITEM) registerItem(key, newValue)
-            }
-        }
-    }
-
-    private fun updateChoices(choices: List<Choice>) {
         val container = binding.choicesContainer
         container.removeAllViews()
 
         for (choice in choices) {
-            val conditionMet = isConditionMet(choice.condition)
-            if (!previewMode && !conditionMet) continue
-
+            val available = !forceDisabled && isConditionMet(choice.condition)
             val button = Button(requireContext()).apply {
-                if (previewMode && !conditionMet) {
-                    text = "${choice.text}  🔒 (${choice.condition ?: ""})"
-                    isEnabled = false
-                    setTextColor(Color.parseColor("#808080"))
-                    alpha = 0.6f
-                } else {
-                    text = choice.text
+                text = choice.text
+                if (available) {
                     setOnClickListener {
                         previousStepSnapshot = captureSnapshot()
-                        applyEffects(choice.setFlags, choice.removeFlags, choice.modifyStats)
-                        currentSceneId = choice.nextScene
+                        applyEffects(choice.effects)
+                        currentSceneId = choice.nextScene.value
                         saveProgress()
 
                         if (checkDeath()) {
@@ -641,35 +1065,32 @@ class AdventureReaderFragment : Fragment() {
 
                         loadCurrentScene()
                     }
+                } else {
+                    isEnabled = false
+                    alpha = 0.5f
                 }
             }
             container.addView(button)
         }
     }
 
-    private fun isConditionMet(condition: String?): Boolean {
+    private fun isConditionMet(condition: Condition?): Boolean {
         if (condition == null) return true
         return try {
-            when {
-                condition.startsWith("has_") -> {
-                    val flag = condition.removePrefix("has_").trim()
-                    flags.contains(flag) || (stats[flag] ?: 0) > 0
-                }
-                condition.startsWith("!has_") -> {
-                    val flag = condition.removePrefix("!has_").trim()
-                    !flags.contains(flag) && (stats[flag] ?: 0) <= 0
-                }
-                condition.contains(">=") -> {
-                    val parts = condition.split(">=").map { it.trim() }
-                    (stats[parts[0]] ?: 0) >= parts[1].toInt()
-                }
-                condition.contains("<") -> {
-                    val parts = condition.split("<").map { it.trim() }
-                    (stats[parts[0]] ?: 0) < parts[1].toInt()
-                }
-                else -> true
-            }
+            // Single source of truth: Evaluator (Ф1.5). All callers —
+            // `Engine.step`, this reader, the editor analyzer — use the
+            // same evaluator, so a choice the reader shows as available
+            // is the same one `Engine.step` would allow.
+            //
+            // TODO(Ф2.5 / N8): the `catch { true }` fallback is a
+            // leftover from the pre-typed-string parser. Now that
+            // conditions are a typed AST, `Evaluator.evaluate` should
+            // never throw on valid input. Remove this fallback when
+            // the type checker (Ф2.2) guarantees that no invalid
+            // condition can reach the reader — that's N8's job.
+            Evaluator.evaluate(condition, PlayerState(flags.toSet(), stats.toMap()))
         } catch (e: Exception) {
+            Logger.log(requireContext(), "isConditionMet failed: ${e.message}")
             true
         }
     }
@@ -695,7 +1116,8 @@ class AdventureReaderFragment : Fragment() {
             binding.choicesContainer.addView(btn)
         }
 
-        if (allowChapter && chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIndex) {
+        val currentChapterIdx = compiled.chapterIndexBySceneId[SceneId(currentSceneId)] ?: 0
+        if (allowChapter && chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIdx) {
             val btn = Button(requireContext()).apply {
                 text = "📖 В начало главы"
                 setOnClickListener { onChapterRestart() }
@@ -719,7 +1141,8 @@ class AdventureReaderFragment : Fragment() {
 
     private fun onChapterRestart() {
         val snapshot = chapterStartSnapshot ?: return
-        previousStepSnapshot = null
+        // `previousStepSnapshot` is cleared inside `restoreSnapshot`
+        // (single source of truth, S3a). No need to repeat it here.
         restoreSnapshot(snapshot)
     }
 
@@ -733,7 +1156,6 @@ class AdventureReaderFragment : Fragment() {
             initialState?.flags?.forEach { addFlagIfMissing(it) }
             if (initialState?.stats != null) stats.putAll(initialState.stats)
             rebuildItemOrder()
-            currentChapterIndex = previewStartChapterIndex
             currentSceneId = previewStartSceneId
             resetGate()
             isDead = false
@@ -766,8 +1188,20 @@ class AdventureReaderFragment : Fragment() {
         if (!isGateActive || previewMode) return
         if (lastKnownAbsolute >= 0) return // already caught up or just started
 
-        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-        if (nextChapter == null || nextChapter.requiredSteps <= 0) {
+        val scene = compiled.scenesById[SceneId(currentSceneId)] ?: run {
+            resetGate()
+            return
+        }
+        // `gate` is a public property from another module (`:engine`) —
+        // Kotlin cannot smart-cast it after `scene.gate == null`, so we
+        // hoist it into a local val.
+        val gate = scene.gate ?: run {
+            resetGate()
+            return
+        }
+        // If the gate was already passed in this session, do not
+        // re-engage on app restart — `isGateActive` may be stale.
+        if (!gate.repeatable && scene.id.value in passedGates) {
             resetGate()
             return
         }
@@ -776,36 +1210,48 @@ class AdventureReaderFragment : Fragment() {
             val delta = (StepCounterService.absoluteSteps - lastAbsoluteAtSaveFromProgress).coerceAtLeast(0)
             remainingSteps = (remainingSteps - delta).coerceAtLeast(0)
             lastKnownAbsolute = StepCounterService.absoluteSteps
-            if (remainingSteps <= 0) {
-                onStepsCompleted(nextChapter)
-            }
+            // Ф1.7.1b: do NOT call `onGatePassed` here. Leave the
+            // decision "is the gate done?" to `loadCurrentScene`,
+            // which is called right after both `initNormalState` and
+            // `onViewCreated`. Centralising this check in one place
+            // avoids a subtle bug: for a `repeatable = true` gate,
+            // `onGatePassed` does not add the scene to `passedGates`,
+            // so a separate "did the gate just complete?" check in
+            // `loadCurrentScene` would re-engage it immediately.
         }
         // else: sensor is not awake yet; catch-up will happen on the first broadcast.
     }
 
-    private fun startChapterSteps(nextChapter: com.myapp.adventure.data.Chapter) {
+    private fun startSceneGate(scene: Scene) {
+        val gate = scene.gate ?: return
         isGateActive = true
-        remainingSteps = nextChapter.requiredSteps
+        remainingSteps = gate.requiredSteps
         lastKnownAbsolute = if (StepCounterService.hasFirstEvent) StepCounterService.absoluteSteps else -1
         lastAbsoluteAtSaveFromProgress = -1
-        if (_binding != null) showGateWaiting(nextChapter)
+        if (_binding != null) showGateWaiting(scene)
         saveProgress()
     }
 
-    private fun startChapterStepsInPreview(nextChapter: com.myapp.adventure.data.Chapter) {
+    private fun startSceneGateInPreview(scene: Scene) {
+        val gate = scene.gate ?: return
         isGateActive = true
-        remainingSteps = nextChapter.requiredSteps
+        remainingSteps = gate.requiredSteps
         lastKnownAbsolute = -1
-        showGateWaiting(nextChapter)
+        showGateWaiting(scene)
     }
 
-    private fun showGateWaiting(nextChapter: com.myapp.adventure.data.Chapter) {
+    private fun showGateWaiting(scene: Scene) {
         if (_binding == null) return
-        binding.choicesContainer.removeAllViews()
+        // Show the scene's choices, all disabled. The player sees what
+        // they will be able to pick once the gate is passed — better
+        // UX than an empty container. When the gate is passed,
+        // `onGatePassed` calls `updateChoices(scene.choices)` (no
+        // `forceDisabled`), re-rendering the same buttons as available.
+        updateChoices(scene.choices, forceDisabled = true)
         if (lastKnownAbsolute < 0) {
             binding.tvStepsRequired.text = "Ожидание данных шагомера…"
         } else {
-            updateStepsProgressUi(nextChapter)
+            updateStepsProgressUi(scene)
         }
         if (com.myapp.adventure.step.StepSourceManager.isHealthConnectActive(requireContext())) {
             binding.tvStepsRequired.append("\n(Health Connect: обновление раз в ~1 минуту)")
@@ -813,28 +1259,47 @@ class AdventureReaderFragment : Fragment() {
         binding.tvStepsRequired.visibility = View.VISIBLE
     }
 
-    private fun updateStepsProgressUi(nextChapter: com.myapp.adventure.data.Chapter) {
+    private fun updateStepsProgressUi(scene: Scene) {
         if (_binding == null) return
-        val total = nextChapter.requiredSteps
+        val total = scene.gate?.requiredSteps ?: return
         val done = (total - remainingSteps).coerceIn(0, total)
         binding.tvStepsRequired.text =
-            "Чтобы открыть главу «${nextChapter.title}», пройдено $done из $total шагов (осталось $remainingSteps)."
+            "Пройдено $done из $total шагов (осталось $remainingSteps)."
         binding.tvStepsRequired.visibility = View.VISIBLE
     }
 
-    private fun onStepsCompleted(nextChapter: com.myapp.adventure.data.Chapter?) {
-        if (nextChapter == null) return
-        advanceToNextChapter(nextChapter)
+    private fun onGatePassed(scene: Scene) {
+        // Persist the pass only for non-repeatable gates. `repeatable =
+        // true` gates must re-engage on every visit, so they are never
+        // recorded here.
+        if (scene.gate?.repeatable != true) {
+            passedGates.add(scene.id.value)
+        }
+        isGateActive = false
+        remainingSteps = 0
+        saveProgress()
+
+        if (scene.isEnding) {
+            showEnd("🎉 Конец истории")
+            return
+        }
+        if (scene.choices.isEmpty()) {
+            // Post-analyzer: impossible in non-preview (ERROR blocks the
+            // load). In preview: show the preview-end marker.
+            showEnd("▶ Конец предпросмотра")
+            return
+        }
+        updateChoices(scene.choices)
     }
 
     private fun setDebugRemainingSteps(remaining: Int) {
         remainingSteps = remaining.coerceAtLeast(0)
-        val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1) ?: return
-        if (nextChapter.requiredSteps <= 0) return
+        val scene = compiled.scenesById[SceneId(currentSceneId)] ?: return
+        if (scene.gate == null) return
         if (remainingSteps <= 0) {
-            onStepsCompleted(nextChapter)
+            onGatePassed(scene)
         } else {
-            updateStepsProgressUi(nextChapter)
+            updateStepsProgressUi(scene)
         }
     }
 
@@ -867,13 +1332,24 @@ class AdventureReaderFragment : Fragment() {
         stats.clear()
         itemOrder.clear()
         appliedSceneEffects.clear()
+        // `passedGates` must be cleared too: a "restart" puts the player
+        // back at the start, so every non-repeatable gate must re-engage
+        // on the next visit. Without this, a "one-shot" gate that was
+        // passed before the restart would stay passed — the player would
+        // get a free pass through the whole story. Bug was caught during
+        // the migration review (see Progress log 2026-11-07).
+        passedGates.clear()
+        // The warning dialog is shown again on the first scene after a
+        // restart: the player is re-entering the story from scratch, so
+        // it makes sense to remind them of any warnings once more.
+        savedWarningsFingerprint = ""
+        // IR: initialState is non-null with empty defaults.
         val initialState = adventure.initialState
-        initialState?.flags?.forEach { addFlagIfMissing(it) }
-        if (initialState?.stats != null) stats.putAll(initialState.stats)
+        initialState.flags.forEach { addFlagIfMissing(it) }
+        stats.putAll(initialState.stats)
         rebuildItemOrder()
 
-        currentChapterIndex = 0
-        currentSceneId = adventure.chapters?.firstOrNull()?.scenes?.firstOrNull()?.id ?: ""
+        currentSceneId = adventure.startScene.value
         resetGate()
         isDead = false
         previousStepSnapshot = null
@@ -892,7 +1368,7 @@ class AdventureReaderFragment : Fragment() {
         val absoluteAtSave = if (StepCounterService.hasFirstEvent) StepCounterService.absoluteSteps else -1
         val progress = ProgressData(
             adventureFileName = "",
-            currentChapterIndex = currentChapterIndex,
+            currentChapterIndex = compiled.chapterIndexBySceneId[SceneId(currentSceneId)] ?: 0,
             currentSceneId = currentSceneId,
             flags = flags.toList(),
             stats = stats.toMap(),
@@ -902,7 +1378,9 @@ class AdventureReaderFragment : Fragment() {
             chapterStartSnapshot = chapterStartSnapshot,
             remainingSteps = remainingSteps,
             isGateActive = isGateActive,
-            lastAbsoluteAtSave = absoluteAtSave
+            lastAbsoluteAtSave = absoluteAtSave,
+            warningsFingerprint = savedWarningsFingerprint,
+            passedGates = passedGates.toList()
         )
         ProgressManager.saveProgress(requireContext(), adventureFileUri!!, progress)
     }
@@ -929,21 +1407,48 @@ class AdventureReaderFragment : Fragment() {
     // ==================== Menu ====================
 
     private fun showReaderMenuDialog() {
-        val options = arrayOf("В главное меню", "Начать приключение заново", "Настройки")
+        // Build the item list dynamically: "↩ Шаг назад" appears only
+        // when an undo is available, "Предупреждения (N)" only when
+        // there are warnings. Each item is a Pair(label, action), so
+        // adding/removing/reordering entries does not require touching
+        // the index-based dispatch.
+        val items = mutableListOf<Pair<String, () -> Unit>>()
+        items.add("В главное меню" to {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, MenuFragment())
+                .addToBackStack(null)
+                .commit()
+        })
+        // S3a: step back from any scene. Not shown on the death
+        // screen (`isDead`) — the death screen has its own explicit
+        // "↩ Один шаг назад" button (see `showDeathScreen`), and
+        // duplicating it in the menu is noise. Not shown in preview
+        // mode either — undo is a player affordance, not an
+        // authoring tool.
+        if (!previewMode && !isDead && previousStepSnapshot != null) {
+            items.add("↩ Шаг назад" to {
+                onStepBack()
+            })
+        }
+        items.add("Начать приключение заново" to {
+            confirmRestartAdventure()
+        })
+        if (cachedPlayerWarnings.isNotEmpty()) {
+            items.add("Предупреждения (${cachedPlayerWarnings.size})" to {
+                showWarningInfoDialog(cachedPlayerWarnings)
+            })
+        }
+        items.add("Настройки" to {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, SettingsFragment())
+                .addToBackStack(null)
+                .commit()
+        })
+
         AlertDialog.Builder(requireContext())
             .setTitle("Меню")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> parentFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, MenuFragment())
-                        .addToBackStack(null)
-                        .commit()
-                    1 -> confirmRestartAdventure()
-                    2 -> parentFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, SettingsFragment())
-                        .addToBackStack(null)
-                        .commit()
-                }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which ->
+                items[which].second.invoke()
             }
             .setNegativeButton("Отмена", null)
             .show()
@@ -985,19 +1490,20 @@ class AdventureReaderFragment : Fragment() {
             .setPositiveButton("Закрыть", null)
             .create()
 
-        val nextChapterInitial = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-        if (isGateActive && nextChapterInitial != null && nextChapterInitial.requiredSteps > 0) {
+        val currentSceneForPanel = compiled.scenesById[SceneId(currentSceneId)]
+        if (isGateActive && currentSceneForPanel?.gate != null) {
             etStepsValue.setText(remainingSteps.toString())
         }
 
         fun refreshStepsSection() {
-            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-            if (isGateActive && nextChapter != null && nextChapter.requiredSteps > 0) {
+            val sceneForGate = compiled.scenesById[SceneId(currentSceneId)]
+            val gate = sceneForGate?.gate
+            if (isGateActive && gate != null) {
                 sectionSteps.visibility = View.VISIBLE
-                val total = nextChapter.requiredSteps
+                val total = gate.requiredSteps
                 val done = (total - remainingSteps).coerceIn(0, total)
                 tvStepsStatus.text =
-                    "Глава «${nextChapter.title}»: пройдено $done из $total (осталось $remainingSteps)"
+                    "Сцена «${sceneForGate.id.value}»: пройдено $done из $total (осталось $remainingSteps)"
             } else {
                 sectionSteps.visibility = View.GONE
             }
@@ -1103,12 +1609,12 @@ class AdventureReaderFragment : Fragment() {
         }
 
         btnOpenChapterNow.setOnClickListener {
-            val nextChapter = adventure.chapters?.getOrNull(currentChapterIndex + 1)
-            if (nextChapter == null || nextChapter.requiredSteps == 0) {
+            val sceneForGate = compiled.scenesById[SceneId(currentSceneId)]
+            if (sceneForGate?.gate == null) {
                 Toast.makeText(requireContext(), "Шлюз неактивен", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            onStepsCompleted(nextChapter)
+            onGatePassed(sceneForGate)
             refresh()
         }
 

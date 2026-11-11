@@ -157,21 +157,30 @@ object StoryValidator {
         }
 
         // ---------- WARNING: шаговые шлюзы ----------
+        // b2: gates are per-scene now. `isChapterEnd` is a narrative
+        // boundary, not a gate marker — a chapter end without a gate
+        // is a legitimate author choice ("this chapter is a natural
+        // break, but the next opens immediately"). The old warning
+        // "chapter end but 0 steps = auto-open" was only meaningful
+        // when chapter end *implied* a gate; that implication is gone.
+        // Replaced by: "gate on the very last scene, but the scene is
+        // not marked as an ending" — the player will walk the gate,
+        // see choices-less scene, and get "🎉 Конец истории" **only
+        // if** it was also `is_ending`; otherwise it is a DeadEnd
+        // (already a separate analyzer warning). So this warning is
+        // now specifically "gate on a terminal scene that is also an
+        // ending" — the gate can never be completed, because the
+        // scene stops the story first.
         for ((idx, scene) in scenes.withIndex()) {
-            if (scene.isChapterEnd && scene.requiredSteps == 0 && idx < scenes.size - 1) {
+            if (scene.gateRequiredSteps > 0 && scene.isEnding) {
                 issues += ValidationIssue(
                     severity = IssueSeverity.WARNING,
                     sceneUid = scene.uid,
-                    title = "Шаговый шлюз = 0",
-                    description = "Сцена «${scene.title.ifBlank { "(без названия)" }}» — конец главы, но требует 0 шагов. Следующая глава откроется сразу."
-                )
-            }
-            if (scene.isChapterEnd && scene.requiredSteps > 0 && idx == scenes.size - 1) {
-                issues += ValidationIssue(
-                    severity = IssueSeverity.WARNING,
-                    sceneUid = scene.uid,
-                    title = "Шаги на финальной сцене",
-                    description = "Сцена «${scene.title.ifBlank { "(без названия)" }}» — последняя, но требует ${scene.requiredSteps} шагов. В читалке это не сработает — история закончится сразу."
+                    title = "Шаговый гейт на сцене-конце истории",
+                    description = "Сцена «${scene.title.ifBlank { "(без названия)" }}» " +
+                            "помечена как конец игры и одновременно требует " +
+                            "${scene.gateRequiredSteps} шагов. Гейт не сработает — " +
+                            "читалка остановит историю до того, как шаги будут пройдены."
                 )
             }
         }

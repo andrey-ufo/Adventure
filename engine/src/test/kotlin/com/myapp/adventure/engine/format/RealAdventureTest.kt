@@ -11,6 +11,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.assertNull
+import com.myapp.adventure.engine.ir.CompareOp
 
 /**
  * Integration test: parses the **real** `test_adventure.json` (copied
@@ -70,7 +71,11 @@ class RealAdventureTest {
         val adv = parseRealFile()
         assertEquals("Тестовое приключение", adv.title)
         assertEquals("Claude (AI-ассистент)", adv.author)
-        assertEquals(Adventure.CURRENT_VERSION, adv.version) // no "version" in JSON
+        // test_adventure.json explicitly carries "version": CURRENT_VERSION.
+        // It is the reference sample — a reader opening it should see the
+        // current schema, not a legacy one. When CURRENT_VERSION bumps, the
+        // sample bumps in the same PR; this test catches a forgotten bump.
+        assertEquals(Adventure.CURRENT_VERSION, adv.version)
         assertTrue(adv.description.isNotEmpty())
     }
 
@@ -94,15 +99,14 @@ class RealAdventureTest {
                 .gate
                 ?.requiredSteps
 
-        // Гейт 100 шагов в середине главы 1 — демонстрация, что гейт
-        // не привязан к границам глав.
-        assertEquals(100, gateOf(0, "health_test"))
-        // Гейт 5 шагов на последней сцене главы 1 — эквивалент старого
-        // required_steps: 5 на главе 2.
-        assertEquals(5, gateOf(0, "chapter_end_1"))
-        // Гейт 4000 шагов на последней сцене главы 2 — эквивалент старого
-        // required_steps: 4000 на главе 3.
-        assertEquals(4000, gateOf(1, "chapter_end_2"))
+        // Все три гейта в эталонном приключении — 1 шаг: достаточно,
+        // чтобы проверить механику вручную (см. проектный принцип
+        // «тестовое приключение должно проходиться быстро»), и не
+        // заставляет тестировщика ходить. Реальные приключения,
+        // разумеется, ставят тысячи шагов.
+        assertEquals(1, gateOf(0, "health_test"))   // per-visit gate (middle of chapter 1)
+        assertEquals(1, gateOf(0, "chapter_end_1")) // one-shot gate (end of chapter 1)
+        assertEquals(1, gateOf(1, "chapter_end_2")) // one-shot gate (end of chapter 2)
         // У остальных сцен гейта нет.
         assertEquals(null, gateOf(0, "start"))
         assertEquals(null, gateOf(0, "items_test"))
@@ -162,13 +166,53 @@ class RealAdventureTest {
     }
 
     @Test
-    fun `has_sword condition parsed as Has AST`() {
-        // Syntactic level only. Semantic rejection of `has_sword` on
-        // ItemCount` is Ф2.2 (type checker). Today the parser accepts
-        // any `has_X` string; the AST node is Condition.Has("sword").
+    fun `sword_gt_zero condition parsed as Compare AST`() {
+        // Ф1.7.1a-fix3: the sample used `has_sword` (legacy semantics,
+        // where `has_X` was true if X was a flag OR a positive stat).
+        // Since Ф1.5, `has_X` means "boolean flag X is set" and does
+        // NOT look at stats. `sword` is an ItemCount, so `has_sword`
+        // evaluated to false — the button was always disabled. The
+        // sample now uses `sword > 0`, which matches the new
+        // semantics. Type checker (Ф2.2) will reject the legacy form
+        // with a hint to use `Compare` instead.
         val adv = parseRealFile()
         val start = adv.chapters[0].scenes.first { it.id == SceneId("start") }
         val hasSwordChoice = start.choices.first { it.text.startsWith("Проверить условие") }
-        assertEquals(Condition.Has("sword"), hasSwordChoice.condition)
+        assertEquals(
+            Condition.Compare("sword", CompareOp.GT, 0),
+            hasSwordChoice.condition,
+        )
+    }
+
+    @Test
+    fun `final scene is marked as ending`() {
+        // Ф1.7.0: the reference sample's `final` scene must be marked
+        // "is_ending": true. The old behavior ("no choices = implicit
+        // end") was dropped; the analyzer now flags an unmarked terminal
+        // as DeadEnd ERROR. If this assertion fails, either the file was
+        // edited (check docs/test-adventure-policy.md Rule 7) or the
+        // parser stopped reading is_ending (bug in JsonToIr).
+        val adv = parseRealFile()
+        val final = adv.chapters[2].scenes.first { it.id == SceneId("final") }
+        assertTrue(final.isEnding, "final scene must have is_ending = true")
+        assertTrue(final.choices.isEmpty(), "final scene must have no choices")
+    }
+
+    @Test
+    fun `health_test gate is repeatable, chapter ends are not`() {
+        // Ф1.7.0.4: the only "path" example (you walk there, walk back
+        // if you return) is health_test — per-visit. The chapter-end
+        // gates use the default "once passed, stays passed in this
+        // playthrough" (repeatable = false). This test pins both so that
+        // the reference sample keeps demonstrating both modes.
+        val adv = parseRealFile()
+        fun gateOf(chapterIndex: Int, sceneId: String) =
+            adv.chapters[chapterIndex].scenes
+                .first { it.id == SceneId(sceneId) }
+                .gate
+
+        assertEquals(true, gateOf(0, "health_test")?.repeatable)
+        assertEquals(false, gateOf(0, "chapter_end_1")?.repeatable)
+        assertEquals(false, gateOf(1, "chapter_end_2")?.repeatable)
     }
 }

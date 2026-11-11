@@ -48,7 +48,12 @@ object StoryStatsService {
             val isLast = idx == chapters.size - 1
             val wordCount = group.sumOf { countWords(it.text) }
             val choiceCount = group.sumOf { it.choices.size }
-            val requiredSteps = if (!isLast) group.last().requiredSteps else 0
+            // b2 TODO: gates can now sit anywhere in a chapter, not
+            // just on the last scene. This heuristic (last scene's
+            // gate) is the old behaviour. A proper "sum of gates in
+            // chapter" or "first gate in chapter" goes into a polish
+            // pass; for now it keeps the stats close enough.
+            val requiredSteps = if (!isLast) group.last().gateRequiredSteps else 0
             ChapterStats(
                 index = idx + 1,
                 sceneCount = group.size,

@@ -3,6 +3,16 @@ package com.myapp.adventure.data
 import com.google.gson.annotations.SerializedName
 
 data class Adventure(
+    /**
+     * b2: adventure-format schema version, written as `"version": 5`.
+     * `null` on files that predate v3 (no `version` field) — Gson
+     * omits it, and `JsonToIr.parse` treats it as v1 (identity
+     * migration). The editor writes `5` from `buildAdventure()`
+     * because it emits v5-shaped JSON (`scene.gate`,
+     * `gate_repeatable`, `is_ending`, `start_scene`).
+     */
+    @SerializedName("version")
+    val version: Int? = null,
     val title: String,
     val author: String = "Неизвестен",
     val description: String = "",
@@ -11,6 +21,15 @@ data class Adventure(
     val tags: List<TagDefinition>? = null,
     @SerializedName("death_scene")
     val deathScene: DeathScene? = null,
+    /**
+     * b2: explicit start scene id (`"start_scene"`). Required from
+     * v3; `JsonToIr.parse` rejects v5 files without it. The editor
+     * writes it from `buildAdventure()` (first scene of the first
+     * chapter, or the first scene overall — the editor has no
+     * explicit "start" affordance yet).
+     */
+    @SerializedName("start_scene")
+    val startScene: String? = null,
     val chapters: List<Chapter>? = null
 )
 
@@ -28,8 +47,21 @@ data class DeathScene(
 data class Chapter(
     val id: String,
     val title: String = "",
+    /**
+     * **Legacy (v1) chapter-level gate.** In v1 files this field was
+     * `"required_steps": N` and meant "walk N steps to enter this
+     * chapter"; `JsonToIr.parse` migrates it to `Gate(N)` on the last
+     * scene of the previous chapter. Since b2 the editor emits
+     * per-scene `gate` instead and never writes `required_steps`.
+     *
+     * **Nullable**, not `Int = 0`: Gson omits `null` fields on
+     * serialization, so a freshly-written v5 file does not carry
+     * `"required_steps": 0` on every chapter. Old v1 files still
+     * load correctly — `loadFromUri` reads `requiredSteps ?: 0` for
+     * the v1 → v5 migration.
+     */
     @SerializedName("required_steps")
-    val requiredSteps: Int = 0,
+    val requiredSteps: Int? = null,
     val scenes: List<Scene>? = null
 )
 
@@ -42,7 +74,44 @@ data class Scene(
     val removeFlags: List<String>? = null,
     @SerializedName("modify_stats")
     val modifyStats: Map<String, Int>? = null,
-    val choices: List<Choice>? = null
+    val choices: List<Choice>? = null,
+    /**
+     * Ф1.7.5: `"is_ending"` from the adventure JSON. `null` on files
+     * that predate v4 (or on `:app/data/Adventure` produced by code
+     * that does not yet write the field — sections 2–3 add that).
+     *
+     * **Nullable, not `Boolean = false`.** Gson does not honour
+     * Kotlin defaults; a non-nullable `Boolean` would silently be
+     * `false` for old files, indistinguishable from "explicitly not
+     * an ending". `null` keeps the "field absent" semantics clear.
+     * Existing call sites read it as `scene.isEnding ?: false`.
+     */
+    @SerializedName("is_ending")
+    val isEnding: Boolean? = null,
+    /**
+     * b2: per-scene step gate (`"gate": N`). `null` = no gate. The
+     * editor writes it from `EditorScene.gateRequiredSteps > 0`;
+     * `JsonToIr.parse` reads it as `Gate(requiredSteps = N,
+     * repeatable = …)` in the IR.
+     *
+     * **Distinct from `Chapter.required_steps`** (legacy v1): a
+     * chapter-level gate is migrated to `Gate(N)` on the *last scene
+     * of the previous chapter* by `JsonToIr.parse`. The editor no
+     * longer emits chapter-level gates — only per-scene ones.
+     */
+    @SerializedName("gate")
+    val gate: Int? = null,
+    /**
+     * b2: whether the gate re-engages on every visit
+     * (`"gate_repeatable": true`). Only meaningful when [gate] is
+     * non-null. `null` = "absent" → `JsonToIr` defaults to `false`
+     * ("once passed, stays passed in this playthrough"). Emitted by
+     * the editor only when the author ticks "повторять" AND a gate
+     * is set — omitting the field when `false` keeps the JSON clean
+     * (matches the `is_ending` pattern).
+     */
+    @SerializedName("gate_repeatable")
+    val gateRepeatable: Boolean? = null
 )
 
 data class Choice(

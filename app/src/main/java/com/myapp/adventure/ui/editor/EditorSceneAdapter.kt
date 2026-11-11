@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -315,49 +316,103 @@ class EditorSceneAdapter(
             }
         }
 
-        // ---------- Конец главы / шаги ----------
-        binding.cbChapterEnd.setOnCheckedChangeListener(null)
-        binding.cbChapterEnd.isChecked = scene.isChapterEnd
-        binding.layoutSteps.visibility = if (scene.isChapterEnd) View.VISIBLE else View.GONE
-        if (scene.isChapterEnd) {
-            binding.tvStepsDisplay.text = formatStepsDisplay(scene.requiredSteps)
+        // ---------- Настройки сцены (2d-iii) ----------
+        // Collapsible sub-block: chapter end / step gate / ending /
+        // death scene + their sub-options. Collapsed by default — a
+        // scene with all four flags would otherwise be 6 checkboxes
+        // tall and push choices off-screen. State is per-scene (per
+        // uid), survives scrolling; pruned on scene deletion.
+        //
+        // No text indicator (`▸`/`▾`): the label stays
+        // "Настройки сцены"; the expanded/collapsed state is visible
+        // from whether `layout_scene_settings` is rendered. Removing
+        // the triangle keeps the UI free of decorative glyphs, per
+        // user preference (2026-11-09).
+        val settingsExpanded = viewModel.isSceneSettingsExpanded(scene.uid)
+        binding.layoutSceneSettings.visibility =
+            if (settingsExpanded) View.VISIBLE else View.GONE
+        binding.tvSceneSettingsToggle.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+            val s = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
+            val nowExpanded = viewModel.toggleSceneSettings(s.uid)
+            binding.layoutSceneSettings.visibility =
+                if (nowExpanded) View.VISIBLE else View.GONE
         }
 
-        val chapterEndListener = object : CompoundButton.OnCheckedChangeListener {
+        // ---------- Конец главы (нарративная граница) ----------
+        // `cb_chapter_end` is purely narrative — it marks the scene
+        // as the last of a chapter for grouping / stats / the map
+        // view. It does not touch the gate (that is `cb_scene_gate`).
+        binding.cbChapterEnd.setOnCheckedChangeListener(null)
+        binding.cbChapterEnd.isChecked = scene.isChapterEnd
+        binding.cbChapterEnd.setOnCheckedChangeListener { _, isChecked ->
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnCheckedChangeListener
+            val s = viewModel.scenes.getOrNull(pos) ?: return@setOnCheckedChangeListener
+            s.isChapterEnd = isChecked
+            binding.tvChapterEndBadge.visibility = if (isChecked) View.VISIBLE else View.GONE
+            onDirty(true)
+        }
+
+        // ---------- Шаговый гейт (per-scene, b2) ----------
+        // `cb_scene_gate` is independent of `cb_chapter_end`: a scene
+        // can be a chapter boundary, a gate, both, or neither. This
+        // matches `Gate` in IR (Ф1.7.0.4) — a gate is a scene
+        // property, not a chapter property.
+        //
+        // The "repeatable" toggle lives inside the steps dialog
+        // (2d-i): it is a property of the gate, not a separate scene
+        // checkbox. The dialog returns `(steps, repeatable)`.
+        binding.cbSceneGate.setOnCheckedChangeListener(null)
+        binding.cbSceneGate.isChecked = scene.gateRequiredSteps > 0
+
+        val sceneGateListener = object : CompoundButton.OnCheckedChangeListener {
             override fun onCheckedChanged(buttonView: CompoundButton, isChecked: Boolean) {
                 val self = this
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return
                 val s = viewModel.scenes.getOrNull(pos) ?: return
 
-                if (isChecked && !s.isChapterEnd) {
-                    val initial = if (s.requiredSteps > 0) s.requiredSteps else 1000
+                if (isChecked && s.gateRequiredSteps == 0) {
+                    // First enable: ask for steps + repeatable. If the
+                    // author cancels the dialog, un-check the box (the
+                    // gate would otherwise be "on" with 0 steps, which
+                    // the parser rejects as `gate <= 0`).
                     showChapterStepsDialog(
                         context = context,
-                        initialSteps = initial,
-                        onApply = { newSteps ->
-                            s.isChapterEnd = true
-                            s.requiredSteps = newSteps
+                        initialSteps = 1000,
+                        initialRepeatable = false,
+                        onApply = { newSteps, newRepeatable ->
+                            s.gateRequiredSteps = newSteps
+                            s.gateRepeatable = newRepeatable
                             binding.layoutSteps.visibility = View.VISIBLE
-                            binding.tvStepsDisplay.text = formatStepsDisplay(newSteps)
-                            binding.tvChapterEndBadge.visibility = View.VISIBLE
+                            binding.tvStepsDisplay.text =
+                                formatStepsDisplay(newSteps, newRepeatable)
                             onDirty(true)
                         },
                         onCancel = {
-                            binding.cbChapterEnd.setOnCheckedChangeListener(null)
-                            binding.cbChapterEnd.isChecked = false
-                            binding.cbChapterEnd.setOnCheckedChangeListener(self)
+                            binding.cbSceneGate.setOnCheckedChangeListener(null)
+                            binding.cbSceneGate.isChecked = false
+                            binding.cbSceneGate.setOnCheckedChangeListener(self)
                         }
                     )
-                } else if (!isChecked && s.isChapterEnd) {
-                    s.isChapterEnd = false
+                } else if (!isChecked) {
+                    s.gateRequiredSteps = 0
+                    s.gateRepeatable = false
                     binding.layoutSteps.visibility = View.GONE
-                    binding.tvChapterEndBadge.visibility = View.GONE
                     onDirty(true)
                 }
             }
         }
-        binding.cbChapterEnd.setOnCheckedChangeListener(chapterEndListener)
+        binding.cbSceneGate.setOnCheckedChangeListener(sceneGateListener)
+
+        binding.layoutSteps.visibility =
+            if (scene.gateRequiredSteps > 0) View.VISIBLE else View.GONE
+        if (scene.gateRequiredSteps > 0) {
+            binding.tvStepsDisplay.text =
+                formatStepsDisplay(scene.gateRequiredSteps, scene.gateRepeatable)
+        }
 
         binding.layoutSteps.setOnClickListener {
             val pos = holder.bindingAdapterPosition
@@ -365,14 +420,49 @@ class EditorSceneAdapter(
             val s = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
             showChapterStepsDialog(
                 context = context,
-                initialSteps = s.requiredSteps,
-                onApply = { newSteps ->
-                    s.requiredSteps = newSteps
-                    binding.tvStepsDisplay.text = formatStepsDisplay(newSteps)
+                initialSteps = s.gateRequiredSteps,
+                initialRepeatable = s.gateRepeatable,
+                onApply = { newSteps, newRepeatable ->
+                    s.gateRequiredSteps = newSteps
+                    s.gateRepeatable = newRepeatable
+                    binding.tvStepsDisplay.text =
+                        formatStepsDisplay(newSteps, newRepeatable)
                     onDirty(true)
                 },
                 onCancel = { /* ничего не меняем */ }
             )
+        }
+
+        // ---------- Ф1.7.5: is_ending ----------
+
+        // "🎉 Конец игры" — scene ends the adventure, not just a
+        // chapter. Distinct from `cbChapterEnd` above (which writes
+        // `chapter.required_steps` on the next chapter — a step gate,
+        // not an ending). Distinct from `cbDeathScene` below (which
+        // shows a special death screen instead of the normal ending).
+        //
+        // No dialogue, no mutual-exclusion check: `isEnding` and
+        // `isChapterEnd` and `isDeathScene` are independent flags. An
+        // author who ticks both `isEnding` and `isDeathScene` will get
+        // the death screen for that scene (the reader prioritises
+        // death over ending); an author who ticks `isEnding` and adds
+        // choices will get `EndingSceneWithChoices` ERROR from the
+        // analyzer. Both are author errors the analyzer catches — the
+        // editor UI should not duplicate those checks.
+        binding.cbEnding.setOnCheckedChangeListener(null)
+        binding.cbEnding.isChecked = scene.isEnding
+        binding.cbEnding.setOnCheckedChangeListener { _, isChecked ->
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnCheckedChangeListener
+            val s = viewModel.scenes.getOrNull(pos) ?: return@setOnCheckedChangeListener
+            s.isEnding = isChecked
+            // `onDirty(false)`: this is a simple flag, not a structural
+            // change (no scene added / removed, no dialogue opened).
+            // Matches the pattern of `cbDeathAllowStepBack` and its
+            // siblings — flag toggles don't push history entries, so
+            // rapid experiment-by-clicking does not fill the undo
+            // stack.
+            onDirty(false)
         }
 
         // ---------- Выборы ----------
@@ -596,16 +686,39 @@ class EditorSceneAdapter(
 
     // ---------- Диалог шагового шлюза ----------
 
+    /**
+     * Steps-gate picker dialog. Returns `(steps, repeatable)`.
+     *
+     * The `repeatable` toggle lives inside the dialog (2d-i): it is a
+     * property of the gate itself, not a separate scene-level
+     * checkbox. This keeps the scene card compact (the scene card
+     * would otherwise carry two checkboxes plus the steps line), and
+     * puts the two gate settings next to each other — the author
+     * sees both at the moment they set the step count.
+     *
+     * @param initialSteps current step count (0 = dialog opened from
+     *   a not-yet-enabled gate; empty input field).
+     * @param initialRepeatable current repeatable flag (false on
+     *   first enable).
+     * @param onApply called with the chosen `(steps, repeatable)`
+     *   when the author taps "Применить" or a preset. The `steps`
+     *   value is guaranteed to be `> 0`.
+     * @param onCancel called when the dialog is dismissed without a
+     *   valid apply (back button, "Отмена", or a preset that failed
+     *   validation is not a cancel — only dismiss-before-apply).
+     */
     private fun showChapterStepsDialog(
         context: Context,
         initialSteps: Int,
-        onApply: (Int) -> Unit,
+        initialRepeatable: Boolean,
+        onApply: (steps: Int, repeatable: Boolean) -> Unit,
         onCancel: () -> Unit
     ) {
         val dialogView = LayoutInflater.from(context)
             .inflate(R.layout.dialog_chapter_steps, null)
 
         val etCustom = dialogView.findViewById<EditText>(R.id.et_custom_steps)
+        val cbRepeatable = dialogView.findViewById<CheckBox>(R.id.cb_repeatable)
         val btn500 = dialogView.findViewById<Button>(R.id.btn_steps_500)
         val btn1000 = dialogView.findViewById<Button>(R.id.btn_steps_1000)
         val btn4000 = dialogView.findViewById<Button>(R.id.btn_steps_4000)
@@ -615,11 +728,12 @@ class EditorSceneAdapter(
             etCustom.setText(initialSteps.toString())
             etCustom.setSelection(etCustom.text.length)
         }
+        cbRepeatable.isChecked = initialRepeatable
 
         var applied = false
 
         val dialog = AlertDialog.Builder(context)
-            .setTitle("Шагов до следующей главы")
+            .setTitle("Шаговый гейт")
             .setView(dialogView)
             .setPositiveButton("Применить", null)
             .setNegativeButton("Отмена", null)
@@ -631,7 +745,7 @@ class EditorSceneAdapter(
                 return
             }
             applied = true
-            onApply(value)
+            onApply(value, cbRepeatable.isChecked)
             dialog.dismiss()
         }
 
@@ -658,8 +772,8 @@ class EditorSceneAdapter(
         dialog.show()
     }
 
-    private fun formatStepsDisplay(steps: Int): String {
-        if (steps <= 0) return "🚶 Шаги не заданы · нажмите, чтобы изменить"
+    private fun formatStepsDisplay(steps: Int, repeatable: Boolean = false): String {
+        if (steps <= 0) return "Шаговый гейт не задан · нажмите, чтобы изменить"
         val minutes = ((steps + 99) / 100).coerceAtLeast(1)
         val timeText = when {
             minutes < 60 -> "≈ $minutes мин"
@@ -670,7 +784,8 @@ class EditorSceneAdapter(
             }
         }
         val formatted = String.format(java.util.Locale.getDefault(), "%,d", steps).replace(',', ' ')
-        return "🚶 $formatted шагов ($timeText) · нажмите, чтобы изменить"
+        val mode = if (repeatable) " · каждый раз" else ""
+        return "$formatted шагов ($timeText)$mode · нажмите, чтобы изменить"
     }
 
     // ---------- Диалоги ----------

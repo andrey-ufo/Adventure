@@ -78,4 +78,20 @@
         android:inputType="number"
         android:autofillHints="" />
 
+    <CheckBox
+        android:id="@+id/cb_repeatable"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="↻ Повторять гейт при каждом входе"
+        android:textColor="#FFFFFF" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Выкл.: гейт сработает один раз, дальше глава/путь открыты. Вкл.: каждый вход в сцену снова требует шагов (например, путь между локациями)."
+        android:textSize="11sp"
+        android:textColor="#9E9E9E" />
+
 </LinearLayout>

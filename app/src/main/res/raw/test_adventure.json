@@ -1,5 +1,6 @@
 {
   "_comment": "Sample adventure and golden test input. Before editing, see docs/test-adventure-policy.md.",
+  "version": 5,
   "start_scene": "start",
   "title": "Тестовое приключение",
   "author": "Claude (AI-ассистент)",
@@ -46,14 +47,15 @@
             { "text": "Проверить здоровье", "next_scene": "health_test", "modify_stats": {"health": 10} },
             { "text": "Проверить предметы", "next_scene": "items_test", "modify_stats": {"potion": 2} },
             { "text": "Проверить журнал", "next_scene": "journal_test", "set_flags": ["visited_forest", "knows_secret"] },
-            { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "has_sword" },
+            { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "sword > 0" },
             { "text": "Перейти к концу главы", "next_scene": "chapter_end_1" }
           ]
         },
         {
           "id": "health_test",
-          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Выход из этой сцены требует 100 шагов — демонстрация шагового шлюза в середине главы (не привязан к концу главы).",
-          "gate": 100,
+          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Выход из этой сцены требует 1 шаг — демонстрация per-visit шлюза (gate_repeatable: true): каждый вход снова требует 1 шаг. Моделирует «путь» между локациями.",
+          "gate": 1,
+          "gate_repeatable": true,
           "choices": [
             { "text": "Получить урон (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
             { "text": "Получить лечение (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
@@ -88,8 +90,8 @@
         },
         {
           "id": "chapter_end_1",
-          "text": "Конец первой главы. Выход из этой сцены требует 5 шагов — эквивалент старого required_steps на главе 2.",
-          "gate": 5,
+          "text": "Конец первой главы. Выход из этой сцены требует 1 шаг — обычный одноразовый шлюз (gate без gate_repeatable: пройден один раз и больше не мешает в этом прохождении).",
+          "gate": 1,
           "choices": [
             { "text": "Продолжить", "next_scene": "conditions_test" }
           ]
@@ -102,11 +104,11 @@
       "scenes": [
         {
           "id": "conditions_test",
-          "text": "Здесь тестируются условия. Один из вариантов демонстрирует межглавный переход: можно прыгнуть сразу в финальную главу, минуя гейт 4000 шагов на конце главы 2.",
+          "text": "Здесь тестируются условия. Один из вариантов демонстрирует межглавный переход: можно прыгнуть сразу в финальную главу, минуя гейт на конце главы 2 (1 шаг).",
           "choices": [
             { "text": "Только если здоровье >= 50", "next_scene": "healthy", "condition": "health >= 50" },
             { "text": "Только если здоровье < 50", "next_scene": "unhealthy", "condition": "health < 50" },
-            { "text": "Только если есть меч", "next_scene": "has_sword_node", "condition": "has_sword" },
+            { "text": "Только если есть меч", "next_scene": "has_sword_node", "condition": "sword > 0" },
             { "text": "Продолжить", "next_scene": "chapter_end_2" },
             { "text": "В финал (демо межглавного перехода)", "next_scene": "final" }
           ]
@@ -128,8 +130,8 @@
         },
         {
           "id": "chapter_end_2",
-          "text": "Конец второй главы. Выход из этой сцены требует 4000 шагов — эквивалент старого required_steps на главе 3.",
-          "gate": 4000,
+          "text": "Конец второй главы. Выход из этой сцены требует 1 шаг — тот же одноразовый шлюз, что и в конце главы 1.",
+          "gate": 1,
           "choices": [
             { "text": "Продолжить", "next_scene": "final" }
           ]
@@ -143,7 +145,8 @@
         {
           "id": "final",
           "text": "Поздравляем! Вы прошли все тесты.",
-          "choices": []
+          "choices": [],
+          "is_ending": true
         }
       ]
     }

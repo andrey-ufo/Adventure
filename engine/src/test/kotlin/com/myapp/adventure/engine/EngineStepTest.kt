@@ -415,27 +415,29 @@ class EngineStepTest {
         assertEquals("Продолжить", continueChoice.text)
         assertEquals(SceneId("conditions_test"), continueChoice.nextScene)
 
-        // Gate 5, stepsInScene = 4 → blocked.
+        // Gate 1 (Ф1.7.0.4 simplified all test gates to 1 step so the
+        // reference sample can be checked by walking — one step is
+        // enough to exercise the mechanic). stepsInScene = 0 → blocked.
         val blocked = rejected(
             Engine.step(
                 compiled,
                 state = adventure.initialState.toPlayerState(),
                 sceneId = SceneId("chapter_end_1"),
                 choiceId = continueChoice.id,
-                stepsInScene = 4,
+                stepsInScene = 0,
             ),
         )
         val blockedReason = assertIs<RejectReason.Blocked>(blocked)
         assertEquals(1, (blockedReason.blockers.single() as Blocker.GateNotPassed).remainingSteps)
 
-        // Gate 5, stepsInScene = 5 → success, moves to conditions_test.
+        // Gate 1, stepsInScene = 1 → success, moves to conditions_test.
         val success = assertIs<StepResult.Success>(
             Engine.step(
                 compiled,
                 state = adventure.initialState.toPlayerState(),
                 sceneId = SceneId("chapter_end_1"),
                 choiceId = continueChoice.id,
-                stepsInScene = 5,
+                stepsInScene = 1,
             ),
         )
         assertEquals(SceneId("conditions_test"), success.currentScene.id)

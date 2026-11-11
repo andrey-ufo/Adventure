@@ -47,7 +47,7 @@ class JsonToIrTest {
         """.trimIndent()
         val adv = success(json)
         assertEquals("Test", adv.title)
-        assertEquals(3, adv.version) // CURRENT_VERSION after Ф1.6.0
+        assertEquals(5, adv.version) // CURRENT_VERSION after Ф1.7.0.4
         assertEquals(1, adv.chapters.size)
         assertEquals("c1", adv.chapters[0].id)
         assertEquals("s1", adv.chapters[0].scenes[0].id.value)
@@ -348,6 +348,39 @@ class JsonToIrTest {
     }
 
     @Test
+    fun `gate_repeatable absent defaults to false`() {
+        // Identity migration v4 → v5: files that predate gate_repeatable
+        // get repeatable = false ("once passed, stays passed in this
+        // playthrough"). This is the common "unlock the next chapter"
+        // case — the least surprising default.
+        val json = """
+            {"version":5,"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi","gate":100}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        val gate = adv.chapters[0].scenes[0].gate
+        assertEquals(100, gate?.requiredSteps)
+        assertEquals(false, gate?.repeatable)
+    }
+
+    @Test
+    fun `gate_repeatable true is parsed`() {
+        // Per-visit mode: the gate re-engages every time the player
+        // enters this scene. Used by authors for "travelled a path" /
+        // "wait N steps before each visit" scenarios.
+        val json = """
+            {"version":5,"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi","gate":4000,"gate_repeatable":true}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        val gate = adv.chapters[0].scenes[0].gate
+        assertEquals(4000, gate?.requiredSteps)
+        assertEquals(true, gate?.repeatable)
+    }
+
+    @Test
     fun `unknown next_scene parses as SceneId - reachability is F2`() {
         // `next_scene: "nonexistent"` parses successfully: the parser
         // does not know the full scene set while parsing one choice
@@ -365,5 +398,61 @@ class JsonToIrTest {
         val adv = success(json)
         val choice = adv.chapters[0].scenes[0].choices[0]
         assertEquals(SceneId("nonexistent"), choice.nextScene)
+    }
+
+    @Test
+    fun `v4 file without is_ending defaults to false`() {
+        // Identity migration v3 → v4: files that predate the field have
+        // no is_ending. The parser must map absent → false, not crash
+        // and not leave it null.
+        // start_scene is required since v3; the parser rejects v3+ files
+        // without it before is_ending is even looked at — so we include it.
+        val json = """
+            {"version":4,"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi"}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(false, adv.chapters[0].scenes[0].isEnding)
+    }
+
+    @Test
+    fun `v4 file with is_ending true marks the scene as ending`() {
+        // Multiple endings are allowed by design (see Scene.isEnding KDoc).
+        // Here: `mid` has a choice, `end1` and `end2` are both endings.
+        // start_scene is required since v3; without it the parser returns
+        // ParseError.Structure before any is_ending logic runs.
+        val json = """
+            {"version":4,"title":"T","start_scene":"mid","chapters":[{"id":"c1","scenes":[
+              {"id":"mid","text":"Choose","choices":[
+                {"text":"Win","next_scene":"end1"},
+                {"text":"Retire","next_scene":"end2"}
+              ]},
+              {"id":"end1","text":"You win","is_ending":true},
+              {"id":"end2","text":"You retire","is_ending":true}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        val scenes = adv.chapters[0].scenes
+        assertEquals(3, scenes.size)
+        assertEquals(false, scenes[0].isEnding) // mid
+        assertEquals(true, scenes[1].isEnding)  // end1
+        assertEquals(true, scenes[2].isEnding)  // end2
+    }
+
+    @Test
+    fun `v3 file without is_ending migrates to false`() {
+        // A v3 file has no is_ending field. After the v3 → v4 identity
+        // migration, Scene.isEnding must be false, not null. This is the
+        // last layer of the "old files keep working" guarantee at the
+        // parser level — the analyzer layer (DeadEnd ERROR on
+        // unreachable/no-choices scenes) is what surfaces the change.
+        val json = """
+            {"version":3,"title":"T","start_scene":"s1","chapters":[
+              {"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}
+            ]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(false, adv.chapters[0].scenes[0].isEnding)
     }
 }

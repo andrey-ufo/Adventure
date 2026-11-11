@@ -10,24 +10,39 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.gson.Gson
 import com.myapp.adventure.R
-import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.databinding.FragmentAdventureListBinding
+import com.myapp.adventure.engine.format.JsonToIr
+import com.myapp.adventure.engine.ir.Adventure
+import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.ui.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
 import com.myapp.adventure.utils.AdventureImportHelper
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
+/**
+ * Library list of adventures. Reads each adventure file via
+ * [JsonToIr.parse] and holds `:engine/ir/Adventure` (not the legacy
+ * `:app/data/Adventure` POJO). See roadmap "Data path cleanup" b1.
+ *
+ * **Why the reader is passed only `adventure_file_uri`, never
+ * `adventure_json`.** The reader (`AdventureReaderFragment`) already
+ * prefers `adventure_file_uri` when present (Ф1.7.1a-fix) and reads
+ * the file itself — that path guarantees full IR: `is_ending`,
+ * `gate`, `gate_repeatable`, `version`, `start_scene` all survive.
+ * Passing `adventure_json` from this fragment would mean serialising
+ * `:engine/ir/Adventure` either via Gson (which does not honour
+ * `@SerialName`, so the resulting JSON would not be an adventure
+ * file) or via `Adventure.serializer()` (which emits the IR shape,
+ * not the adventure shape). Both are dead ends. Only the URI path
+ * works, and it is already what the reader uses.
+ */
 class AdventureListFragment : Fragment() {
 
     private var _binding: FragmentAdventureListBinding? = null
     private val binding get() = _binding!!
 
-    private val gson = Gson()
     private val adventures = mutableListOf<Adventure>()
     private val adventureUris = mutableListOf<Uri>()
     private lateinit var adapter: AdventureAdapter
@@ -58,11 +73,12 @@ class AdventureListFragment : Fragment() {
 
         adapter = AdventureAdapter(
             adventures = adventures,
-            onItemClick = { adventure, position ->
+            onItemClick = { _, position ->
                 val fileUri = adventureUris[position]
                 val fragment = AdventureReaderFragment().apply {
                     arguments = Bundle().apply {
-                        putString("adventure_json", gson.toJson(adventure))
+                        // Only the URI: the reader reads the file itself,
+                        // which is the lossless path. See class KDoc.
                         putString("adventure_file_uri", fileUri.toString())
                     }
                 }
@@ -143,13 +159,35 @@ class AdventureListFragment : Fragment() {
         }
     }
 
+    /**
+     * Parses one adventure file via [JsonToIr] and returns the IR.
+     *
+     * Files that fail to parse are **silently skipped** (logged, not
+     * shown in the list). This matches the previous behaviour: an
+     * unparseable file was just not added to the list. The reader
+     * still offers a proper error dialog when the user opens a file
+     * that parses but fails the analyzer's ERROR check (Ф1.7.1a).
+     * Here we just do not clutter the list with files we cannot even
+     * display (title / author / description are read from the parsed
+     * `Adventure`).
+     */
     private fun parseAdventureFromUri(uri: Uri): Adventure? {
         return try {
-            val inputStream = requireContext().contentResolver.openInputStream(uri)
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val json = reader.readText()
-            reader.close()
-            gson.fromJson(json, Adventure::class.java)
+            val json = requireContext().contentResolver
+                .openInputStream(uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: return null
+            when (val result = JsonToIr.parse(json)) {
+                is ParseResult.Success -> result.value
+                is ParseResult.Failure -> {
+                    Logger.log(
+                        requireContext(),
+                        "Skip '${uri.lastPathSegment}': ${result.errors.firstOrNull()?.message}",
+                    )
+                    null
+                }
+            }
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка чтения файла: ${e.message}")
             null

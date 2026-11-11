@@ -127,7 +127,12 @@ class AdventureMapFragment : Fragment() {
             if (!expanded) {
                 // Свёрнутая глава — показываем шлюз (если он есть) и идём дальше
                 if (chapterIdx < chapterGroups.size - 1) {
-                    val steps = group.lastOrNull()?.requiredSteps ?: 0
+                    // b2 TODO: search any scene in the group, not just
+                    // the last one — gates can sit anywhere now. This
+                    // simple "last scene" heuristic is preserved from
+                    // the pre-b2 world; a proper "find any gate in the
+                    // group" goes into a UI-polish pass.
+                    val steps = group.lastOrNull()?.gateRequiredSteps ?: 0
                     if (steps >= 0) {
                         items.add(MapItem.StepsGate(steps))
                     }
@@ -157,7 +162,8 @@ class AdventureMapFragment : Fragment() {
 
             // Шлюз после главы (если не последняя)
             if (chapterIdx < chapterGroups.size - 1) {
-                val steps = group.lastOrNull()?.requiredSteps ?: 0
+                // b2 TODO: same as above — search any gate in the group.
+                val steps = group.lastOrNull()?.gateRequiredSteps ?: 0
                 if (steps >= 0) {
                     items.add(MapItem.StepsGate(steps))
                 }

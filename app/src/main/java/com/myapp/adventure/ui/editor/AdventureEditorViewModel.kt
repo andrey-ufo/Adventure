@@ -59,6 +59,30 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     private fun pruneExpandedScenes() {
         val currentUids = scenes.map { it.uid }.toSet()
         expandedScenes.retainAll(currentUids)
+        expandedSceneSettings.retainAll(currentUids)
+    }
+
+    // ---------- Аккордеон: настройки сцены (2d-ii) ----------
+    //
+    // "Настройки сцены" — collapsed sub-block of a scene that holds
+    // the authoring checkboxes (chapter end / step gate / ending /
+    // death scene + their sub-options). Collapsed by default: a
+    // scene with all four flags would otherwise be 6 checkboxes tall
+    // and push choices off-screen. State is per-scene (per uid) and
+    // survives scrolling; it is pruned on scene deletion alongside
+    // `expandedScenes`.
+    private val expandedSceneSettings = mutableSetOf<String>()
+
+    fun isSceneSettingsExpanded(uid: String): Boolean = uid in expandedSceneSettings
+
+    fun toggleSceneSettings(uid: String): Boolean {
+        return if (uid in expandedSceneSettings) {
+            expandedSceneSettings.remove(uid)
+            false
+        } else {
+            expandedSceneSettings.add(uid)
+            true
+        }
     }
 
     // ---------- Аккордеон выборов ----------
@@ -457,22 +481,43 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                         removeFlags = choiceRemoveFlags,
                         modifyStats = choiceModifyStats
                     )
-                }.ifEmpty { null }
+                }.ifEmpty { null },
+                // Ф1.7.5: emit `"is_ending": true` only when the flag is
+                // set. Gson with a non-null `false` would write
+                // `"is_ending": false` on every scene, cluttering the
+                // JSON and making the field appear on files where the
+                // author never touched it. `null` → Gson omits the
+                // field → on load, `JsonToIr` defaults it to `false`
+                // (identity migration). This matches the style of
+                // `setFlags` / `choices` above (empty → omit).
+                isEnding = if (scene.isEnding) true else null,
+                // b2: per-scene gate. Omit `"gate"` when 0 (no gate);
+                // omit `"gate_repeatable"` when `false` (default).
+                // Same "empty → omit" style as `setFlags` above.
+                gate = if (scene.gateRequiredSteps > 0) scene.gateRequiredSteps else null,
+                gateRepeatable =
+                    if (scene.gateRequiredSteps > 0 && scene.gateRepeatable) true else null
             )
             sceneList.add(sceneObj)
 
             if (scene.isChapterEnd || scene == scenes.lastOrNull { !it.isDeathScene }) {
                 val chapterId = "chapter_$chapterIndex"
-                val requiredSteps = if (scene.isChapterEnd) scene.requiredSteps else 0
                 chapters.add(
                     Chapter(
                         id = chapterId,
                         title = "Глава $chapterIndex",
-                        requiredSteps = requiredSteps,
+                        // b2: chapter-level `required_steps` is legacy
+                        // (v1). The editor writes per-scene `gate` now;
+                        // `requiredSteps` stays `null` so Gson omits the
+                        // field entirely (`:app/data/Chapter.requiredSteps`
+                        // is `Int?` after b2). `JsonToIr.parse` handles
+                        // both v1 files (migrates `required_steps`) and
+                        // v5 files (reads per-scene `gate`).
+                        requiredSteps = null,
                         scenes = sceneList.toList()
                     )
                 )
-                Logger.log(context, "Сформирована глава $chapterId (сцен: ${sceneList.size}, шагов: $requiredSteps)")
+                Logger.log(context, "Сформирована глава $chapterId (сцен: ${sceneList.size})")
                 sceneList.clear()
                 chapterIndex++
             }

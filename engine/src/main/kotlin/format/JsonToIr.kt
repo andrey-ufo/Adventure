@@ -266,7 +266,12 @@ public object JsonToIr {
                 )
                 null
             } else {
-                Gate(raw)
+                // Ф1.7.0.4: identity migration v4 → v5. Old files have no
+                // gate_repeatable; default is "once passed, stays passed
+                // for this playthrough" — the least surprising mode for the
+                // common "unlock the next chapter" case. Per-visit behaviour
+                // is opt-in via "gate_repeatable": true.
+                Gate(requiredSteps = raw, repeatable = dto.gateRepeatable ?: false)
             }
         }
         return Scene(
@@ -275,6 +280,10 @@ public object JsonToIr {
             effects = effects,
             choices = choices,
             gate = gate,
+            // Ф1.7.0: identity migration v3 → v4. Files that predate v4
+            // have no is_ending field; treat as false. Files that carry
+            // it use the value as written.
+            isEnding = dto.isEnding ?: false,
         )
     }
 

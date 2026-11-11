@@ -76,6 +76,27 @@ internal data class SceneDto(
     val modifyStats: Map<String, Int> = emptyMap(),
     val choices: List<ChoiceDto> = emptyList(),
     val gate: Int? = null,
+    /**
+     * v5+; absent in v1–v4 files. `null` means "field was not in the
+     * source file". `JsonToIr` maps `null` to `false` (identity
+     * migration v4 → v5). Adventure file format keeps the gate flat:
+     * `"gate": N` + optional `"gate_repeatable": true`, so a simple
+     * gate stays one key.
+     */
+    @SerialName("gate_repeatable")
+    val gateRepeatable: Boolean? = null,
+    /**
+     * v4+; absent in v1–v3 files. `null` means "field was not in the
+     * source file". `JsonToIr` maps `null` to `false` (identity
+     * migration v3 → v4). Nullable rather than `Boolean = false` for
+     * consistency with [AdventureDto.version] and [SceneDto.gate], and
+     * so that a future migration can distinguish "author explicitly
+     * wrote `is_ending: false`" from "author did not write the field".
+     * Today both collapse to `Scene.isEnding = false`, so the
+     * distinction is not observed.
+     */
+    @SerialName("is_ending")
+    val isEnding: Boolean? = null,
 )
 
 @Serializable

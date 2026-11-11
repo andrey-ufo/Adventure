@@ -3,10 +3,20 @@ package com.myapp.adventure.ui.list
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.myapp.adventure.data.Adventure
 import com.myapp.adventure.databinding.ItemAdventureBinding
 import com.myapp.adventure.databinding.ItemLoadAdventureBinding
+import com.myapp.adventure.engine.ir.Adventure
 
+/**
+ * Adapter for the adventure library list.
+ *
+ * b1 (Data path cleanup): takes `:engine/ir/Adventure` directly
+ * instead of `:app/data/Adventure`. Displayed fields (`title`,
+ * `author`, `description`) are identical in both models; the
+ * migration removes a lossy Gson round-trip and lets future IR-only
+ * fields (`is_ending`, `gate`, …) reach any consumer of this adapter
+ * without a second model in between.
+ */
 class AdventureAdapter(
     private val adventures: List<Adventure>,
     private val onItemClick: (Adventure, Int) -> Unit,
