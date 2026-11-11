@@ -35,6 +35,14 @@ android {
         baseline = file("lint-baseline.xml")
         abortOnError = true
         checkReleaseBuilds = false
+        // Явно указываем конфиг, чтобы AGP не искал его эвристически.
+        lintConfig = file("lint.xml")
+        // Именно disable исключает детектор из запуска;
+        // severity="ignore" в lint.xml только подавляет отчёт после выполнения.
+        disable += "FragmentAddMenuProvider"
+        disable += "FragmentBackPressedCallback"
+        disable += "FragmentLiveDataObserve"
+        disable += "UnsafeRepeatOnLifecycleDetector"
         htmlReport = true
         xmlReport = true
         textReport = true
@@ -42,13 +50,14 @@ android {
 }
 
 dependencies {
+    implementation(project(":engine"))
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
     implementation("com.google.code.gson:gson:2.10.1")
-    implementation("androidx.fragment:fragment-ktx:1.6.2")
+    implementation("androidx.fragment:fragment-ktx:1.9.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.2")

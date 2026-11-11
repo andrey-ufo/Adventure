@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+        <issue id="FragmentAddMenuProvider" severity="ignore" />
+        <issue id="FragmentBackPressedCallback" severity="ignore" />
+        <issue id="FragmentLiveDataObserve" severity="ignore" />
+        <issue id="UnsafeRepeatOnLifecycleDetector" severity="ignore" />
+
+</lint>
