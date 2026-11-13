@@ -73,8 +73,11 @@ Version history of the on-disk format is in
 `Adventure.CURRENT_VERSION` KDoc (Ф1.2, updated by Ф1.5.4, Ф1.6.0,
 Ф1.7.0, Ф1.7.0.4).
 
-**Deferred:** `Adventure.variables` registry (Ф2.8), `VarDecl`-based
-type checking (Ф2.2).
+**Type system:** `Adventure.variables: Map<String, VarDecl>` and the six
+`VarType` variants (`Bool`, `Integer`, `IntMin`, `IntRange`, `ItemCount`,
+`ItemList`) are documented in [`engine-types.md`](./engine-types.md).
+They were introduced in Ф2.1 (declarations), populated by the parser in
+Ф2.8 (`JsonToIr`), and validated by `TypeChecker` in Ф2.2 / Ф2.3.
 
 ## Parser (`format/`, `parse/`)
 
@@ -93,6 +96,28 @@ Do not write a second parser alongside it. If a new format is needed
 (YAML, binary, a future JS runtime), either add a `parse` overload
 here or create a new `<Format>ToIr` with the same
 `ParseResult<Adventure>` contract.
+
+**Two-stage pipeline (Ф2.3).** Since Ф2.3, `parse` runs two checks in
+sequence: JSON parsing (`JsonToIr.buildAdventure`) and type checking
+(`TypeChecker.check`, Ф2.2). The order is strict — type checking only
+runs when the JSON parses cleanly. A partial IR (a choice whose
+condition string failed to parse has `condition = null`) would produce
+false negatives at best and false positives at worst, so the parser
+short-circuits on the first error (B1 decision, 2026-11-12).
+
+Callers should look at both fields of `ParseResult.Failure`:
+
+```kotlin
+when (val result = JsonToIr.parse(json)) {
+    is ParseResult.Success -> use(result.value)
+    is ParseResult.Failure -> {
+        if (result.typeErrors.isNotEmpty()) showTypeErrors(result.typeErrors)
+        if (result.errors.isNotEmpty()) showParseErrors(result.errors)
+    }
+}
+
+The two lists are mutually exclusive — exactly one is non-empty. This
+is enforced in ParseResult.Failure.init, not just by convention.
 
 ### Two-stage parsing
 
@@ -229,34 +254,54 @@ output. `test_adventure.json` is the reference: it must be lint-clean
 under current rules (test `lint is clean on test_adventure.json`).
 
 **Deferred to later phases:**
-- **Ф2.2:** type checker — unknown variable, `has_X` on non-Bool.
 - **Ф3.6:** dead conditions — `has_sword && !has_sword`.
 - **Ф4.6:** merge conflict analysis.
+
+**Type errors are not lint issues.** `TypeChecker` (Ф2.2, wired into
+`JsonToIr.parse` in Ф2.3) rejects unknown variables and wrong types
+**before** `Analyzer.lint` runs. The two error classes have different
+lifecycles: type errors block the parse pipeline
+(`ParseResult.Failure.typeErrors`), lint issues are reported on a
+successfully-parsed file. See [`engine-types.md`](./engine-types.md)
+and the "Error hierarchy" section above.
 
 ## Error hierarchy
 
 ```
-ParseError         (parse/:     JSON syntax, structural problems, condition syntax)
-  ├─ Syntax
-  ├─ Structure
-  └─ ConditionError
+ParseResult.Failure  (parse/ParseResult.kt:  the file cannot be opened)
+├─ errors:     List<ParseError>    ← JSON syntax / structure / condition syntax
+└─ typeErrors: List<TypeError>     ← unknown variables, wrong types (Ф2.3)
 
 CompileError       (CompileResult.kt:   indexes cannot be built)
-  ├─ DuplicateSceneId
-  ├─ MissingStartScene
-  └─ MissingNextScene
+├─ DuplicateSceneId
+├─ MissingStartScene
+└─ MissingNextScene
 
 LintIssue          (analyze/:   file plays, but is semantically wrong)
-  ├─ Severity.ERROR   ← reader refuses to open
-  ├─ Severity.WARNING ← reader warns, player decides
-  └─ Severity.INFO
+├─ Severity.ERROR   ← reader refuses to open
+├─ Severity.WARNING ← reader warns, player decides
+└─ Severity.INFO
 ```
+Four layers, four questions:
 
-Three layers, three questions:
+Can I turn this into IR? (ParseError)
 
-1. Can I turn this into IR? (ParseError)
-2. Can I build runtime indexes? (CompileError)
-3. Is the IR coherent? (LintIssue)
+Do all variable references make sense? (TypeError)
+
+Can I build runtime indexes? (CompileError)
+
+Is the IR coherent? (LintIssue)
+
+Two fields in ParseResult.Failure, not one. Parse errors and type
+errors come from different layers of the pipeline (parser vs type
+checker) and carry different structured data: ParseError has JSON
+paths and condition fragments; TypeError has variable names and
+types. Merging them would blur the I3 boundary between "the file
+cannot be parsed" and "the file parses, but its variable references
+are wrong". Two fields keep the boundary visible in the type system,
+and they are mutually exclusive (enforced in Failure.init): the
+parser stops at the first failing stage — type checking runs only on
+a fully parsed IR (Ф2.3 / B1 decision, 2026-11-12).
 
 Same boundary fixed in Ф1.3.4.1: putting a semantic check in the
 parser makes both harder to test and blurs the error message the
@@ -290,7 +335,13 @@ are uploaded as `engine-test-reports`.
 
 - [`architecture.md`](./architecture.md) — high-level layers and data
   flow.
+- [`engine-types.md`](./engine-types.md) — the variable type system
+  (Ф2): six `VarType` variants, `TypeChecker`, `inferTypes`, runtime
+  clamp policy.
+- [`engine-conditions.md`](./engine-conditions.md) — the condition
+  grammar (Ф3.2): `has_X`, `Compare`, `InRange`, `&&`, `||`, `!`,
+  parentheses; round-trip with `ConditionWriter`.
 - [`../README.md`](../README.md) — project overview.
 - [`checklist-tracker.md`](./checklist-tracker.md) — phase plan,
-  including Ф1.1–Ф1.10 (this document closes Ф1.10).
+  including Ф1.1–Ф1.10 (this document closes Ф1.10) and Ф2.1–Ф2.10.
 - [`roadmap.md`](./roadmap.md) — post-Ф10 plan.

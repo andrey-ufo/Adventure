@@ -15,6 +15,19 @@
       "potion": 3
     }
   },
+  "variables": {
+    "health": { "type": "int_min", "min": 0 },
+    "stamina": { "type": "int_min", "min": 0 },
+    "mana": { "type": "int_min", "min": 0 },
+    "sword": { "type": "item_count" },
+    "potion": { "type": "item_count" },
+    "initial_flag": { "type": "bool" },
+    "visited_forest": { "type": "bool" },
+    "knows_secret": { "type": "bool" },
+    "hidden_secret": { "type": "bool" },
+    "quest_started": { "type": "bool" },
+    "quest_completed": { "type": "bool" }
+  },
   "death_scene": {
     "id": "death_scene",
     "text": "💀 Вы погибли. Здоровье закончилось.",
@@ -22,6 +35,9 @@
     "allow_chapter_restart": true,
     "allow_adventure_restart": true
   },
+  "invariants": [
+    { "condition": "health <= 0", "outcome": "death" }
+  ],
   "tags": [
     { "name": "health", "display_name": "Здоровье", "category": "HEALTH", "visible": true },
     { "name": "stamina", "display_name": "Выносливость", "category": "HEALTH", "visible": true },
@@ -48,18 +64,27 @@
             { "text": "Проверить предметы", "next_scene": "items_test", "modify_stats": {"potion": 2} },
             { "text": "Проверить журнал", "next_scene": "journal_test", "set_flags": ["visited_forest", "knows_secret"] },
             { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "sword > 0" },
-            { "text": "Перейти к концу главы", "next_scene": "chapter_end_1" }
+            { "text": "Перейти к концу главы", "next_scene": "chapter_end_1" },
+            { "text": "Составные условия (демо, сразу)", "next_scene": "conditions_advanced_test" },
+            { "text": "Тест шагового гейта (демо)", "next_scene": "gate_test" }
           ]
         },
         {
           "id": "health_test",
-          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Выход из этой сцены требует 1 шаг — демонстрация per-visit шлюза (gate_repeatable: true): каждый вход снова требует 1 шаг. Моделирует «путь» между локациями.",
-          "gate": 1,
-          "gate_repeatable": true,
+          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Шаговый гейт здесь не задан — сразу можно щёлкать урон / лечение / смерть.",
           "choices": [
             { "text": "Получить урон (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
             { "text": "Получить лечение (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
             { "text": "Погибнуть (урон -999)", "next_scene": "health_test", "modify_stats": {"health": -999} },
+            { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "gate_test",
+          "text": "Демонстрация per-visit шагового гейта (gate_repeatable: true): выход из этой сцены требует 1 шаг, и каждый вход снова требует 1 шаг. Моделирует «путь» между локациями — чтобы пойти и вернуться, нужно пройти путь дважды. Пройдите 1 шаг (пройдитесь с телефоном) — кнопка «Назад» станет доступна. Для сравнения: гейты на chapter_end_1 и chapter_end_2 — one-shot (пройден один раз — больше не мешает).",
+          "gate": 1,
+          "gate_repeatable": true,
+          "choices": [
             { "text": "Назад", "next_scene": "start" }
           ]
         },
@@ -110,7 +135,8 @@
             { "text": "Только если здоровье < 50", "next_scene": "unhealthy", "condition": "health < 50" },
             { "text": "Только если есть меч", "next_scene": "has_sword_node", "condition": "sword > 0" },
             { "text": "Продолжить", "next_scene": "chapter_end_2" },
-            { "text": "В финал (демо межглавного перехода)", "next_scene": "final" }
+            { "text": "В финал (демо межглавного перехода)", "next_scene": "final" },
+            { "text": "Составные условия (демо)", "next_scene": "conditions_advanced_test" }
           ]
         },
         {
@@ -127,6 +153,18 @@
           "id": "has_sword_node",
           "text": "У вас есть меч.",
           "choices": [{ "text": "Назад", "next_scene": "conditions_test" }]
+        },
+        {
+          "id": "conditions_advanced_test",
+          "text": "Демо составных условий: &&, ||, !, in. Каждая кнопка ниже — валидное условие в новом синтаксисе. Если условие не выполнено, кнопка недоступна (в текущей читалке — скрыта, станет видимой disabled в N4).",
+          "choices": [
+            { "text": "&& : флаг + сравнение", "next_scene": "healthy", "condition": "has_initial_flag && health >= 50" },
+            { "text": "|| : два флага", "next_scene": "healthy", "condition": "has_initial_flag || has_quest_started" },
+            { "text": "! : отрицание флага", "next_scene": "healthy", "condition": "!has_quest_completed" },
+            { "text": "in : диапазон", "next_scene": "healthy", "condition": "health in 50..100" },
+            { "text": "!(...) : отрицание группы", "next_scene": "healthy", "condition": "!(has_quest_started && has_quest_completed)" },
+            { "text": "Назад", "next_scene": "conditions_test" }
+          ]
         },
         {
           "id": "chapter_end_2",

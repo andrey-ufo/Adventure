@@ -181,9 +181,17 @@ class AdventureListFragment : Fragment() {
             when (val result = JsonToIr.parse(json)) {
                 is ParseResult.Success -> result.value
                 is ParseResult.Failure -> {
+                    // Ф2.3: ParseResult.Failure may carry parse errors OR
+                    // type errors (exactly one of the two — see
+                    // ParseResult.Failure KDoc). Pick whichever is
+                    // non-empty; without this, a type-error-only file would
+                    // log "Skip '...': null", which is useless.
+                    val reason = result.errors.firstOrNull()?.message
+                        ?: result.typeErrors.firstOrNull()?.message
+                        ?: "unknown error"
                     Logger.log(
                         requireContext(),
-                        "Skip '${uri.lastPathSegment}': ${result.errors.firstOrNull()?.message}",
+                        "Skip '${uri.lastPathSegment}': $reason",
                     )
                     null
                 }

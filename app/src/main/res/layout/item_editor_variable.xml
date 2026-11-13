@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="6dp"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/scene_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <EditText
+            android:id="@+id/et_var_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Имя переменной"
+            android:inputType="text"
+            android:autofillHints=""
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="13sp"
+            android:background="@android:color/transparent" />
+
+        <Button
+            android:id="@+id/btn_delete_variable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="#FF4444"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="14sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="2dp">
+
+        <Spinner
+            android:id="@+id/spinner_var_kind"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <EditText
+            android:id="@+id/et_var_min"
+            android:layout_width="64dp"
+            android:layout_height="wrap_content"
+            android:hint="min"
+            android:inputType="numberSigned"
+            android:autofillHints=""
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="12sp"
+            android:background="@android:color/transparent"
+            android:visibility="gone"
+            android:layout_marginStart="4dp" />
+
+        <EditText
+            android:id="@+id/et_var_max"
+            android:layout_width="64dp"
+            android:layout_height="wrap_content"
+            android:hint="max"
+            android:inputType="numberSigned"
+            android:autofillHints=""
+            android:textColor="#FFFFFF"
+            android:textColorHint="#AAAAAA"
+            android:textSize="12sp"
+            android:background="@android:color/transparent"
+            android:visibility="gone"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+</LinearLayout>

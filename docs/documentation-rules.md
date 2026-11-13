@@ -14,6 +14,10 @@ written, structured and maintained. It is expected to change rarely.
     - domain terms referenced from the glossary.
 - Source-code comments are written in English (see `CONTRIBUTING.md`).
 
+**Exception:** `docs/progress/progress-log-*.md` files created **before
+2026-11-12** are kept in their original Russian for historical accuracy.
+New progress log entries (from Ф2.8 onward) are in English.
+
 ## 2. File format and naming
 
 - **GitHub Flavored Markdown (GFM)**. This is what GitHub renders, and it
@@ -27,6 +31,27 @@ written, structured and maintained. It is expected to change rarely.
   split it.
 - Images live in `docs/images/`. Only add them when a screenshot or diagram is
   strictly necessary — screenshots go stale quickly in a pre-alpha project.
+- **Progress log files: one phase per file, from `progress-log-3.md` onward.**
+  Each `progress-log-N.md` (N ≥ 3) covers **exactly one phase** of
+  [`checklist-tracker.md`](./checklist-tracker.md). Sub-steps within a
+  phase (e.g. Ф2.8.1, Ф3.5.2) are **entries inside the phase's file**, not
+  new files. When a phase gate closes, the current log file is **sealed**
+  (last entry: "Gate ФX closed. This file is now sealed. Continuation in
+  `progress-log-(N+1).md`.") and the next phase starts a fresh file with
+  a "Continuation from `progress-log-N.md` (phases X–Y)" header.
+  **The only historical exception** is `progress-log-3.md` itself, which
+  begins at Ф2.8 (the last sub-step of Ф2) to coincide with the Russian →
+  English language switch; Ф2.4–Ф2.7 (Russian) live in
+  `progress-log-2.md`. See [`progress/progress-log.md`](./progress/progress-log.md)
+  for the file index and reading order.
+- **Quoting a whole file inside another code block** (a PR description,
+  review comment, chat, digest tool, or another markdown document): use a
+  **longer** fence than any fence the file itself contains. If the file
+  contains three-backtick fences (` ``` `), wrap it in four
+  (` ````markdown … ```` `). Markdown closes the outer block on the first
+  inner fence of the same length or longer; using one extra backtick
+  prevents the outer block from closing prematurely. This is the general
+  rule for **any** nested code block, not just `docs/` files.
 
 ## 3. Structure of every document
 

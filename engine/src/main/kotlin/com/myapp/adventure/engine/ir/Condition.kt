@@ -1,5 +1,6 @@
 package com.myapp.adventure.engine.ir
 
+import com.myapp.adventure.engine.ir.types.VarType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -12,12 +13,72 @@ import kotlinx.serialization.Serializable
  * (`evaluator` in Ф3, `Analyzer` in Ф1.6, future JS runtime in E1)
  * works with this tree instead of re-parsing strings.
  *
- * **Not included yet** (deferred to Ф3.2 / N7.base): `VarRef` as a
- * standalone node for arithmetic like `health + stamina > 50`. Add it
- * as a new subclass when needed — existing subclasses do not change.
+ * **Added in Ф3.1:** [Literal] and [VarRef] — both for forward use by
+ * Ф3.2 (N7.base, `&&` / `||` / `!`), not yet produced by the parser.
+ * The parser (`ConditionParser`) intentionally rejects a bare
+ * `"health"` today with `ConditionError` — "not a valid condition".
+ * When Ф3.2 extends the grammar to accept `A && B` (where `B` is a
+ * bare variable reference), the parser will produce
+ * `VarRef("B")`. Until then, these nodes can only appear in hand-built
+ * IR (tests, future tooling). The writer (`ConditionWriter`, Ф3.1.2)
+ * already covers them; the reader's `Evaluator` does too.
  */
 @Serializable
 public sealed class Condition {
+
+    /**
+     * A boolean literal: `true` or `false`.
+     *
+     * **Not produced by the parser yet.** There is no JSON syntax for a
+     * literal condition today — an author writes an empty
+     * `"condition"` field to mean "always true", not `"true"`. This node
+     * exists for two future needs:
+     *
+     * 1. **AST optimizations** in Ф3.2 (`true && X` → `X`,
+     *    `false || X` → `X`) — the optimizer produces `Literal` as an
+     *    intermediate or final form.
+     * 2. **Round-trip completeness** in `ConditionWriter` (Ф3.1.2):
+     *    the writer must handle every sealed variant; a missing variant
+     *    would make the `when` non-exhaustive.
+     *
+     * Evaluated by `Evaluator.evaluate` as its [value].
+     */
+    @Serializable
+    @SerialName("literal")
+    public data class Literal(
+        public val value: Boolean,
+    ) : Condition()
+
+    /**
+     * A bare reference to a variable: `VarRef("has_sword")`.
+     *
+     * Semantically reads the same as `Has("has_sword")` for Bool
+     * variables — "is this Bool true?". The reason for a separate node
+     * is **syntax** in the future `&&` / `||` grammar (Ф3.2): when the
+     * author writes `has_sword && health_check_passed`, the second
+     * operand is a bare variable reference (`health_check_passed`),
+     * not a `has_X` condition. Without `VarRef`, the parser would have
+     * to invent a `Has` wrapper, which loses the syntactic distinction
+     * and makes the writer emit `has_health_check_passed` — a different
+     * string.
+     *
+     * **Not produced by the parser yet.** A bare `"health"` in JSON is
+     * a parse error (`ConditionParser` returns `ConditionError` with
+     * "not a valid condition"). This is **intentional** until Ф3.2:
+     * accepting it today would silently treat a typo (`"helth"`) as
+     * `VarRef("helth")` instead of rejecting the malformed condition.
+     *
+     * **Evaluator** handles this by reading `state.flags.contains(name)`
+     * (same as `Has`). **Type checker** treats it as no-op in Ф3.1 —
+     * `VarRef` is not produced by the parser, so there is nothing to
+     * check in practice; Ф3.2 will add `VarRefOnNonBool` when the parser
+     * starts producing the node.
+     */
+    @Serializable
+    @SerialName("var_ref")
+    public data class VarRef(
+        public val name: String,
+    ) : Condition()
 
     /**
      * `has_X` — true if boolean flag `X` is set.

@@ -10,12 +10,32 @@ import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorSnapshot
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.EditorVarDecl
 import com.myapp.adventure.data.PlayerState
+import com.myapp.adventure.data.VariableDto
+import com.myapp.adventure.data.VarKind
+import com.myapp.adventure.data.toVarType
 import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.engine.ir.Adventure as IrAdventure
+import com.myapp.adventure.engine.ir.Chapter as IrChapter
+import com.myapp.adventure.engine.ir.Choice as IrChoice
+import com.myapp.adventure.engine.ir.ChoiceId as IrChoiceId
+import com.myapp.adventure.engine.ir.Condition as IrCondition
+import com.myapp.adventure.engine.ir.DeathScene as IrDeathScene
+import com.myapp.adventure.engine.ir.Effect as IrEffect
+import com.myapp.adventure.engine.ir.Gate as IrGate
+import com.myapp.adventure.engine.ir.InitialState as IrInitialState
+import com.myapp.adventure.engine.ir.Scene as IrScene
+import com.myapp.adventure.engine.ir.SceneId as IrSceneId
+import com.myapp.adventure.engine.ir.TagCategory as IrTagCategory
+import com.myapp.adventure.engine.ir.TagDefinition as IrTagDefinition
+import com.myapp.adventure.engine.parse.ConditionParser
+import com.myapp.adventure.engine.parse.ParseError
+import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.utils.Logger
 
 class AdventureEditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -27,6 +47,15 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     val initialStateTags: MutableList<EditorTag> = mutableListOf()
     var initialStateExpanded: Boolean = false
+
+    /**
+     * Ф2.7: объявления переменных. Источник истины для UI
+     * ([VariablesAdapter]) и для IR/JSON-сборки
+     * ([buildIrAdventure] / [buildAdventure]).
+     * Пока пусто — TypeChecker работает в fallback-режиме.
+     */
+    val variables: MutableList<EditorVarDecl> = mutableListOf()
+    var variablesExpanded: Boolean = false
 
     private val expandedScenes = mutableSetOf<String>()
     private val expandedChoices = mutableSetOf<String>()
@@ -137,6 +166,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         title = title,
         author = author,
         description = description,
+        variables = variables.map { it.copy() },
         initialStateTags = initialStateTags.map { it.copy() },
         scenes = scenes.map { it.deepCopy() }
     )
@@ -145,6 +175,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         title = snapshot.title
         author = snapshot.author
         description = snapshot.description
+        variables.clear()
+        variables.addAll(snapshot.variables.map { it.copy() })
         initialStateTags.clear()
         initialStateTags.addAll(snapshot.initialStateTags.map { it.copy() })
         scenes.clear()
@@ -371,6 +403,65 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         initialStateTags.add(EditorTag(category = TagCategory.JOURNAL))
     }
 
+    // ---------- Ф2.7: переменные ----------
+
+    fun addVariable() {
+        variables.add(EditorVarDecl())
+        Logger.log(context, "Добавлена переменная, индекс: ${variables.size - 1}")
+    }
+
+    fun removeVariable(index: Int) {
+        if (index in variables.indices) {
+            val removed = variables.removeAt(index)
+            Logger.log(
+                context,
+                "Удалена переменная '${removed.name.ifEmpty { "(без имени)" }}', индекс: $index",
+            )
+        }
+    }
+
+    /**
+     * Ф2.7: конверсия `VariableDto` (загруженная из JSON) → `EditorVarDecl`
+     * (UI-форма). Unknown `type` → `Integer` (permissive default — не
+     * терять переменную, даже если в JSON оказалось незнакомое значение;
+     * fallback не каскадит `UnknownVariable`).
+     */
+    fun editorVarDeclFromDto(name: String, dto: VariableDto): EditorVarDecl {
+        return when (dto.type) {
+            "bool" -> EditorVarDecl(name, VarKind.BOOL)
+            "int" -> EditorVarDecl(name, VarKind.INTEGER)
+            "int_min" -> EditorVarDecl(name, VarKind.INT_MIN, min = dto.min)
+            "int_range" -> EditorVarDecl(name, VarKind.INT_RANGE, min = dto.min, max = dto.max)
+            "item_count" -> EditorVarDecl(name, VarKind.ITEM_COUNT)
+            "item_list" -> EditorVarDecl(name, VarKind.ITEM_LIST)
+            else -> EditorVarDecl(name, VarKind.INTEGER)
+        }
+    }
+
+    /**
+     * Ф2.7: `MutableList<EditorVarDecl>` → JSON-map для Gson-save.
+     * Пустая коллекция → `null` (Gson опускает поле, JSON чистый).
+     * Имена с пустыми `name` игнорируются — валидация покажет warning.
+     */
+    private fun buildVariablesDto(): Map<String, VariableDto>? {
+        if (variables.isEmpty()) return null
+        val result = mutableMapOf<String, VariableDto>()
+        for (v in variables) {
+            val clean = v.name.trim()
+            if (clean.isEmpty()) continue
+            val dto = when (v.kind) {
+                VarKind.BOOL -> VariableDto("bool")
+                VarKind.INTEGER -> VariableDto("int")
+                VarKind.INT_MIN -> VariableDto("int_min", min = v.min)
+                VarKind.INT_RANGE -> VariableDto("int_range", min = v.min, max = v.max)
+                VarKind.ITEM_COUNT -> VariableDto("item_count")
+                VarKind.ITEM_LIST -> VariableDto("item_list")
+            }
+            result[clean] = dto
+        }
+        return result.ifEmpty { null }
+    }
+
     fun removeInitialStateTag(index: Int) {
         if (index in initialStateTags.indices) {
             initialStateTags.removeAt(index)
@@ -591,10 +682,244 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             author = author,
             description = description,
             initialState = buildInitialState(),
+            variables = buildVariablesDto(),
             tags = tagRegistry.values.toList(),
             deathScene = deathScene,
             chapters = chapters
         )
+    }
+
+    /**
+     * Ф2.6-fix: builds a `:engine/ir/Adventure` from the current editor
+     * state.
+     *
+     * **Why this is a separate method from [buildAdventure].**
+     * [buildAdventure] returns `:app/data/Adventure` — the Gson POJO
+     * used to **serialize to disk**. That model is intentionally narrow
+     * (only fields Gson needs to write the file) and predates the IR
+     * (Ф1.7.5 documented the trade-off). `StoryValidator` (Ф2.6) and
+     * the engine pipeline (`TypeChecker.check`, `Engine.compile`,
+     * `Analyzer.lint`) work on `:engine/ir/Adventure`, which is the
+     * **richer** model the reader sees. Before Ф2.6, "Проверить" ran on
+     * a hand-rolled `StoryValidator` that re-implemented nine of the
+     * engine's checks — and the two would drift. This method gives the
+     * validation path the actual IR, so the author sees exactly what
+     * the reader would.
+     *
+     * **What is built from what.**
+     * - scenes / chapters: the same grouping as [buildAdventure]
+     *   (`isChapterEnd` closes a chapter; last non-death scene closes
+     *   the last chapter).
+     * - effects: `EditorTag` list → `List<Effect>` in the same order
+     *   as `JsonToIr.buildEffects` (`set_flag` → `remove_flag` →
+     *   `modify_stat`), derived from the existing [serializeTags].
+     * - gate: `gateRequiredSteps > 0` → `Gate(requiredSteps,
+     *   repeatable)`. Omitted otherwise.
+     * - `is_ending`: from `EditorScene.isEnding`.
+     * - `startScene`: first non-death scene's id. If there is no such
+     *   scene, `SceneId("")` — that is a structural error that
+     *   `Engine.compile` will report as `MissingStartScene`.
+     * - `death_scene`: from the `EditorScene` flagged
+     *   `isDeathScene`.
+     * - `tags`: `TagDefinition` registry built the same way as
+     *   [buildAdventure].
+     * - `initial_state`: from [buildInitialState] (already nullable;
+     *   `null` → empty `InitialState`).
+     * - **`variables`: empty**. Ф2.8 populates it; until then,
+     *   `TypeChecker` falls back to `tags` + `initial_state`
+     *   (documented behaviour, C4 in Ф2.2). This is deliberate: a
+     *   file that the editor has not yet learned to declare types for
+     *   still gets **some** type checking (unknown variables, wrong
+     *   has/compare/effect), which is more than it got before Ф2.6.
+     *
+     * **Conditions are parsed here, not in `StoryValidator`.**
+     * `EditorChoice.conditionTag` is a raw string; `IrChoice.condition`
+     * is a typed AST. We parse it with [ConditionParser] — the same
+     * parser the reader uses — and on `ParseResult.Failure` we (a) put
+     * `null` into the IR (so type checking of the rest of the
+     * adventure still runs) and (b) collect the error into the second
+     * element of the returned Pair. The caller (`showValidationDialog`)
+     * prepends those parse errors to the issue list, so the author
+     * sees "condition does not parse" **before** validation runs on
+     * the rest. `StoryValidator` itself stays free of condition
+     * parsing — that is the Ф2.6 DoD ("no `extractHasFlagName`").
+     *
+     * **What this method does NOT do.**
+     * - It does not serialize to JSON. Serialization is [buildAdventure]
+     *   (Gson) and will be replaced by `IrToJson` in Ф8.
+     * - It does not mutate `scenes`, `initialStateTags`, or any other
+     *   editor state. Calling it twice produces an equal Pair.
+     * - It does not touch `pendingJumpToSceneUid` or any UI state.
+     *
+     * @return Pair of the built IR and any parse errors encountered
+     *   while converting conditions. The IR is always non-null; parse
+     *   errors are empty when all conditions parsed cleanly.
+     */
+    fun buildIrAdventure(): Pair<IrAdventure, List<ParseError>> {
+        Logger.log(context, "Сборка IR-модели приключения '${title.ifBlank { "(без названия)" }}'")
+        val parseErrors = mutableListOf<ParseError>()
+
+        fun convertCategory(c: TagCategory): IrTagCategory = when (c) {
+            TagCategory.HEALTH -> IrTagCategory.HEALTH
+            TagCategory.ITEM -> IrTagCategory.ITEM
+            TagCategory.JOURNAL -> IrTagCategory.JOURNAL
+        }
+
+        fun effectsOf(tags: List<EditorTag>): List<IrEffect> {
+            val (setFlags, removeFlags, modifyStats) = serializeTags(tags)
+            val result = mutableListOf<IrEffect>()
+            setFlags.orEmpty().forEach { result += IrEffect.SetFlag(it) }
+            removeFlags.orEmpty().forEach { result += IrEffect.RemoveFlag(it) }
+            modifyStats.orEmpty().forEach { (name, delta) -> result += IrEffect.ModifyStat(name, delta) }
+            return result
+        }
+
+        fun conditionOf(raw: String, fallbackSceneId: String, choiceIndex: Int): IrCondition? {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return null
+            return when (val r = ConditionParser.parse(trimmed)) {
+                is ParseResult.Success -> r.value
+                is ParseResult.Failure -> {
+                    // Re-anchor the error with a JSON-like path so the
+                    // author gets "which scene / which choice" — same
+                    // convention as JsonToIr's path strings.
+                    r.errors.forEach { err ->
+                        parseErrors += if (err is ParseError.ConditionError) {
+                            err.copy(path = "scene[$fallbackSceneId].choices[$choiceIndex].condition")
+                        } else {
+                            err
+                        }
+                    }
+                    null
+                }
+            }
+        }
+
+        val deathSceneEditor = scenes.firstOrNull { it.isDeathScene }
+
+        // Chapters + scenes — same grouping algorithm as buildAdventure().
+        val irChapters = mutableListOf<IrChapter>()
+        val currentScenes = mutableListOf<IrScene>()
+        var chapterIndex = 1
+
+        fun flushChapter() {
+            if (currentScenes.isEmpty()) return
+            irChapters += IrChapter(
+                id = "chapter_$chapterIndex",
+                title = "Глава $chapterIndex",
+                scenes = currentScenes.toList(),
+            )
+            currentScenes.clear()
+            chapterIndex++
+        }
+
+        val lastNonDeathScene = scenes.lastOrNull { !it.isDeathScene }
+        for (scene in scenes) {
+            if (scene.isDeathScene) continue
+            if (scene.id.isBlank()) {
+                // Skip blank-id scenes — validation will report them
+                // separately via Engine.compile (duplicate "" ids are
+                // also caught).
+                continue
+            }
+            val sceneGate: IrGate? = if (scene.gateRequiredSteps > 0) {
+                IrGate(requiredSteps = scene.gateRequiredSteps, repeatable = scene.gateRepeatable)
+            } else null
+            val irChoices = scene.choices.mapIndexed { idx, choice ->
+                IrChoice(
+                    id = IrChoiceId("${scene.id}_choice_$idx"),
+                    text = choice.text,
+                    nextScene = IrSceneId(choice.nextSceneId),
+                    condition = conditionOf(choice.conditionTag, scene.id, idx),
+                    effects = effectsOf(choice.tags),
+                )
+            }
+            currentScenes += IrScene(
+                id = IrSceneId(scene.id),
+                text = scene.text,
+                effects = effectsOf(scene.tags),
+                choices = irChoices,
+                gate = sceneGate,
+                isEnding = scene.isEnding,
+            )
+            if (scene.isChapterEnd || scene === lastNonDeathScene) {
+                flushChapter()
+            }
+        }
+        flushChapter()
+
+        // Tag registry — same logic as buildAdventure().
+        val tagRegistry = LinkedHashMap<String, IrTagDefinition>()
+        fun registerTag(tag: EditorTag) {
+            val cleanName = tag.name.removePrefix("!").trim()
+            if (cleanName.isEmpty()) return
+            val effectiveCategory = if (cleanName == "health") TagCategory.HEALTH else tag.category
+            val effectiveDisplay = if (cleanName == "health" && tag.displayName.isBlank()) {
+                "Здоровье"
+            } else {
+                tag.displayName.ifBlank { cleanName }
+            }
+            tagRegistry[cleanName] = IrTagDefinition(
+                name = cleanName,
+                displayName = effectiveDisplay,
+                category = convertCategory(effectiveCategory),
+                visible = tag.visible,
+            )
+        }
+        initialStateTags.forEach { registerTag(it) }
+        for (scene in scenes) {
+            scene.tags.forEach { registerTag(it) }
+            scene.choices.forEach { c -> c.tags.forEach { registerTag(it) } }
+        }
+
+        val irInitial: IrInitialState = buildInitialState()?.let {
+            IrInitialState(
+                flags = it.flags ?: emptyList(),
+                stats = it.stats ?: emptyMap(),
+            )
+        } ?: IrInitialState()
+
+        val irDeath: IrDeathScene? = deathSceneEditor?.let {
+            IrDeathScene(
+                id = IrSceneId(it.id.ifEmpty { "death_scene" }),
+                text = it.text,
+                allowStepBack = it.deathAllowStepBack,
+                allowChapterRestart = it.deathAllowChapterRestart,
+                allowAdventureRestart = it.deathAllowAdventureRestart,
+            )
+        }
+
+        val startScene: IrSceneId = scenes
+            .firstOrNull { !it.isDeathScene && it.id.isNotBlank() }
+            ?.let { IrSceneId(it.id) }
+            ?: IrSceneId("")
+
+        // Ф2.7: реальные объявления переменных из editor-модели. Пустая
+        // коллекция → `emptyMap()` → TypeChecker fallback (C4) работает
+        // через tags + initialState. Недозаполненные IntMin/IntRange
+        // (без min/max) даунгрейдятся до Integer через
+        // `EditorVarDecl.toVarType()` — permissive default, чтобы одна
+        // недозаполненная декларация не каскадила `UnknownVariable`
+        // на все ссылки.
+        val irVariables: Map<String, com.myapp.adventure.engine.ir.types.VarDecl> =
+            variables.mapNotNull { decl ->
+                val clean = decl.name.trim()
+                if (clean.isEmpty()) return@mapNotNull null
+                val type = decl.toVarType() ?: return@mapNotNull null
+                clean to com.myapp.adventure.engine.ir.types.VarDecl(clean, type)
+            }.toMap()
+        val adventure = IrAdventure(
+            title = title,
+            author = author,
+            description = description,
+            variables = irVariables,
+            tags = tagRegistry.values.toList(),
+            initialState = irInitial,
+            deathScene = irDeath,
+            startScene = startScene,
+            chapters = irChapters,
+        )
+        return adventure to parseErrors
     }
 
     companion object {

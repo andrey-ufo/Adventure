@@ -105,17 +105,24 @@ an enforcement mechanism.
 
 ### I3. Parser vs compiler vs analyzer boundary
 
-- **Parser** (`JsonToIr.parse`): "can the file be turned into IR?" —
-  JSON syntax, condition syntax, required fields.
-- **Compiler** (`Engine.compile`): "can the runtime indexes be built?"
-  — duplicate scene ids, missing start scene, dangling `nextScene`.
-- **Analyzer** (`Analyzer.lint`): "is the IR coherent?" — reachability,
-  unestablished variables, dead ends, contradictory endings.
+Parser (JsonToIr.parse — first stage): "can the file be turned
+into IR?" — JSON syntax, condition syntax, required fields.
 
-Mixing these layers makes both harder to test. A file that parses but
-does not compile is rejected before the reader opens it. A file that
-compiles but has `WARNING` issues opens with a dialog — the player
-decides.
+Type checker (TypeChecker.check, wired into JsonToIr.parse as
+the second stage, Ф2.3): "do all variable references make sense?" —
+unknown variables, wrong types, wrong effect for the type.
+
+Compiler (Engine.compile): "can the runtime indexes be built?"
+— duplicate scene ids, missing start scene, dangling nextScene.
+
+Analyzer (Analyzer.lint): "is the IR coherent?" — reachability,
+unestablished items, dead ends, contradictory endings.
+
+Mixing these layers makes both harder to test and blurs the error
+message the author sees. Four layers, four questions. A file that
+does not parse or does not type-check is rejected before the reader
+opens it. A file that compiles but has WARNING issues opens with a
+dialog — the player decides.
 
 ### I4. Error severity reflects player impact
 

@@ -47,6 +47,9 @@ public enum class Severity {
  * **Why sealed and not an enum.** Future checks need per-variant data
  * ([LintKind.UnreachableScene] today; `TypeMismatch(variable)` in Ф2.2,
  * `DeadCondition(condition)` in Ф3.6, `MergeConflict(nodeId)` in Ф4.6).
+ * Ф3.5 added [UnreachableInvariant] with a `reason` field, so
+ * "reference to unset flag" and (future) "numeric condition never
+ * holds" coexist in one variant.
  * An enum cannot carry that data; a sealed class can grow without
  * breaking exhaustive `when` in the analyzer or in the UI.
  *
@@ -204,6 +207,36 @@ public sealed class LintKind {
      * the player never sees it, so there is nothing to unstick.
      */
     public data object DeadEnd : LintKind()
+
+    /**
+     * Ф3.5 (N2): an [com.myapp.adventure.engine.ir.Invariant] references
+     * a Bool flag that **never** appears anywhere — not in
+     * `initialState.flags`, not in `initialState.stats.keys`, not as a
+     * `SetFlag` target in any scene or choice. The invariant cannot
+     * fire, so its outcome (typically `Death`) is dead code.
+     *
+     * The author almost certainly mistyped the flag name, or removed
+     * the flag from wherever it used to be set. This is a **subset**
+     * of the broader `Analyzer.deadConditions` analysis planned for
+     * Ф3.6 (which will also handle numeric conditions — e.g.
+     * `health < -100` where `health` is `IntMin(0)` — and
+     * contradictory flag sets). Ф3.5 checks only the simplest case
+     * (`Has` / `VarRef` on a name that does not exist), which catches
+     * the most common typo class without the false-positive risk of
+     * numeric reachability analysis.
+     *
+     * **WARNING, not ERROR.** The adventure runs and plays; the
+     * invariant is simply dead. An author might have added it as a
+     * placeholder for a future scene.
+     *
+     * @property reason human-readable cause. Today the only kind is
+     *   "references flag(s) that are never set"; the field exists so
+     *   that a future numeric-reachability cause can be distinguished
+     *   by the UI without a new variant.
+     */
+    public data class UnreachableInvariant(
+        public val reason: String,
+    ) : LintKind()
 
     /**
      * A scene is marked

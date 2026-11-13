@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp"
+    android:background="@drawable/scene_background"
+    android:layout_marginBottom="12dp">
+
+    <LinearLayout
+        android:id="@+id/var_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground">
+
+        <TextView
+            android:id="@+id/tv_var_chevron"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:text="▼"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📋 Переменные"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:layout_marginStart="4dp" />
+
+        <TextView
+            android:id="@+id/tv_var_summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="11sp"
+            android:textColor="#9E9E9E" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/var_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="6dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Объявления типов переменных. Если пусто — type checking работает в fallback-режиме (по tags + initial_state)."
+            android:textSize="11sp"
+            android:textColor="#9E9E9E"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_add_variable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ Переменная"
+            android:textColor="#FFFFFF"
+            style="?android:attr/borderlessButtonStyle"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

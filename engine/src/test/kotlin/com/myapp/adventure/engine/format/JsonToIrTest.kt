@@ -192,23 +192,108 @@ class JsonToIrTest {
     }
 
     @Test
-    fun `typo in flag name parses as Has - type check is F2`() {
-        // `has_swrod` (typo for `sword`) parses successfully: the parser
-        // cannot know whether `swrod` is a declared variable. Catching
-        // typos is the type checker's job (Ф2.2), which will report
-        // "unknown variable 'swrod'" against [Adventure.variables].
+    fun `typo in flag name produces TypeError now that F2_3 wires the checker`() {
+        // Ф1.3.4.1 documented this boundary as "parser accepts, type
+        // checker rejects". Ф2.3 now actually runs the type checker inside
+        // `JsonToIr.parse`, so the same JSON that used to return
+        // `Success(ir)` now returns `Failure(typeErrors = [UnknownVariable])`.
         //
-        // This test documents the parser/analyzer boundary. If it starts
-        // failing, someone moved a semantic check into the parser and
-        // broke single-responsibility of each layer.
+        // **Fixture note.** The JSON includes `initial_state.flags` so
+        // that TypeChecker's fallback mode (C4) builds a non-empty type
+        // table. With an entirely empty `tags` + `initialState`,
+        // TypeChecker returns `emptyList()` (nothing to check against —
+        // see its KDoc, "Fallback" mode), and `swrod` would slip through
+        // as `Success`. The flag `marker` itself is irrelevant; it just
+        // makes the table non-empty, so `swrod` (which is not in it) is
+        // correctly reported as UnknownVariable.
+        //
+        // The parser/type-checker boundary is still preserved: this error
+        // is a **type error**, not a **parse error** — it lives in
+        // `typeErrors`, not in `errors`. Callers that only inspect
+        // `result.errors` see "the JSON is structurally valid"; callers
+        // that also inspect `result.typeErrors` see "but `swrod` is not a
+        // declared variable".
         val json = """
-            {"title":"T","chapters":[{"id":"c1","scenes":[{
+            {"title":"T","initial_state":{"flags":["marker"]},"chapters":[{"id":"c1","scenes":[{
               "id":"s1","text":"Hi","choices":[{"text":"Go","next_scene":"s1","condition":"has_swrod"}]
             }]}]}
         """.trimIndent()
-        val adv = success(json)
-        val choice = adv.chapters[0].scenes[0].choices[0]
-        assertEquals(Condition.Has("swrod"), choice.condition)
+        val result = JsonToIr.parse(json)
+        val failure = assertIs<ParseResult.Failure>(result)
+        assertEquals(emptyList(), failure.errors)
+        assertEquals(1, failure.typeErrors.size)
+        val typeErr = assertIs<com.myapp.adventure.engine.ir.types.TypeError.UnknownVariable>(
+            failure.typeErrors.single(),
+        )
+        assertEquals("swrod", typeErr.name)
+    }
+
+    @Test
+    fun `type errors are not checked when parse errors are present`() {
+        // B1 decision (Ф2.3): if parsing fails, type checking is not
+        // attempted. A partial IR would produce false negatives at best
+        // (unchecked conditions) and false positives at worst (unknown
+        // variables that would have been declared in the unparsed part).
+        //
+        // The input below combines two independent errors:
+        // - a **parse error**: blank choice.text (structural problem);
+        // - a **type error**: `has_swrod` (unknown variable).
+        // Expected: `Failure` with `errors` non-empty (the parse error)
+        // and `typeErrors` empty (typecheck was skipped).
+        val json = """
+            {"title":"T","chapters":[{"id":"c1","scenes":[{
+              "id":"s1","text":"Hi","choices":[
+                {"text":"","next_scene":"s1","condition":"has_swrod"}
+              ]
+            }]}]}
+        """.trimIndent()
+        val result = JsonToIr.parse(json)
+        val failure = assertIs<ParseResult.Failure>(result)
+        assertTrue(
+            failure.errors.isNotEmpty(),
+            "expected parse errors (blank choice.text), got ${failure.errors}",
+        )
+        assertEquals(
+            emptyList(),
+            failure.typeErrors,
+            "type checking must not run when parsing failed (B1 decision)",
+        )
+    }
+
+    @Test
+    fun `type errors produced when parse is clean - HasOnNonBool path`() {
+        // Companion to the test above, but exercises a **different**
+        // TypeError variant through the same pipeline: not "unknown
+        // variable", but "variable exists, but `has_` on it is wrong
+        // because its type is not Bool".
+        //
+        // Fixture: `sword` is declared as an ITEM tag (fallback mode
+        // infers `VarType.ItemCount`) and given `1` in the initial state.
+        // The choice uses `has_sword` on it — the common authoring
+        // mistake that Ф1.7.1a-fix3 fixed in `test_adventure.json` by
+        // rewriting it as `sword > 0`. TypeChecker now catches this
+        // automatically. The expected error is `HasOnNonBool`, with a
+        // fix-hint in its message ("use 'sword > 0' instead").
+        val json = """
+            {
+              "title": "T",
+              "tags": [{"name": "sword", "category": "ITEM"}],
+              "initial_state": {"stats": {"sword": 1}},
+              "chapters": [{"id": "c1", "scenes": [{
+                "id": "s1",
+                "text": "Hi",
+                "choices": [{"text": "Go", "next_scene": "s1", "condition": "has_sword"}]
+              }]}]
+            }
+        """.trimIndent()
+        val result = JsonToIr.parse(json)
+        val failure = assertIs<ParseResult.Failure>(result)
+        assertEquals(emptyList(), failure.errors)
+        assertEquals(1, failure.typeErrors.size)
+        val typeErr = assertIs<com.myapp.adventure.engine.ir.types.TypeError.HasOnNonBool>(
+            failure.typeErrors.single(),
+        )
+        assertEquals("sword", typeErr.name)
     }
 
     @Test
@@ -454,5 +539,171 @@ class JsonToIrTest {
         """.trimIndent()
         val adv = success(json)
         assertEquals(false, adv.chapters[0].scenes[0].isEnding)
+    }
+
+    // ---------- Ф2.8: variables parsing ----------
+
+    @Test
+    fun `variables block parses into VarDecl map`() {
+        val json = """
+            {
+              "title": "T",
+              "variables": {
+                "health": {"type": "int_range", "min": 0, "max": 100},
+                "sword": {"type": "item_count"},
+                "has_key": {"type": "bool"}
+              },
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(3, adv.variables.size)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.IntRange(0, 100),
+            adv.variables["health"]?.type,
+        )
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.ItemCount,
+            adv.variables["sword"]?.type,
+        )
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.Bool,
+            adv.variables["has_key"]?.type,
+        )
+        // VarDecl.name comes from the map key, not from the value.
+        assertEquals("health", adv.variables["health"]?.name)
+    }
+
+    @Test
+    fun `variables absent falls back to empty map`() {
+        val json = """
+            {"title":"T","chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(emptyMap(), adv.variables)
+    }
+
+    @Test
+    fun `unknown variable type downgrades to Integer`() {
+        val json = """
+            {
+              "title": "T",
+              "variables": {"foo": {"type": "future_type", "min": 5}},
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.Integer,
+            adv.variables["foo"]?.type,
+        )
+    }
+
+    @Test
+    fun `int_min without min downgrades to Integer`() {
+        // Matches :app EditorVarDecl.toVarType() behaviour (Ф2.7).
+        val json = """
+            {
+              "title": "T",
+              "variables": {"gold": {"type": "int_min"}},
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.Integer,
+            adv.variables["gold"]?.type,
+        )
+    }
+
+    @Test
+    fun `int_range without max downgrades to Integer`() {
+        val json = """
+            {
+              "title": "T",
+              "variables": {"health": {"type": "int_range", "min": 0}},
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.Integer,
+            adv.variables["health"]?.type,
+        )
+    }
+
+    // ---------- Ф3.5: invariants ----------
+
+    @Test
+    fun `invariants parse into IR`() {
+        val json = """
+            {
+              "title": "T",
+              "invariants": [
+                {"condition": "health <= 0", "outcome": "death"},
+                {"condition": "stamina <= 0", "outcome": "death"}
+              ],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(2, adv.invariants.size)
+        assertEquals(
+            com.myapp.adventure.engine.ir.CompareOp.LE,
+            (adv.invariants[0].condition as com.myapp.adventure.engine.ir.Condition.Compare).op,
+        )
+        assertEquals(
+            com.myapp.adventure.engine.ir.Outcome.Death,
+            adv.invariants[0].outcome,
+        )
+    }
+
+    @Test
+    fun `invariants absent falls back to empty list`() {
+        val json = """
+            {"title":"T","chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(emptyList(), adv.invariants)
+    }
+
+    @Test
+    fun `invalid invariant condition is ConditionError with path`() {
+        val json = """
+            {
+              "title": "T",
+              "invariants": [{"condition": "&& bad", "outcome": "death"}],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val errors = failure(json)
+        val condErr = errors.filterIsInstance<ParseError.ConditionError>().single()
+        val path = condErr.path
+        assertTrue(
+            path != null && path.contains("invariants[0].condition"),
+            "expected path to contain 'invariants[0].condition', got $path",
+        )
+    }
+
+    @Test
+    fun `unknown invariant outcome is Structure error`() {
+        val json = """
+            {
+              "title": "T",
+              "invariants": [{"condition": "health <= 0", "outcome": "deth"}],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val errors = failure(json)
+        val structErr = errors.filterIsInstance<ParseError.Structure>().single()
+        val path = structErr.path
+        assertTrue(
+            path != null && path.contains("invariants[0].outcome"),
+            "expected path to contain 'invariants[0].outcome', got $path",
+        )
+        assertTrue(
+            structErr.message.contains("deth"),
+            "expected message to mention 'deth', got ${structErr.message}",
+        )
     }
 }

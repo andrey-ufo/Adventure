@@ -81,3 +81,84 @@ data class RebuildResult(
     val newId: String,
     val updatedReferences: Int
 )
+
+/**
+ * Ф2.7 — UI-форма объявления переменной.
+ *
+ * Не переиспользует `:engine/ir/types/VarType` напрямую, потому что
+ * UI нужна «промежуточная» форма: автор печатает `0` в `min` и ещё
+ * не ввёл `max`. `VarType.IntRange(min, max)` требует оба значения
+ * сразу — промежуточного состояния нет. Поэтому `kind + min? + max?`
+ * (см. [toVarType] для конверсии в IR, permissive-fallback при
+ * недозаполненных полях).
+ *
+ * @property name имя переменной (совпадает с ключом в `variables`).
+ * @property kind тип из ограниченного набора (см. [VarKind]).
+ * @property min нижняя граница, `null` если не применимо / не введена.
+ * @property max верхняя граница, `null` если не применимо / не введена.
+ */
+data class EditorVarDecl(
+    var name: String = "",
+    var kind: VarKind = VarKind.BOOL,
+    var min: Int? = null,
+    var max: Int? = null,
+)
+
+/**
+ * Ф2.7 — тип переменной в UI-редакторе.
+ *
+ * 1:1 с `VarType` из `:engine` (Bool / Integer / IntMin / IntRange /
+ * ItemCount / ItemList). Отдельный enum нужен, чтобы `Spinner` показывал
+ * человекочитаемые лейблы и чтобы UI не тянул IR-классы.
+ */
+enum class VarKind(val displayName: String) {
+    BOOL("Bool (флаг)"),
+    INTEGER("Integer (любое целое)"),
+    INT_MIN("IntMin (>= min, без верха)"),
+    INT_RANGE("IntRange (min..max)"),
+    ITEM_COUNT("ItemCount (счётчик предмета)"),
+    ITEM_LIST("ItemList (список)");
+
+    /** Нужны ли `min`/`max` в UI для этого типа. */
+    val needsMin: Boolean
+        get() = this == INT_MIN || this == INT_RANGE
+    val needsMax: Boolean
+        get() = this == INT_RANGE
+}
+
+/**
+ * Конверсия UI-модели в IR-тип.
+ *
+ * **Permissive default.** Если `IntMin`/`IntRange` выбраны, но
+ * `min`/`max` не заполнены — возвращает `Integer` (самый широкий
+ * числовой тип). Смысл: одна недозаполненная декларация не должна
+ * каскадить `UnknownVariable` на все ссылки на переменную через
+ * fallback-таблицу. Вместо этого автор получит **Warning** от
+ * `StoryValidator` («min/max не заполнены — тип понижен до Integer»)
+ * и сможет исправить.
+ *
+ * @return `VarType` или `null`, если имя пустое (объявление не
+ *   используется, не попадает в IR).
+ */
+fun EditorVarDecl.toVarType(): com.myapp.adventure.engine.ir.types.VarType? {
+    if (name.isBlank()) return null
+    // Копируем `var`-поля в локальные `val` перед `when`: smart cast
+    // на mutable property невозможен (компилятор не гарантирует, что
+    // между проверкой и использованием значение не изменилось).
+    val minLocal = min
+    val maxLocal = max
+    return when (kind) {
+        VarKind.BOOL -> com.myapp.adventure.engine.ir.types.VarType.Bool
+        VarKind.INTEGER -> com.myapp.adventure.engine.ir.types.VarType.Integer
+        VarKind.INT_MIN -> minLocal?.let {
+            com.myapp.adventure.engine.ir.types.VarType.IntMin(it)
+        } ?: com.myapp.adventure.engine.ir.types.VarType.Integer
+        VarKind.INT_RANGE -> if (minLocal != null && maxLocal != null) {
+            com.myapp.adventure.engine.ir.types.VarType.IntRange(minLocal, maxLocal)
+        } else {
+            com.myapp.adventure.engine.ir.types.VarType.Integer
+        }
+        VarKind.ITEM_COUNT -> com.myapp.adventure.engine.ir.types.VarType.ItemCount
+        VarKind.ITEM_LIST -> com.myapp.adventure.engine.ir.types.VarType.ItemList
+    }
+}

@@ -1,5 +1,7 @@
 package com.myapp.adventure.engine.ir
 
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import kotlinx.serialization.Serializable
 
 /**

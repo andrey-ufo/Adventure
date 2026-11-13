@@ -12,6 +12,8 @@ import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.DeathScene
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.InitialState
+import com.myapp.adventure.engine.ir.Invariant
+import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagCategory
@@ -330,6 +332,63 @@ class AnalyzerTest {
         )
 
         assertEquals(emptyList(), Analyzer.lint(compiled))
+    }
+
+    @Test
+    fun `lint does not report removing item established by Set effect`() {
+        // Ф3.1: `Set("sword", 1)` establishes a positive value, so a
+        // later `ModifyStat("sword", -1)` is legitimate. Parallel to
+        // `lint does not report removing item established by positive effect`,
+        // but with `Set` as the establishing effect.
+        val give = scene(
+            "give",
+            choices = listOf(choice("c", "use")),
+            effects = listOf(Effect.Set("sword", 1)),
+        )
+        val use = scene(
+            "use",
+            effects = listOf(Effect.ModifyStat("sword", -1)),
+            isEnding = true,
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "give",
+                tags = listOf(itemTag("sword")),
+                chapters = arrayOf(chapter("ch", give, use)),
+            ),
+        )
+
+        assertEquals(emptyList(), Analyzer.lint(compiled))
+    }
+
+    @Test
+    fun `lint reports removing item when Set effect value is zero`() {
+        // Ф3.1: `Set("sword", 0)` does NOT establish sword. A later
+        // `ModifyStat("sword", -1)` should be reported as
+        // RemovingUnestablishedItem — same as if there was no `Set` at
+        // all. (This mirrors `lint reports removing unestablished item`.)
+        val use = scene(
+            "start",
+            effects = listOf(
+                Effect.Set("sword", 0),
+                Effect.ModifyStat("sword", -1),
+            ),
+            isEnding = true,
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "start",
+                tags = listOf(itemTag("sword")),
+                chapters = arrayOf(chapter("ch", use)),
+            ),
+        )
+
+        val issue = Analyzer.lint(compiled)
+            .single { it.kind is LintKind.RemovingUnestablishedItem }
+        assertEquals(
+            LintKind.RemovingUnestablishedItem("sword"),
+            issue.kind,
+        )
     }
 
     @Test
@@ -689,6 +748,53 @@ class AnalyzerTest {
         val retire = scene("retire", isEnding = true)
         val compiled = compile(adventure("mid", chapter("ch", mid, win, retire)))
 
+        assertEquals(emptyList(), Analyzer.lint(compiled))
+    }
+
+    // ---------- Ф3.5: invariants ----------
+
+    @Test
+    fun `lint reports invariant on unestablished flag`() {
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            invariants = listOf(
+                Invariant(
+                    condition = Condition.Has("never_set"),
+                    outcome = Outcome.Death,
+                ),
+            ),
+            chapters = listOf(
+                Chapter("ch", "ch", listOf(scene("a", isEnding = true))),
+            ),
+        )
+        val compiled = compile(adv)
+
+        val issue = Analyzer.lint(compiled).single {
+            it.kind is LintKind.UnreachableInvariant
+        }
+        assertEquals(Severity.WARNING, issue.severity)
+        assertEquals(null, issue.sceneId)
+        assertTrue(issue.message.contains("never_set"), issue.message)
+    }
+
+    @Test
+    fun `lint does not report invariant on established flag`() {
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            initialState = InitialState(flags = listOf("is_alive")),
+            invariants = listOf(
+                Invariant(
+                    condition = Condition.Not(Condition.Has("is_alive")),
+                    outcome = Outcome.Death,
+                ),
+            ),
+            chapters = listOf(
+                Chapter("ch", "ch", listOf(scene("a", isEnding = true))),
+            ),
+        )
+        val compiled = compile(adv)
         assertEquals(emptyList(), Analyzer.lint(compiled))
     }
 

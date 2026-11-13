@@ -93,4 +93,42 @@ class EffectsApplierTest {
         EffectsApplier.apply(original, listOf(Effect.ModifyStat("health", -5)))
         assertEquals(10, original.stats["health"])
     }
+
+    // ---------- Ф3.1: Effect.Set ----------
+
+    @Test
+    fun `set stat sets absolute value`() {
+        // Pre-existing value 50 → 100 (not 100 + 50).
+        val s = EffectsApplier.apply(
+            PlayerState(stats = mapOf("health" to 50)),
+            listOf(Effect.Set("health", 100)),
+        )
+        assertEquals(100, s.stats["health"])
+    }
+
+    @Test
+    fun `set stat creates missing stat with value`() {
+        val s = EffectsApplier.apply(
+            PlayerState(),
+            listOf(Effect.Set("mana", 5)),
+        )
+        assertEquals(5, s.stats["mana"])
+    }
+
+    @Test
+    fun `set stat clamps to zero`() {
+        // Same clamp policy as ModifyStat (Ф5 will make it type-aware).
+        val s = EffectsApplier.apply(
+            PlayerState(stats = mapOf("health" to 50)),
+            listOf(Effect.Set("health", -10)),
+        )
+        assertEquals(0, s.stats["health"])
+    }
+
+    @Test
+    fun `state is not mutated by set`() {
+        val original = PlayerState(stats = mapOf("health" to 50))
+        EffectsApplier.apply(original, listOf(Effect.Set("health", 100)))
+        assertEquals(50, original.stats["health"], "original state must not be mutated")
+    }
 }

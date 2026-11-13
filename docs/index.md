@@ -27,6 +27,10 @@ You extend the app, add features, or integrate new step sources.
 - [Architecture](./architecture.md) — high-level layers, data flow, invariants.
 - [Engine architecture](./engine-architecture.md) — deep dive into the
   `:engine` module: IR, parser, runtime, analyzer.
+- [Engine types](./engine-types.md) — the variable type system (Ф2):
+  six `VarType` variants, `TypeChecker`, `inferTypes`, runtime clamp.
+- [Engine conditions](./engine-conditions.md) — the condition grammar
+  (Ф3.2): `has_X`, `Compare`, `InRange`, `&&`, `||`, `!`, parentheses.
 - [Documentation rules](./documentation-rules.md) — how docs are written.
 
 ### For everyone

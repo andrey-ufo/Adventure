@@ -40,6 +40,7 @@ import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Effect
+import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.PlayerState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
@@ -236,6 +237,29 @@ class AdventureReaderFragment : Fragment() {
         // JSON by hand.
         when (val parseResult = JsonToIr.parse(adventureJson)) {
             is ParseResult.Failure -> {
+                // Ф2.3: ParseResult.Failure carries two disjoint lists —
+                // parse errors (JSON syntax / structure / condition syntax)
+                // and type errors (unknown variables, wrong types). The
+                // parser stops at the first failing stage, so exactly one
+                // of the two is non-empty (see ParseResult.Failure KDoc).
+                //
+                // Both paths pop the fragment; the difference is the dialog
+                // the player sees. A parse error is a fundamentally broken
+                // file ("this cannot be read"); a type error is a
+                // semantically wrong file ("this reads, but the variable
+                // references do not make sense"). Type errors get an
+                // AlertDialog (not a Toast) because their messages carry
+                // actionable fix-hints ("use 'sword > 0' instead") that
+                // the player may need to relay to the author.
+                if (parseResult.typeErrors.isNotEmpty()) {
+                    val first = parseResult.typeErrors.first().message
+                    Logger.log(
+                        requireContext(),
+                        "Type error: $first (${parseResult.typeErrors.size} total)",
+                    )
+                    showTypeErrorsDialog(parseResult.typeErrors)
+                    return
+                }
                 val firstError = parseResult.errors.firstOrNull()?.message ?: "unknown error"
                 Logger.log(requireContext(), "Parse error: $firstError")
                 Toast.makeText(
@@ -373,6 +397,44 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    /**
+     * Ф2.3: dialog for **type errors** ([ParseResult.Failure.typeErrors]).
+     *
+     * Type errors are different from [showBrokenAdventureDialog]'s LintIssue
+     * errors and from [showWarningDialog]'s warnings:
+     * - LintIssue ERROR (`EndingSceneWithChoices`) — the file plays, but
+     *   the player would see dead buttons. Blocking.
+     * - LintIssue WARNING (DeadEnd) — the player is asked "continue?" and
+     *   decides. Non-blocking.
+     * - **ParseResult.Failure.typeErrors** (this dialog) — the file
+     *   parses, but variable references are wrong (typo, wrong type,
+     *   wrong effect). Blocking: the runtime cannot honour the intent.
+     *
+     * A Toast is not enough here: the messages carry fix-hints that the
+     * player may need to relay to the author ("has_sword requires Bool,
+     * but sword is ItemCount — use 'sword > 0' instead"). The dialog shows
+     * up to five of them (same `maxShow` pattern as
+     * [showBrokenAdventureDialog]).
+     */
+    private fun showTypeErrorsDialog(
+        typeErrors: List<com.myapp.adventure.engine.ir.types.TypeError>,
+    ) {
+        val maxShow = 5
+        val message = buildString {
+            append("Файл содержит ${typeErrors.size} ошибок в типах переменных:\n\n")
+            typeErrors.take(maxShow).forEach { append("• ${it.message}\n") }
+            if (typeErrors.size > maxShow) {
+                append("\n…и ещё ${typeErrors.size - maxShow}")
+            }
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Не удалось открыть")
+            .setMessage(message)
+            .setPositiveButton("ОК") { _, _ -> parentFragmentManager.popBackStack() }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun showBrokenAdventureDialog(errors: List<LintIssue>) {
         val maxShow = 5
         val message = buildString {
@@ -496,7 +558,7 @@ class AdventureReaderFragment : Fragment() {
 
     private fun rebuildItemOrder() {
         itemOrder.clear()
-        adventure.tags?.filter { it.category == TagCategory.ITEM }?.forEach { def ->
+        adventure.tags.filter { it.category == TagCategory.ITEM }.forEach { def ->
             if ((stats[def.name] ?: 0) > 0) {
                 itemOrder.add(def.name)
             }
@@ -577,10 +639,34 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
+    /**
+     * Ф3.5: death check via `Engine.evaluateInvariants`, not the
+     * pre-Ф3.5 hardcoded `health <= 0`.
+     *
+     * Called after every scene entry (after `scene.effects` have been
+     * applied, if first time) and after every choice transition (in
+     * `onStepBack` reset path). If an invariant fires, `isDead = true`
+     * and the caller shows the death screen.
+     *
+     * **Why not use `StepResult.Success.outcome`.** The engine returns
+     * an outcome after **choice** effects; the reader must additionally
+     * check after **scene** effects (a scene entry can push the player
+     * into a violated invariant — e.g. a poison trap reducing health to
+     * 0 on entry). The engine cannot know whether the scene effects
+     * were already applied (`appliedSceneEffects` is a reader concern).
+     * Both paths funnel through `Engine.evaluateInvariants`, so the
+     * **rule** is identical.
+     *
+     * **Fallback behaviour is preserved.** For files with no
+     * `invariants` block (all pre-Ф3.5 files, or authors who do not
+     * declare them), `Engine.evaluateInvariants` falls back to
+     * `health <= 0` — same behaviour as the old code.
+     */
     private fun checkDeath(): Boolean {
         if (isDead) return false
-        val health = stats["health"] ?: return false
-        if (health > 0) return false
+        val state = PlayerState(flags = flags.toSet(), stats = stats.toMap())
+        val outcome = Engine.evaluateInvariants(adventure, state)
+        if (outcome != Outcome.Death) return false
         isDead = true
         return true
     }
@@ -799,8 +885,8 @@ class AdventureReaderFragment : Fragment() {
     private fun updateHud() {
         if (_binding == null) return
 
-        val healthDef = adventure.tags?.firstOrNull { it.name == "health" && it.category == TagCategory.HEALTH }
-            ?: adventure.tags?.firstOrNull { it.category == TagCategory.HEALTH }
+        val healthDef = adventure.tags.firstOrNull { it.name == "health" && it.category == TagCategory.HEALTH }
+            ?: adventure.tags.firstOrNull { it.category == TagCategory.HEALTH }
         val healthValue = healthDef?.let { stats[it.name] ?: 0 } ?: 0
         binding.btnHealth.text = "❤️ $healthValue"
 
@@ -1047,8 +1133,14 @@ class AdventureReaderFragment : Fragment() {
         val container = binding.choicesContainer
         container.removeAllViews()
 
+        // Ф3.4 (C1): one snapshot per `updateChoices` call. Every choice
+        // in the same scene sees the same `PlayerState` — no chance of
+        // divergence if something mutates `flags`/`stats` mid-loop
+        // (it should not, but consistency is cheap here).
+        val stateSnapshot = PlayerState(flags = flags.toSet(), stats = stats.toMap())
+
         for (choice in choices) {
-            val available = !forceDisabled && isConditionMet(choice.condition)
+            val available = !forceDisabled && conditionHolds(choice.condition, stateSnapshot)
             val button = Button(requireContext()).apply {
                 text = choice.text
                 if (available) {
@@ -1074,25 +1166,38 @@ class AdventureReaderFragment : Fragment() {
         }
     }
 
-    private fun isConditionMet(condition: Condition?): Boolean {
+    /**
+     * Thin wrapper over [Evaluator.evaluate] for the `updateChoices` loop.
+     *
+     * **What this is not.** Not a condition evaluator — the actual
+     * condition semantics live in `:engine` (`Evaluator`, Ф1.5.5.1 /
+     * Ф3.3). This method's only job is:
+     * 1. Treat `null` as "no condition, always available".
+     * 2. Take an explicit [PlayerState] snapshot, so the caller controls
+     *    when the snapshot is taken (once per `updateChoices`, C1 of
+     *    Ф3.4) and the loop is consistent.
+     *
+     * **Why a snapshot parameter, not "read the fragment's `flags` /
+     * `stats` fields".** A method that reads fragment fields has a
+     * hidden dependency: if `flags`/`stats` change during the loop, the
+     * available choices for one scene could disagree. Passing the state
+     * explicitly makes the helper pure w.r.t. the fragment and matches
+     * `Evaluator.evaluate(condition, state)`'s signature.
+     *
+     * **Historical note.** Before Ф3.4 the fragment had a private
+     * method that took only a `Condition?` and read `flags`/`stats`
+     * directly — the "second evaluator" that N2 forbids. Ф2.5
+     * removed the `catch → return true` fallback; Ф3.4 removed the
+     * last piece of local condition logic. The old method name is
+     * gone from `:app` entirely; the only condition evaluator is
+     * `:engine`'s [Evaluator].
+     */
+    private fun conditionHolds(
+        condition: Condition?,
+        state: PlayerState,
+    ): Boolean {
         if (condition == null) return true
-        return try {
-            // Single source of truth: Evaluator (Ф1.5). All callers —
-            // `Engine.step`, this reader, the editor analyzer — use the
-            // same evaluator, so a choice the reader shows as available
-            // is the same one `Engine.step` would allow.
-            //
-            // TODO(Ф2.5 / N8): the `catch { true }` fallback is a
-            // leftover from the pre-typed-string parser. Now that
-            // conditions are a typed AST, `Evaluator.evaluate` should
-            // never throw on valid input. Remove this fallback when
-            // the type checker (Ф2.2) guarantees that no invalid
-            // condition can reach the reader — that's N8's job.
-            Evaluator.evaluate(condition, PlayerState(flags.toSet(), stats.toMap()))
-        } catch (e: Exception) {
-            Logger.log(requireContext(), "isConditionMet failed: ${e.message}")
-            true
-        }
+        return Evaluator.evaluate(condition, state)
     }
 
     // ==================== Death screen ====================
@@ -1153,8 +1258,8 @@ class AdventureReaderFragment : Fragment() {
             itemOrder.clear()
             appliedSceneEffects.clear()
             val initialState = adventure.initialState
-            initialState?.flags?.forEach { addFlagIfMissing(it) }
-            if (initialState?.stats != null) stats.putAll(initialState.stats)
+            initialState.flags.forEach { addFlagIfMissing(it) }
+            stats.putAll(initialState.stats)
             rebuildItemOrder()
             currentSceneId = previewStartSceneId
             resetGate()
@@ -1627,8 +1732,8 @@ class AdventureReaderFragment : Fragment() {
                     stats.clear()
                     itemOrder.clear()
                     val initialState = adventure.initialState
-                    initialState?.flags?.forEach { addFlagIfMissing(it) }
-                    if (initialState?.stats != null) stats.putAll(initialState.stats)
+                    initialState.flags.forEach { addFlagIfMissing(it) }
+                    stats.putAll(initialState.stats)
                     rebuildItemOrder()
                     isDead = false
                     loadCurrentScene()

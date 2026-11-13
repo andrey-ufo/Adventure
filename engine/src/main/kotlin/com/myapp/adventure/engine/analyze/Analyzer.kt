@@ -136,6 +136,7 @@ public object Analyzer {
         issues += lintDeathWithoutDeathScene(compiled)
         issues += lintDeadEnd(compiled)
         issues += lintEndingSceneWithChoices(compiled)
+        issues += lintUnreachableInvariants(compiled)
         return issues.sortedWith(
             compareBy<LintIssue> { it.sceneId == null }
                 .thenBy { it.sceneId?.value ?: "" }
@@ -169,11 +170,29 @@ public object Analyzer {
         compiled.adventure.initialState.stats.forEach { (name, value) ->
             if (value > 0) positiveSet.add(name)
         }
+        // Ф3.1: `Set(name, N > 0)` establishes a positive value just as
+        // `ModifyStat(name, +N)` does. `Set(name, 0)` and `Set(name, -N)`
+        // do not establish — they reduce, not grant.
+        //
+        // Written as an inline `when` rather than a `Boolean`-returning
+        // helper (`Effect.establishesPositive(): Boolean`): after
+        // `establishesPositive()` returns true, the compiler does not
+        // smart-cast `effect` to `ModifyStat` / `Set`, so `effect.name`
+        // would not compile. An inline `when` performs the smart-cast at
+        // each branch.
         for (effect in allScenes.flatMap { it.effects }) {
-            if (effect is Effect.ModifyStat && effect.delta > 0) positiveSet.add(effect.name)
+            when (effect) {
+                is Effect.ModifyStat -> if (effect.delta > 0) positiveSet.add(effect.name)
+                is Effect.Set -> if (effect.value > 0) positiveSet.add(effect.name)
+                is Effect.SetFlag, is Effect.RemoveFlag -> Unit
+            }
         }
         for (effect in allChoices.flatMap { it.effects }) {
-            if (effect is Effect.ModifyStat && effect.delta > 0) positiveSet.add(effect.name)
+            when (effect) {
+                is Effect.ModifyStat -> if (effect.delta > 0) positiveSet.add(effect.name)
+                is Effect.Set -> if (effect.value > 0) positiveSet.add(effect.name)
+                is Effect.SetFlag, is Effect.RemoveFlag -> Unit
+            }
         }
 
         fun isItemOrHealth(name: String): Boolean {
@@ -215,10 +234,17 @@ public object Analyzer {
         if (compiled.adventure.deathScene == null) return emptyList()
         if (compiled.adventure.initialState.stats.containsKey("health")) return emptyList()
         val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        // Ф3.1: `Effect.Set("health", N)` uses health just as
+        // `Effect.ModifyStat("health", ±N)` does. Both variants count.
+        fun Effect.touchesHealth(): Boolean = when (this) {
+            is Effect.ModifyStat -> name == "health"
+            is Effect.Set -> name == "health"
+            is Effect.SetFlag, is Effect.RemoveFlag -> false
+        }
         val hasHealthEffect = allScenes.any { scene ->
-            scene.effects.any { it is Effect.ModifyStat && it.name == "health" } ||
+            scene.effects.any { it.touchesHealth() } ||
                     scene.choices.any { choice ->
-                        choice.effects.any { it is Effect.ModifyStat && it.name == "health" }
+                        choice.effects.any { it.touchesHealth() }
                     }
         }
         if (hasHealthEffect) return emptyList()
@@ -289,6 +315,17 @@ public object Analyzer {
         fun visit(c: Condition) {
             when (c) {
                 is Condition.Has -> result.add(c.name)
+                is Condition.VarRef -> {
+                    // Ф3.1: `VarRef` semantically reads like `Has` (bare
+                    // Bool reference), so it establishes the same
+                    // "condition-on-this-flag" signal. Currently
+                    // unreachable — the parser does not produce
+                    // `VarRef` until Ф3.2 — but keeping the parallel
+                    // branch here means Ф3.2 does not need to remember
+                    // to update this function.
+                    result.add(c.name)
+                }
+                is Condition.Literal -> Unit // no variable reference
                 is Condition.Not -> visit(c.inner)
                 is Condition.And -> { visit(c.left); visit(c.right) }
                 is Condition.Or -> { visit(c.left); visit(c.right) }
@@ -305,10 +342,17 @@ public object Analyzer {
     private fun lintDeathWithoutDeathScene(compiled: CompiledAdventure): List<LintIssue> {
         if (compiled.adventure.deathScene != null) return emptyList()
         val hasHealthInInitial = compiled.adventure.initialState.stats.containsKey("health")
+        // Ф3.1: same `touchesHealth` treatment as in
+        // `lintDeathSceneWithoutHealth` — `Set("health", N)` counts.
+        fun Effect.touchesHealth(): Boolean = when (this) {
+            is Effect.ModifyStat -> name == "health"
+            is Effect.Set -> name == "health"
+            is Effect.SetFlag, is Effect.RemoveFlag -> false
+        }
         val hasHealthEffect = compiled.adventure.chapters.flatMap { it.scenes }.any { scene ->
-            scene.effects.any { it is Effect.ModifyStat && it.name == "health" } ||
+            scene.effects.any { it.touchesHealth() } ||
                     scene.choices.any { choice ->
-                        choice.effects.any { it is Effect.ModifyStat && it.name == "health" }
+                        choice.effects.any { it.touchesHealth() }
                     }
         }
         if (!hasHealthInInitial && !hasHealthEffect) return emptyList()
@@ -368,6 +412,72 @@ public object Analyzer {
                     severity = Severity.ERROR,
                 )
             }
+        }
+        return issues
+    }
+
+
+    // ----- Ф3.5: invariant on unestablished flag -----
+
+    /**
+     * Checks every [com.myapp.adventure.engine.ir.Invariant] for
+     * Bool flag references (`Has` / `VarRef`) that are never set
+     * anywhere — see [LintKind.UnreachableInvariant] KDoc.
+     *
+     * **Not the same as `lintConditionOnUnestablishedFlag`.** That
+     * function checks **choices** (per-scene conditions on the player's
+     * path); this one checks **global invariants** (always evaluated
+     * after every step). Both share the same "establishable" set
+     * (initial flags/stats + every `SetFlag` in any scene/choice), but
+     * the issue is scoped differently: a choice issue is navigable to a
+     * scene, an invariant issue is not (`sceneId = null`).
+     *
+     * **Numeric conditions are not checked here** — Ф3.6
+     * (`Analyzer.deadConditions`) will handle `health < -100` and
+     * similar reachability questions, which require more nuance than
+     * "is the name anywhere?".
+     */
+    private fun lintUnreachableInvariants(
+        compiled: CompiledAdventure,
+    ): List<LintIssue> {
+        val invariants = compiled.adventure.invariants
+        if (invariants.isEmpty()) return emptyList()
+
+        // Establishable set: same convention as
+        // lintConditionOnUnestablishedFlag (initial flags, initial
+        // stats keys, every SetFlag target in any scene or choice).
+        val establishable = mutableSetOf<String>()
+        establishable += compiled.adventure.initialState.flags
+        establishable += compiled.adventure.initialState.stats.keys
+        val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        for (scene in allScenes) {
+            for (effect in scene.effects) {
+                if (effect is Effect.SetFlag) establishable.add(effect.name)
+            }
+            for (choice in scene.choices) {
+                for (effect in choice.effects) {
+                    if (effect is Effect.SetFlag) establishable.add(effect.name)
+                }
+            }
+        }
+
+        val issues = mutableListOf<LintIssue>()
+        for ((index, invariant) in invariants.withIndex()) {
+            val flags = collectHasFlags(invariant.condition)
+            val missing = flags.filter { it !in establishable }.sorted()
+            if (missing.isEmpty()) continue
+            val names = missing.joinToString(", ") { "'$it'" }
+            issues += LintIssue(
+                kind = LintKind.UnreachableInvariant(
+                    reason = "references flag(s) never set: $names",
+                ),
+                message = "Invariant #$index references flag(s) that are never " +
+                        "established (not in initial_state, no SetFlag effect in any " +
+                        "scene or choice): $names. The invariant cannot fire as written. " +
+                        "Check the flag name for a typo, or add a SetFlag that sets it.",
+                sceneId = null,
+                severity = Severity.WARNING,
+            )
         }
         return issues
     }

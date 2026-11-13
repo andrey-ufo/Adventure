@@ -1,5 +1,7 @@
 package com.myapp.adventure.engine.ir
 
+import com.myapp.adventure.engine.ir.types.VarType
+
 /**
  * Player state during an adventure: what the player has right now.
  *

@@ -1,5 +1,7 @@
 package com.myapp.adventure.engine.ir
 
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -27,7 +29,15 @@ import kotlinx.serialization.Serializable
  *   [Effect]. Empty means "no declared variables" — such an adventure
  *   type-checks only against [InitialState] (Ф2 migration will populate
  *   this for existing files; new files are expected to declare variables
- *   explicitly).
+ *   explicitly). The type of each variable determines its default value
+ *   (see [VarType] KDoc); an entry in [InitialState] overrides the
+ *   default.
+ * @property invariants global rules evaluated after every step. When
+ *   an invariant's condition holds, its outcome fires (Ф3.5). Empty
+ *   means "no explicit invariants" — the runtime falls back to the
+ *   pre-Ф3.5 hardcoded `health <= 0 => death` rule. A non-empty list
+ *   **replaces** that fallback; authors who want health-death plus
+ *   custom rules declare both. See [Invariant] KDoc.
  * @property tags registry of tags with display metadata; used by the
  *   reader's HUD to decide what to show and how.
  * @property initialState player state before the first scene.
@@ -49,6 +59,7 @@ public data class Adventure(
     public val author: String = "",
     public val description: String = "",
     public val variables: Map<String, VarDecl> = emptyMap(),
+    public val invariants: List<Invariant> = emptyList(),
     public val tags: List<TagDefinition> = emptyList(),
     @SerialName("initial_state")
     public val initialState: InitialState = InitialState(),
@@ -57,7 +68,7 @@ public data class Adventure(
     @SerialName("start_scene")
     public val startScene: SceneId,
     public val chapters: List<Chapter>,
-){
+) {
     public companion object {
         /**
          * Current IR schema version. Increment when the on-disk format
@@ -104,6 +115,17 @@ public data class Adventure(
          *   format stays flat: `"gate": N` + optional
          *   `"gate_repeatable": true`. Migration v4 → v5: identity —
          *   v4 files have no `gate_repeatable`, so `repeatable = false`.
+         * - Still `5` (Ф3.5) — `Adventure.invariants: List<Invariant>`
+         *   added, `Outcome.Death`, `Invariant(condition, outcome)`.
+         *   **No version bump**: the field is optional and defaults to
+         *   an empty list; old files fall back to the hardcoded
+         *   `health <= 0 => death` rule in `Engine.evaluateInvariants`.
+         *   Migration v5 → v5+invariants is identity. The decision to
+         *   keep the version at 5 follows the same reasoning as
+         *   `variables` in Ф2.8: adding an optional list with a
+         *   documented fallback is backward-compatible in both
+         *   directions (old readers ignore the field; new readers
+         *   apply the fallback when it is empty).
          */
         public const val CURRENT_VERSION: Int = 5
     }

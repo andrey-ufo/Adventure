@@ -18,6 +18,24 @@ data class Adventure(
     val description: String = "",
     @SerializedName("initial_state")
     val initialState: PlayerState? = null,
+    /**
+     * Ф2.7: объявления переменных (`{"health": {"type": "int_range",
+     * "min": 0, "max": 100}}`). Nullable, чтобы Gson **опускал** поле
+     * в JSON, если автор не объявил ни одной переменной — не мусорить
+     * `"variables": {}` в каждом файле.
+     *
+     * **Формат (A1 из Ф2.7):** map `name → {type, min?, max?}`.
+     * `type` — строка (`"bool"`, `"int"`, `"int_min"`, `"int_range"`,
+     * `"item_count"`, `"item_list"`), совпадает с `@SerialName` в
+     * `:engine/ir/types/VarType`. `min`/`max` — только для `int_min`
+     * (только `min`) и `int_range` (оба), `null` для остальных.
+     *
+     * **Парсинг на :engine-стороне** — Ф2.8 (`JsonToIr` → `AdventureDto`
+     * → `VarDecl`). Сейчас `:engine` видит `variables: emptyMap()` и
+     * работает в fallback-режиме `TypeChecker` (см. Ф2.2/C4).
+     */
+    @SerializedName("variables")
+    val variables: Map<String, VariableDto>? = null,
     val tags: List<TagDefinition>? = null,
     @SerializedName("death_scene")
     val deathScene: DeathScene? = null,
@@ -130,4 +148,26 @@ data class Choice(
 data class PlayerState(
     val flags: List<String>? = null,
     val stats: Map<String, Int>? = null
+)
+
+/**
+ * Ф2.7 — DTO переменной для Gson-save.
+ *
+ * `type` — одна из строк `@SerialName` в
+ * `com.myapp.adventure.engine.ir.types.VarType`:
+ * `"bool"`, `"int"`, `"int_min"`, `"int_range"`, `"item_count"`,
+ * `"item_list"`. `min`/`max` — только для `int_min` / `int_range`,
+ * `null` для остальных (Gson опускает `null`-поля при
+ * `setPrettyPrinting()` только если настроено `serializeNulls = false`,
+ * что по умолчанию true — то есть `null` **пишутся** как `"min": null`.
+ * Для чистоты JSON в `saveAdventure()` лучше собирать `VariableDto`
+ * через `when` с явным отбрасыванием `min`/`max` для Bool/ItemCount/…
+ * — либо настроить `GsonBuilder().serializeNulls(false)`, но это
+ * затронет все поля `Adventure`. Оставлено как есть: `"min": null`
+ * в JSON валидно и не мешает парсингу Ф2.8).
+ */
+data class VariableDto(
+    val type: String,
+    val min: Int? = null,
+    val max: Int? = null,
 )

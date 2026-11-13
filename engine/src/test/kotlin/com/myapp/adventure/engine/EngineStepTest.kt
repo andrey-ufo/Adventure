@@ -12,10 +12,14 @@ import com.myapp.adventure.engine.ir.PlayerState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.toPlayerState
+import com.myapp.adventure.engine.ir.CompareOp
+import com.myapp.adventure.engine.ir.Invariant
+import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.engine.CompiledAdventure
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -330,7 +334,9 @@ class EngineStepTest {
     // ---------- death by choice effects ----------
 
     @Test
-    fun `choice effects kill player - isDead true`() {
+    fun `choice effects kill player - isDead true via fallback`() {
+        // No invariants in this hand-built Adventure → Engine.evaluateInvariants
+        // falls back to health <= 0. Same behaviour as pre-Ф3.5.
         val a = scene(
             "a",
             listOf(
@@ -348,7 +354,79 @@ class EngineStepTest {
         )
         val success = assertIs<StepResult.Success>(result)
         assertTrue(success.isDead)
+        assertEquals(Outcome.Death, success.outcome)
         assertEquals(0, success.state.stats["health"]) // clamped
+    }
+
+    @Test
+    fun `explicit invariant fires - death`() {
+        // Adventure declares an explicit invariant. The fallback is
+        // bypassed; the declared rule fires.
+        val a = scene(
+            "a",
+            listOf(
+                choice("c", next = "b", effects = listOf(Effect.ModifyStat("health", -999))),
+            ),
+        )
+        val b = scene("b")
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            invariants = listOf(
+                Invariant(
+                    condition = Condition.Compare("health", CompareOp.LE, 0),
+                    outcome = Outcome.Death,
+                ),
+            ),
+            chapters = listOf(chapter("ch", a, b)),
+        )
+        val compiled = compile(adv)
+
+        val result = Engine.step(
+            compiled,
+            state(stats = mapOf("health" to 100)),
+            SceneId("a"),
+            ChoiceId("c"),
+        )
+        val success = assertIs<StepResult.Success>(result)
+        assertTrue(success.isDead)
+    }
+
+    @Test
+    fun `explicit invariants replace fallback - no death when health zero but no matching invariant`() {
+        // Author declared only a stamina invariant. Health=0 does not
+        // kill because the fallback is bypassed when invariants is
+        // non-empty. This is the "explicit replaces implicit" contract.
+        val a = scene(
+            "a",
+            listOf(
+                choice("c", next = "b", effects = listOf(Effect.ModifyStat("health", -999))),
+            ),
+        )
+        val b = scene("b")
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            invariants = listOf(
+                Invariant(
+                    condition = Condition.Compare("stamina", CompareOp.LE, 0),
+                    outcome = Outcome.Death,
+                ),
+            ),
+            chapters = listOf(chapter("ch", a, b)),
+        )
+        val compiled = compile(adv)
+
+        val result = Engine.step(
+            compiled,
+            state(stats = mapOf("health" to 100, "stamina" to 50)),
+            SceneId("a"),
+            ChoiceId("c"),
+        )
+        val success = assertIs<StepResult.Success>(result)
+        assertFalse(success.isDead)
+        assertEquals(null, success.outcome)
+        assertEquals(0, success.state.stats["health"]) // clamped, but no death
     }
 
     @Test

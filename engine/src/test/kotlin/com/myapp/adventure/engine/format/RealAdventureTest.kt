@@ -104,11 +104,17 @@ class RealAdventureTest {
         // «тестовое приключение должно проходиться быстро»), и не
         // заставляет тестировщика ходить. Реальные приключения,
         // разумеется, ставят тысячи шагов.
-        assertEquals(1, gateOf(0, "health_test"))   // per-visit gate (middle of chapter 1)
+        //
+        // Ф3.4-fix2: гейт вынесен из `health_test` в отдельную сцену
+        // `gate_test`, чтобы тестировать здоровье/предметы/журнал без
+        // шагов. `health_test` теперь без гейта. `gate_test` — per-visit
+        // режим. `chapter_end_*` — one-shot, нарративные, тоже 1 шаг.
+        assertEquals(1, gateOf(0, "gate_test"))     // per-visit gate (middle of chapter 1)
         assertEquals(1, gateOf(0, "chapter_end_1")) // one-shot gate (end of chapter 1)
         assertEquals(1, gateOf(1, "chapter_end_2")) // one-shot gate (end of chapter 2)
         // У остальных сцен гейта нет.
         assertEquals(null, gateOf(0, "start"))
+        assertEquals(null, gateOf(0, "health_test"))
         assertEquals(null, gateOf(0, "items_test"))
         assertEquals(null, gateOf(1, "conditions_test"))
         assertEquals(null, gateOf(2, "final"))
@@ -159,10 +165,10 @@ class RealAdventureTest {
     }
 
     @Test
-    fun `start scene has five choices`() {
+    fun `start scene has seven choices`() {
         val adv = parseRealFile()
         val start = adv.chapters[0].scenes.first { it.id == SceneId("start") }
-        assertEquals(5, start.choices.size)
+        assertEquals(7, start.choices.size)
     }
 
     @Test
@@ -199,20 +205,43 @@ class RealAdventureTest {
     }
 
     @Test
-    fun `health_test gate is repeatable, chapter ends are not`() {
+    fun `gate_test is repeatable, chapter ends are not`() {
         // Ф1.7.0.4: the only "path" example (you walk there, walk back
-        // if you return) is health_test — per-visit. The chapter-end
+        // if you return) is gate_test — per-visit. The chapter-end
         // gates use the default "once passed, stays passed in this
         // playthrough" (repeatable = false). This test pins both so that
         // the reference sample keeps demonstrating both modes.
+        //
+        // Ф3.4-fix2: gate moved from `health_test` to `gate_test` so
+        // that testing health/items/journal does not require walking.
         val adv = parseRealFile()
         fun gateOf(chapterIndex: Int, sceneId: String) =
             adv.chapters[chapterIndex].scenes
                 .first { it.id == SceneId(sceneId) }
                 .gate
 
-        assertEquals(true, gateOf(0, "health_test")?.repeatable)
+        assertEquals(true, gateOf(0, "gate_test")?.repeatable)
         assertEquals(false, gateOf(0, "chapter_end_1")?.repeatable)
         assertEquals(false, gateOf(1, "chapter_end_2")?.repeatable)
+    }
+
+    @Test
+    fun `invariants has health rule`() {
+        // Ф3.5: reference sample declares health <= 0 => death,
+        // matching the pre-Ф3.5 fallback but explicit. This test pins
+        // the format and one semantic check.
+        val adv = parseRealFile()
+        assertEquals(1, adv.invariants.size)
+        val inv = adv.invariants.single()
+        assertEquals(
+            com.myapp.adventure.engine.ir.Outcome.Death,
+            inv.outcome,
+        )
+        val condition = inv.condition
+        assertIs<com.myapp.adventure.engine.ir.Condition.Compare>(condition)
+        assertEquals(
+            com.myapp.adventure.engine.ir.CompareOp.LE,
+            condition.op,
+        )
     }
 }

@@ -23,13 +23,10 @@ import kotlinx.serialization.Serializable
  * [com.myapp.adventure.engine.ir.Adventure.CURRENT_VERSION]. We must be
  * able to distinguish "no version" from any explicit integer.
  *
- * **Deferred to Ф2.8:** `variables` (`Map<String, VarDeclDto>`). Not
- * present in `test_adventure.json` yet; add when the file gains it.
- *
  * **Why one file:** DTOs form a single JSON contract and change together;
- * splitting them across seven files would add navigation noise without any
- * benefit. This is an intentional exception to the "one class per file"
- * convention, not an accident.
+ * splitting them across several files would add navigation noise without
+ * any benefit. This is an intentional exception to the "one class per
+ * file" convention, not an accident.
  */
 @Serializable
 internal data class AdventureDto(
@@ -39,6 +36,27 @@ internal data class AdventureDto(
     val description: String = "",
     @SerialName("initial_state")
     val initialState: InitialStateDto = InitialStateDto(),
+    /**
+     * Ф2.8: declared variable types. `null`/absent → empty map → the
+     * reader's `TypeChecker` runs in **fallback** mode (infers types
+     * from `tags` + `initialState`). Non-empty → strict mode (every
+     * reference must be declared here).
+     *
+     * `Map<String, VariableDto>`, not `Map<String, VarType>`. See
+     * [VariableDto] KDoc: `VarType` cannot express the "incomplete
+     * declaration" state (`IntMin(min = null)` is not constructible),
+     * which the parser must accept and downgrade.
+     */
+    val variables: Map<String, VariableDto> = emptyMap(),
+    /**
+     * Ф3.5: global invariants. Flat list of `{"condition": "...",
+     * "outcome": "death"}` objects. The condition is a string (parsed
+     * by `JsonToIr` into a `Condition` AST); the outcome is a flat
+     * string (`"death"` today — future variants add more). Empty /
+     * absent → `Engine.evaluateInvariants` falls back to the
+     * pre-Ф3.5 hardcoded `health <= 0 => death` rule.
+     */
+    val invariants: List<InvariantDto> = emptyList(),
     val tags: List<TagDefinitionDto> = emptyList(),
     @SerialName("death_scene")
     val deathScene: DeathSceneDto? = null,
@@ -139,4 +157,52 @@ internal data class DeathSceneDto(
     val allowChapterRestart: Boolean = true,
     @SerialName("allow_adventure_restart")
     val allowAdventureRestart: Boolean = true,
+)
+
+/**
+ * Ф2.8: wire-format for a single variable declaration.
+ *
+ * [type] is a **string discriminator** (`"bool"`, `"int"`, `"int_min"`,
+ * `"int_range"`, `"item_count"`, `"item_list"`), matching the
+ * `@SerialName` values on
+ * [com.myapp.adventure.engine.ir.types.VarType]. `min` / `max` are only
+ * meaningful for `int_min` / `int_range`, `null` for the others.
+ *
+ * **Why not reuse `VarType` directly.** `VarType` is a `sealed class`
+ * with polymorphic serialization, which produces
+ * `{"type": "int_min", "min": 0}` — the same JSON shape as
+ * `VariableDto`. But `VarType` cannot express the "incomplete
+ * declaration" state: `IntMin(min = null)` is not constructible
+ * (`min` is required). The parser must accept
+ * `{"type": "int_min"}` (no `min`) from a partially-filled file and
+ * downgrade to `Integer`. `VariableDto` can hold that state
+ * (`min = null`); `VarType` cannot. See `JsonToIr.VariableDto.toVarType`
+ * for the downgrade logic.
+ */
+@Serializable
+internal data class VariableDto(
+    val type: String,
+    val min: Int? = null,
+    val max: Int? = null,
+)
+
+/**
+ * Ф3.5: wire-format for a single invariant.
+ *
+ * **Flat shape** (unlike the IR `Invariant`, which has typed
+ * `condition: Condition` and sealed `outcome: Outcome`):
+ * - `condition` is a condition string — same syntax as
+ *   `ChoiceDto.condition`, parsed by `ConditionParser`.
+ * - `outcome` is a flat string (`"death"` today). Future variants
+ *   (`"ending"`, `"custom"`) extend the allowed set — `JsonToIr`
+ *   maps them into `Outcome`.
+ *
+ * The flat-vs-typed distinction is intentional, same as with
+ * `ChoiceDto.condition` (string) vs. `Choice.condition` (AST): the
+ * author's file is a string, the runtime works on the AST.
+ */
+@Serializable
+internal data class InvariantDto(
+    val condition: String,
+    val outcome: String,
 )

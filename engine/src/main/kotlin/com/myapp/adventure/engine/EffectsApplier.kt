@@ -18,21 +18,25 @@ import com.myapp.adventure.engine.ir.PlayerState
  * changes the result: `remove X` before `set X` leaves `X` set; `set X`
  * before `remove X` leaves `X` unset. This matches the current reader.
  *
- * **Clamp policy (temporary, until Ф2.8).** Every [Effect.ModifyStat]
- * clamps its result to `>= 0`. Once `Adventure.variables: Map<String,
- * VarDecl>` exists (Ф2.8), the clamp will depend on the variable's
- * declared type (`HEALTH`, `ITEM` → `>= 0`; `Integer`, `IntRange` →
- * per-type bounds; `Bool` → not applicable). Until then, "clamp all to
- * `>= 0`" is the safest choice:
+ * **Clamp policy (temporary, until Ф5).** Every [Effect.ModifyStat] and
+ * every [Effect.Set] clamps its result to `>= 0`. Once type-aware
+ * clamping lands (tied to the save/delta model in Ф5.2), the clamp will
+ * depend on the variable's declared [com.myapp.adventure.engine.ir.types.VarType]:
+ * `IntMin(N)` → `>= N`; `IntRange(A, B)` → `[A, B]`; `ItemCount` → `>= 0`;
+ * `Integer` → no clamp; `Bool`/`ItemList` → not applicable (they are
+ * not touched by numeric effects — see `TypeChecker`).
+ *
+ * Until then, "clamp all to `>= 0`" is the safest choice:
  * - The reader never shows "-5 health" — user sees "❤️ 0" instead.
  * - An author who wants "stamina goes negative" is expressing an
  *   intention that will not be honoured in this release; if it matters,
  *   the analyzer (Ф2.2) will not flag it yet, but the clamp policy will
- *   be tightened in Ф2.8.
+ *   be tightened in Ф5.
  *
- * **Not in scope here.** Setting a stat to an **absolute** value
- * (`SetStat`) — not needed in IR v2 and not requested yet. Effects are
- * additive (`ModifyStat(delta)`) or flag toggles.
+ * **Not in scope here.** Setting a stat to an **absolute** value for
+ * `Bool` — flags are toggled by [Effect.SetFlag] / [Effect.RemoveFlag],
+ * never by `Set`. `Set` on a non-numeric variable is rejected by
+ * `TypeChecker` (Ф2.2), not silently ignored by the runtime.
  */
 public object EffectsApplier {
 
@@ -55,6 +59,12 @@ public object EffectsApplier {
                 is Effect.ModifyStat -> {
                     val old = stats[effect.name] ?: 0
                     stats[effect.name] = (old + effect.delta).coerceAtLeast(0)
+                }
+                is Effect.Set -> {
+                    // Ф3.1: same clamp policy as ModifyStat — see class
+                    // KDoc. Replaces the previous value entirely, not a
+                    // delta.
+                    stats[effect.name] = effect.value.coerceAtLeast(0)
                 }
             }
         }

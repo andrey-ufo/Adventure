@@ -1,6 +1,7 @@
 package com.myapp.adventure.engine
 
 import com.myapp.adventure.engine.ir.Adventure
+import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.ChoiceId
@@ -213,10 +214,67 @@ public object Engine {
         // 5. Apply choice effects (target scene's effects are reader's job).
         val stateAfterChoice = EffectsApplier.apply(state, choice.effects)
 
+        // 6. Ф3.5: evaluate invariants after choice effects. If an invariant
+        //    fired (Death today), it is passed up to the caller, which can
+        //    short-circuit to the death screen. If null, no invariant matched —
+        //    the caller proceeds to enter the target scene and re-checks after
+        //    applying scene effects (a scene's entry effects can fire an
+        //    invariant too; Engine.step does not apply them, so it cannot know).
         return StepResult.Success(
             state = stateAfterChoice,
             currentScene = nextScene,
-            isDead = Evaluator.isDead(stateAfterChoice),
+            outcome = evaluateInvariants(compiled.adventure, stateAfterChoice),
         )
+    }
+
+    /**
+     * Ф3.5 (N2): evaluates all invariants declared in [adventure]
+     * against [state], returning the first fired outcome (by list
+     * order), or `null` if none fired.
+     *
+     * **Semantics.** `Invariant(condition, outcome)` fires when
+     * `condition` holds. The first matching invariant in
+     * [Adventure.invariants] wins — later ones are not evaluated (same
+     * "first matching rule" policy as `when` in Kotlin or firewall
+     * rules). The caller (reader) uses the returned outcome to trigger
+     * the death screen, an ending screen, etc.
+     *
+     * **Fallback when `Adventure.invariants` is empty.** Returns
+     * `Outcome.Death` iff [Evaluator.isDead] is true — the pre-Ф3.5
+     * hardcoded `health <= 0 => death` rule. This preserves behaviour
+     * for every file written before Ф3.5 (which have no `invariants`
+     * field). A file with a non-empty `invariants` list **replaces**
+     * the fallback: if the author wants health-death plus another rule,
+     * they declare both. This is the DoD-compatible "explicit replaces
+     * implicit" contract.
+     *
+     * **Determinism.** Pure function. Same `(adventure, state)` → same
+     * `Outcome?`. No I/O, no randomness (RNG is Ф12; when it lands,
+     * `evaluateInvariants` will accept a `RandomSource`).
+     *
+     * **Cost.** O(invariants × condition complexity) — invariants are
+     * typically 1-3 entries, conditions are tiny ASTs. Called after
+     * every step and after every scene-effect application; the
+     * allocation-free `when` in `Evaluator.evaluate` keeps it cheap.
+     *
+     * @param adventure parsed IR; `adventure.invariants` may be empty.
+     * @param state player state **after** effects have been applied.
+     * @return the first fired [Outcome], or `null`.
+     */
+    public fun evaluateInvariants(
+        adventure: Adventure,
+        state: PlayerState,
+    ): Outcome? {
+        if (adventure.invariants.isEmpty()) {
+            // Pre-Ф3.5 fallback: hardcoded health rule. Same behaviour
+            // as before this phase for every old file.
+            return if (Evaluator.isDead(state)) Outcome.Death else null
+        }
+        for (invariant in adventure.invariants) {
+            if (Evaluator.evaluate(invariant.condition, state)) {
+                return invariant.outcome
+            }
+        }
+        return null
     }
 }

@@ -9,9 +9,12 @@ import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.InitialState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.TagDefinition
-import com.myapp.adventure.engine.ir.VarDecl
-import com.myapp.adventure.engine.ir.VarType
 import com.myapp.adventure.engine.ir.Gate
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
+import com.myapp.adventure.engine.format.dto.VariableDto
+import com.myapp.adventure.engine.ir.Invariant
+import com.myapp.adventure.engine.ir.Outcome
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -64,8 +67,8 @@ class SchemaFingerprintTest {
     private val expectedFlatFields: Map<String, Set<String>> = mapOf(
         "Adventure" to setOf(
             "version", "title", "author", "description",
-            "variables", "tags", "initial_state", "death_scene",
-            "start_scene", "chapters",
+            "variables", "invariants", "tags", "initial_state",
+            "death_scene", "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
         "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending"),
@@ -77,10 +80,14 @@ class SchemaFingerprintTest {
         ),
         "VarDecl" to setOf("name", "type"),
         "Gate" to setOf("required_steps", "repeatable"),
+        "VariableDto" to setOf("type", "min", "max"),
+        "Invariant" to setOf("condition", "outcome"),
     )
 
     /** Serialized variant name (from `@SerialName`) → its serialized fields. */
     private val expectedConditionVariants: Map<String, Set<String>> = mapOf(
+        "literal" to setOf("value"),
+        "var_ref" to setOf("name"),
         "has" to setOf("name"),
         "not" to setOf("inner"),
         "and" to setOf("left", "right"),
@@ -93,11 +100,13 @@ class SchemaFingerprintTest {
         "set_flag" to setOf("name"),
         "remove_flag" to setOf("name"),
         "modify_stat" to setOf("name", "delta"),
+        "set" to setOf("name", "value"),
     )
 
     private val expectedVarTypeVariants: Map<String, Set<String>> = mapOf(
         "bool" to emptySet(),
         "int" to emptySet(),
+        "int_min" to setOf("min"),
         "int_range" to setOf("min", "max"),
         "item_count" to emptySet(),
         "item_list" to emptySet(),
@@ -164,6 +173,8 @@ class SchemaFingerprintTest {
         assertFlat("DeathScene", DeathScene.serializer().descriptor)
         assertFlat("VarDecl", VarDecl.serializer().descriptor)
         assertFlat("Gate", Gate.serializer().descriptor)
+        assertFlat("VariableDto", VariableDto.serializer().descriptor)
+        assertFlat("Invariant", Invariant.serializer().descriptor)
     }
 
     @Test
@@ -190,6 +201,37 @@ class SchemaFingerprintTest {
             expectedVarTypeVariants,
             polymorphicVariants(VarType.serializer().descriptor),
             "VarType sealed variants changed. Update expectedVarTypeVariants if intentional.",
+        )
+    }
+
+    @Test
+    fun `VarType IntMin round-trips through serializer`() {
+        // Pins two things that the fingerprint test above cannot see:
+        //  1. the polymorphic discriminator serializes as "int_min"
+        //     (not "intmin" or "IntMin");
+        //  2. the `min` field actually survives encode → decode.
+        // Serializes through the same `Json { }` that :app will use
+        // (encodeDefaults = true for readability in the test output).
+        val json = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val original = VarType.IntMin(min = 5)
+        val text = json.encodeToString(VarType.serializer(), original)
+        kotlin.test.assertTrue(
+            text.contains("\"int_min\""),
+            "expected polymorphic type name 'int_min' in serialized JSON, got: $text",
+        )
+        val decoded = json.decodeFromString(VarType.serializer(), text)
+        kotlin.test.assertEquals(original, decoded)
+    }
+
+    @Test
+    fun `Outcome sealed variants match expected fingerprint`() {
+        // Ф3.5: the only invariant outcome today is `Death`. When a
+        // future variant (`Ending`, `Custom`) is added, this test fails
+        // and the author updates it in the same PR as the Outcome change.
+        assertEquals(
+            mapOf("death" to emptySet<String>()),
+            polymorphicVariants(Outcome.serializer().descriptor),
+            "Outcome sealed variants changed. Update this test if intentional.",
         )
     }
 }

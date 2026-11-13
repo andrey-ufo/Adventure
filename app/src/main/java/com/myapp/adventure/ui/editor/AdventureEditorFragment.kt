@@ -65,6 +65,7 @@ class AdventureEditorFragment : Fragment() {
     private lateinit var viewModel: AdventureEditorViewModel
     private lateinit var adapter: EditorSceneAdapter
     private lateinit var initialStateAdapter: InitialStateAdapter
+    private lateinit var variablesAdapter: VariablesAdapter
 
     private val debounceHandler = Handler(Looper.getMainLooper())
     private var hasUnsavedChanges = false
@@ -93,6 +94,7 @@ class AdventureEditorFragment : Fragment() {
             onPreview = { uid -> openPreview(uid) }
         )
         initialStateAdapter = InitialStateAdapter(viewModel, dirtyCallback)
+        variablesAdapter = VariablesAdapter(viewModel, dirtyCallback)
     }
 
     override fun onCreateView(
@@ -109,7 +111,11 @@ class AdventureEditorFragment : Fragment() {
 
         binding.rvScenes.layoutManager = LinearLayoutManager(requireContext())
 
-        val concatAdapter = ConcatAdapter(initialStateAdapter, adapter)
+        // Ф2.7: VariablesAdapter идёт **первым** — «сначала объяви тип,
+        // потом используй». InitialStateAdapter — вторым, сцены — третьими.
+        // Сдвиг для scroll-операций (`jumpToScene`, `btnAddScene`) теперь
+        // `+2` вместо `+1` (две header-секции сверху).
+        val concatAdapter = ConcatAdapter(variablesAdapter, initialStateAdapter, adapter)
         binding.rvScenes.adapter = concatAdapter
 
         binding.rvScenes.setItemViewCacheSize(15)
@@ -132,8 +138,14 @@ class AdventureEditorFragment : Fragment() {
             adapter.submitList()
             binding.rvScenes.post {
                 if (_binding != null) {
-                    // +1 — сдвиг на позицию InitialStateAdapter (всегда первый)
-                    binding.rvScenes.scrollToPosition(viewModel.scenes.size)
+                    // Ф2.7: +2 — VariablesAdapter + InitialStateAdapter
+                    // занимают две header-позиции сверху; позиция новой
+                    // сцены в ConcatAdapter = viewModel.scenes.size + 2 - 1?
+                    // Нет: ConcatAdapter позиции: 0 = VariablesAdapter,
+                    // 1 = InitialStateAdapter, 2..N+2 = scenes.
+                    // Последняя сцена (index viewModel.scenes.size - 1 в
+                    // EditorSceneAdapter) → 2 + (size - 1) = size + 1.
+                    binding.rvScenes.scrollToPosition(viewModel.scenes.size + 1)
                 }
             }
         }
@@ -259,6 +271,7 @@ class AdventureEditorFragment : Fragment() {
         if (_binding == null) return
         adapter.submitList()
         initialStateAdapter.notifyDataSetChanged()
+        variablesAdapter.notifyDataSetChanged()
         updateTitleField()
         updateUndoRedoButtons()
     }
@@ -287,6 +300,7 @@ class AdventureEditorFragment : Fragment() {
             viewModel.title,
             viewModel.author,
             viewModel.description,
+            viewModel.variables,
             viewModel.initialStateTags,
             viewModel.scenes
         )
@@ -327,6 +341,8 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.title = draft.title
                 viewModel.author = draft.author
                 viewModel.description = draft.description
+                viewModel.variables.clear()
+                viewModel.variables.addAll(draft.variables.map { it.copy() })
                 viewModel.initialStateTags.clear()
                 viewModel.initialStateTags.addAll(draft.initialStateTags.map { it.copy() })
                 viewModel.scenes.clear()
@@ -338,6 +354,7 @@ class AdventureEditorFragment : Fragment() {
 
                 adapter.submitList()
                 initialStateAdapter.notifyDataSetChanged()
+                variablesAdapter.notifyDataSetChanged()
                 updateTitleField()
                 updateUndoRedoButtons()
 
@@ -370,6 +387,39 @@ class AdventureEditorFragment : Fragment() {
             viewModel.author = adventure.author
             viewModel.description = adventure.description
             viewModel.scenes.clear()
+
+            // Ф2.7: восстановить объявления переменных из JSON.
+            // `adventure.variables` — `Map<String, VariableDto>?`
+            // (nullable, Gson опускает поле если ничего не объявлено).
+            viewModel.variables.clear()
+            adventure.variables?.forEach { (name, dto) ->
+                viewModel.variables.add(viewModel.editorVarDeclFromDto(name, dto))
+            }
+            // Ф2.7 DoD: «при открытии приключения без объявлений —
+            // предупреждение». Показываем один раз при загрузке, с
+            // действием «Объявить сейчас» — переключает фокус на
+            // секцию «📋 Переменные».
+            if (viewModel.variables.isEmpty()) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Типы не заданы")
+                    .setMessage(
+                        "Файл без объявлений типов переменных. " +
+                                "Type checking работает в fallback-режиме " +
+                                "(по tags + initial_state).\n\n" +
+                                "Объявить типы сейчас?",
+                    )
+                    .setPositiveButton("Объявить") { _, _ ->
+                        viewModel.variablesExpanded = true
+                        variablesAdapter.notifyDataSetChanged()
+                        binding.rvScenes.post {
+                            if (_binding != null) {
+                                binding.rvScenes.scrollToPosition(0)
+                            }
+                        }
+                    }
+                    .setNegativeButton("Позже", null)
+                    .show()
+            }
 
             val tagDefs = adventure.tags.orEmpty().associateBy { it.name }
 
@@ -497,6 +547,7 @@ class AdventureEditorFragment : Fragment() {
 
             adapter.submitList()
             initialStateAdapter.notifyDataSetChanged()
+            variablesAdapter.notifyDataSetChanged()
             updateTitleField()
             updateUndoRedoButtons()
 
@@ -687,7 +738,56 @@ class AdventureEditorFragment : Fragment() {
     // ---------- Валидатор ----------
 
     private fun showValidationDialog() {
-        val issues = StoryValidator.validate(viewModel.scenes, viewModel.buildInitialState())
+        // Ф2.6: "Проверить" now runs the reader's exact pipeline
+        // (type check → compile → analyze) via `StoryValidator`'s
+        // bridge to `:engine`, so the author sees the same errors
+        // the player would hit on open.
+        //
+        // Freeze pending IDs first — same as `saveAdventure()` and
+        // `openPreview()`. A scene whose ID is still auto-generated
+        // would produce a different `Adventure` than the one the
+        // reader gets, so validation would not match the actual file.
+        viewModel.freezeAllPendingIds()
+        // Ф2.6-fix: build the **IR** adventure (not the :app/data/Adventure
+        // Gson POJO). StoryValidator.validate expects :engine/ir/Adventure;
+        // the IR is also the richer model — it carries is_ending, gate,
+        // gate_repeatable. The second element of the pair carries
+        // condition-parse errors that couldn't be represented in the IR
+        // (a bad condition string becomes `null` in the IR; the author
+        // still needs to see why). We prepend them to the issue list so
+        // they appear before the engine-level errors.
+        val (irAdventure, conditionParseErrors) = viewModel.buildIrAdventure()
+        val issues = mutableListOf<ValidationIssue>()
+        for (err in conditionParseErrors) {
+            issues += ValidationIssue(
+                severity = IssueSeverity.ERROR,
+                // Condition parse errors carry a JSON-like path, but no
+                // per-scene uid. "" means "not clickable" — the dialog's
+                // click handler is a no-op for such issues.
+                sceneUid = "",
+                title = "Ошибка синтаксиса условия",
+                description = err.message,
+            )
+        }
+        issues += StoryValidator.validate(irAdventure, viewModel.scenes)
+
+        // Ф2.7 DoD: «если пусто — предупреждение, type checking работает
+        // в fallback-режиме». Добавляем как WARNING (не блокирует):
+        // fallback C4 всё ещё ловит unknown variables / HasOnNonBool /
+        // wrong effect type — просто не видит `IntRange`-границ и
+        // не проверяет `Integer` vs `ItemCount` (оба → числовые).
+        // Автор, заполнив объявления, получит более строгий отчёт.
+        if (viewModel.variables.isEmpty()) {
+            issues += ValidationIssue(
+                severity = IssueSeverity.WARNING,
+                sceneUid = "",
+                title = "Типы переменных не заданы",
+                description = "Файл без объявлений типов. Type checking " +
+                        "работает в fallback-режиме (по tags + " +
+                        "initial_state). Объявите типы в секции " +
+                        "«📋 Переменные» для полной проверки.",
+            )
+        }
 
         if (issues.isEmpty()) {
             AlertDialog.Builder(requireContext())
@@ -1034,7 +1134,8 @@ class AdventureEditorFragment : Fragment() {
         binding.rvScenes.post {
             if (_binding == null) return@post
             (binding.rvScenes.layoutManager as? LinearLayoutManager)
-                ?.scrollToPositionWithOffset(pos + 1, 50)  // +1 — InitialStateAdapter
+                // +2 — VariablesAdapter (позиция 0) + InitialStateAdapter (позиция 1)
+                ?.scrollToPositionWithOffset(pos + 2, 50)
 
             adapter.setHighlighted(uid)
             debounceHandler.postDelayed({
@@ -1111,6 +1212,7 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.title,
                 viewModel.author,
                 viewModel.description,
+                viewModel.variables,
                 viewModel.initialStateTags,
                 viewModel.scenes
             )

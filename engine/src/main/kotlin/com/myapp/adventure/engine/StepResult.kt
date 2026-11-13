@@ -2,6 +2,7 @@ package com.myapp.adventure.engine
 
 import com.myapp.adventure.engine.ir.ChoiceId
 import com.myapp.adventure.engine.ir.Condition
+import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.PlayerState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
@@ -31,24 +32,27 @@ import com.myapp.adventure.engine.ir.SceneId
  * "disabled" choice; a blocked choice must show a reason, not a generic
  * "недоступно".
  *
- * **Death is not an error.** [Success.isDead] is `true` when the
- * **choice's** effects reduced the player's health to `<= 0`. The
- * target scene's entry effects are **not** applied here — that is
- * the reader's responsibility (it owns idempotency via
- * `appliedSceneEffects` in progress, because re-entering a scene must
- * not re-apply `ModifyStat`). The reader can use `isDead` in this
- * result as a fast-path: if `true`, show the death screen
- * immediately and skip entering the scene. If `false`, the reader
- * enters the scene, applies `scene.effects` (if first time), and
- * re-checks death with [Evaluator.isDead] — **scene** effects can
- * kill too, and the engine cannot know whether they have already
+ * **Death is not an error.** [Success.outcome] is `Outcome.Death` when
+ * an **invariant** fired after the choice's effects were applied (Ф3.5,
+ * via [Engine.evaluateInvariants]). The target scene's entry effects
+ * are **not** applied here — that is the reader's responsibility (it
+ * owns idempotency via `appliedSceneEffects` in progress, because
+ * re-entering a scene must not re-apply `ModifyStat`). The reader can
+ * use `outcome` in this result as a fast-path: if it is
+ * `Outcome.Death`, show the death screen immediately and skip entering
+ * the scene. If `null`, the reader enters the scene, applies
+ * `scene.effects` (if first time), and re-checks invariants with
+ * [Engine.evaluateInvariants] — **scene** effects can fire an
+ * invariant too, and the engine cannot know whether they have already
  * been applied.
  */
 public sealed class StepResult {
 
     /**
      * The step succeeded: [state] is the new player state,
-     * [currentScene] is the scene the player is now in.
+     * [currentScene] is the scene the player is now in, and [outcome]
+     * is the invariant outcome (if any) that fired after the choice
+     * effects.
      *
      * **Effects already applied.** Scene effects (from
      * `currentScene.effects`) are applied to [state] before this result
@@ -60,12 +64,36 @@ public sealed class StepResult {
      * already?" belongs to the reader (it owns progress persistence and
      * the "first enter" semantics). The engine is idempotent per call,
      * not per scene.
+     *
+     * @property state new player state after choice effects.
+     * @property currentScene the scene the player is now in.
+     * @property outcome invariant outcome that fired (Ф3.5). `null` =
+     *   no invariant matched — the player is alive and nothing special
+     *   happened. `Outcome.Death` = the player died (an invariant or
+     *   the fallback `health <= 0` rule fired). Future variants
+     *   (`Ending`, `Custom`) will be checked by the reader's
+     *   `when(outcome)`.
      */
     public data class Success(
         public val state: PlayerState,
         public val currentScene: Scene,
-        public val isDead: Boolean,
-    ) : StepResult()
+        public val outcome: Outcome? = null,
+    ) : StepResult() {
+
+        /**
+         * Convenience for the pre-Ф3.5 callsite pattern
+         * (`if (success.isDead) showDeathScreen()`).
+         *
+         * **Do not use as the sole check for death.** The reader must
+         * re-run [Engine.evaluateInvariants] after applying
+         * `currentScene.effects` — a scene effect can bring the player
+         * into a violated invariant, and `outcome` here only reflects
+         * **choice** effects. `isDead` is a fast-path: `true` → show
+         * death screen immediately; `false` → enter the scene, apply
+         * effects, re-check.
+         */
+        public val isDead: Boolean get() = outcome == Outcome.Death
+    }
 
     /**
      * The step was rejected; see [reason] for the cause.

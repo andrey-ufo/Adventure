@@ -89,6 +89,11 @@ Before opening a pull request:
 - **Domain terminology** — use the spellings in
   [`docs/glossary.md`](./docs/glossary.md). When adding a new term, add it to
   the glossary in the same change.
+- **Progress log entries are in English.** From Ф2.8 onward. Rationale:
+    (a) the project is MIT and its contributors are English-speaking;
+    (b) `documentation-rules.md §1` already requires English docs;
+    (c) dense Cyrillic content breaks automated digest tools (`gitingest`)
+    and GitHub search. See `docs/progress/progress-log.md` for the format.
 
 ### Commit messages
 

@@ -14,9 +14,16 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.ir.Gate
+import com.myapp.adventure.engine.format.dto.InvariantDto
+import com.myapp.adventure.engine.format.dto.VariableDto
+import com.myapp.adventure.engine.ir.Invariant
+import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ConditionParser
 import com.myapp.adventure.engine.parse.ParseError
 import com.myapp.adventure.engine.parse.ParseResult
+import com.myapp.adventure.engine.ir.types.TypeChecker
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import com.myapp.adventure.engine.ir.ChoiceId
@@ -102,10 +109,27 @@ public object JsonToIr {
 
         val errors = mutableListOf<ParseError>()
         val adventure = buildAdventure(dto, errors)
-        return if (errors.isEmpty()) {
+        if (errors.isNotEmpty()) {
+            // B1 decision (Ф2.3): if parsing failed, type checking is not
+            // attempted. The partial IR produced above has missing
+            // conditions / effects (a choice whose condition string failed
+            // to parse has `condition = null`), so type checking it would
+            // produce false negatives (unchecked paths) at best, and false
+            // positives at worst. The author must fix the parse errors
+            // first, then rerun.
+            return ParseResult.Failure(errors)
+        }
+        // Ф2.3: type check the fully-parsed IR. TypeChecker is the "second
+        // stage" of the pipeline (I3 invariant in architecture.md), and
+        // it is the **only** place where unknown variables / wrong types
+        // are caught. After this call, the caller (reader, editor,
+        // analyzer) receives either Success (fully valid) or Failure with
+        // `typeErrors` (fully parsed, but semantically wrong).
+        val typeErrors = TypeChecker.check(adventure)
+        return if (typeErrors.isEmpty()) {
             ParseResult.Success(adventure)
         } else {
-            ParseResult.Failure(errors)
+            ParseResult.Failure(emptyList(), typeErrors)
         }
     }
 
@@ -184,7 +208,12 @@ public object JsonToIr {
             title = dto.title,
             author = dto.author,
             description = dto.description,
-            variables = emptyMap(), // Ф2.8: variables are not in the JSON yet
+            variables = dto.variables.mapValues { (name, vDto) ->
+                VarDecl(name, vDto.toVarType())
+            },
+            invariants = dto.invariants.mapIndexedNotNull { index, invDto ->
+                buildInvariant(invDto, index, errors)
+            },
             tags = dto.tags.map { t ->
                 TagDefinition(
                     name = t.name,
@@ -362,4 +391,106 @@ public object JsonToIr {
     private fun scenePath(parentPath: String, index: Int, id: String): String =
         if (id.isBlank()) "$parentPath.scenes[$index]"
         else "$parentPath.scenes[$index:$id]"
+
+
+    /**
+     * Ф2.8: converts a wire-format [VariableDto] into an IR [VarType].
+     *
+     * **Permissive defaults.** Unknown `type`, or `int_min` / `int_range`
+     * without `min` / `max`, fall back to [VarType.Integer] (the widest
+     * numeric type). Rationale:
+     *
+     * - **Unknown type** → forward compatibility: a file written by a
+     *   future version may carry a type this version does not know.
+     *   Failing would reject the whole file; defaulting to `Integer`
+     *   keeps the adventure playable, and `TypeChecker` still catches
+     *   typos in **variable names** (the most common authoring error).
+     * - **Incomplete `IntMin` / `IntRange`** → the author typed a type
+     *   but not the bounds. The `:app` editor (Ф2.7) does the same
+     *   downgrade in `EditorVarDecl.toVarType()` — matching behaviour
+     *   means the editor's "Проверить" report and the reader's runtime
+     *   view agree.
+     *
+     * **Not downgraded to `Bool`.** `Bool` is not a superset of numeric
+     * types; an `IntRange` that loses its bounds is still intended as a
+     * number, just an unbounded one. Defaulting to `Bool` would turn a
+     * `modify_stat` on it into `ModifyStatOnNonNumeric` — a spurious
+     * error.
+     */
+
+
+    /**
+     * Ф3.5: converts an [InvariantDto] to an IR [Invariant].
+     *
+     * Two stages, both may fail independently:
+     * - `condition` — parsed by `ConditionParser`. On
+     *   `ParseResult.Failure`, the errors are collected with a
+     *   `invariants[i].condition` path.
+     * - `outcome` — flat string mapped to [Outcome]. Only `"death"`
+     *   is recognised today; unknown values produce a
+     *   `ParseError.Structure`. Forward-compat: a future variant
+     *   (`"ending"`, `"custom"`) would add a branch here and a new
+     *   `Outcome` subclass in the IR. **Not** silently defaulted —
+     *   an author who writes `"outcome": "deth"` should see the error,
+     *   not a silently-fallen-back-to-death rule.
+     *
+     * Returns `null` if either stage failed; the caller
+     * (`buildAdventure`) skips the invariant in the IR, and the
+     * `errors` list (already non-empty) causes `JsonToIr.parse` to
+     * return `ParseResult.Failure` — so the partial IR is not used.
+     */
+    private fun buildInvariant(
+        dto: InvariantDto,
+        index: Int,
+        errors: MutableList<ParseError>,
+    ): Invariant? {
+        val path = "invariants[$index]"
+        val condition = when (val r = ConditionParser.parse(dto.condition)) {
+            is ParseResult.Success -> r.value
+            is ParseResult.Failure -> {
+                r.errors.forEach { err ->
+                    errors += if (err is ParseError.ConditionError) {
+                        err.copy(path = "$path.condition")
+                    } else {
+                        err
+                    }
+                }
+                null
+            }
+        }
+        val outcome = when (dto.outcome) {
+            "death" -> Outcome.Death
+            else -> {
+                errors += ParseError.Structure(
+                    message = "Unknown invariant outcome '${dto.outcome}'. " +
+                            "Supported: 'death'.",
+                    path = "$path.outcome",
+                )
+                null
+            }
+        }
+        return if (condition != null && outcome != null) {
+            Invariant(condition = condition, outcome = outcome)
+        } else {
+            null
+        }
+    }
+
+    private fun VariableDto.toVarType(): VarType = when (type) {
+        "bool" -> VarType.Bool
+        "int" -> VarType.Integer
+        "int_min" -> min?.let { VarType.IntMin(it) } ?: VarType.Integer
+        "int_range" -> {
+            val minLocal = min
+            val maxLocal = max
+            if (minLocal != null && maxLocal != null) {
+                VarType.IntRange(minLocal, maxLocal)
+            } else {
+                VarType.Integer
+            }
+        }
+        "item_count" -> VarType.ItemCount
+        "item_list" -> VarType.ItemList
+        else -> VarType.Integer  // forward-compat
+    }
 }
