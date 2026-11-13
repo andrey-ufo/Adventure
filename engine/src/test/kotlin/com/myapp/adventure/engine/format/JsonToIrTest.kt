@@ -706,4 +706,107 @@ class JsonToIrTest {
             "expected message to mention 'deth', got ${structErr.message}",
         )
     }
+
+
+    // ---------- Ф4.1: choice templates ----------
+
+    @Test
+    fun `choice_templates block parses`() {
+        val json = """
+            {
+              "title": "T",
+              "choice_templates": [
+                {
+                  "id": "give_item",
+                  "parameters": [
+                    {"name": "itemId", "type": "item_count"},
+                    {"name": "quantity", "type": "int_min", "min": 1}
+                  ],
+                  "text": "Use item",
+                  "next_scene": "s1"
+                }
+              ],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(1, adv.choiceTemplates.size)
+        val tpl = adv.choiceTemplates.single()
+        assertEquals("give_item", tpl.id)
+        assertEquals(2, tpl.parameters.size)
+        assertEquals("itemId", tpl.parameters[0].name)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.ItemCount,
+            tpl.parameters[0].type,
+        )
+        assertEquals("quantity", tpl.parameters[1].name)
+        assertEquals(
+            com.myapp.adventure.engine.ir.types.VarType.IntMin(1),
+            tpl.parameters[1].type,
+        )
+        assertEquals(SceneId("s1"), tpl.nextScene)
+    }
+
+    @Test
+    fun `choice template visibility and availability conditions parse`() {
+        val json = """
+            {
+              "title": "T",
+              "choice_templates": [
+                {
+                  "id": "t1",
+                  "text": "T",
+                  "visibility_condition": "has_key",
+                  "availability_condition": "gold > 0",
+                  "next_scene": "s1"
+                }
+              ],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val adv = success(json)
+        val tpl = adv.choiceTemplates.single()
+        assertEquals(
+            com.myapp.adventure.engine.ir.Condition.Has("key"),
+            tpl.visibilityCondition,
+        )
+        assertEquals(
+            com.myapp.adventure.engine.ir.Condition.Compare(
+                "gold",
+                com.myapp.adventure.engine.ir.CompareOp.GT,
+                0,
+            ),
+            tpl.availabilityCondition,
+        )
+    }
+
+    @Test
+    fun `choice_templates absent falls back to empty list`() {
+        val json = """
+            {"title":"T","chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(emptyList(), adv.choiceTemplates)
+    }
+
+    @Test
+    fun `duplicate choice template id is an error`() {
+        val json = """
+            {
+              "title": "T",
+              "choice_templates": [
+                {"id": "dup", "text": "A", "next_scene": "s1"},
+                {"id": "dup", "text": "B", "next_scene": "s1"}
+              ],
+              "chapters": [{"id": "c1", "scenes": [{"id": "s1", "text": "Hi"}]}]
+            }
+        """.trimIndent()
+        val errors = failure(json)
+        assertTrue(
+            errors.any {
+                it is ParseError.Structure && it.message.contains("Duplicate") && it.message.contains("dup")
+            },
+            "expected Duplicate error, got $errors",
+        )
+    }
 }

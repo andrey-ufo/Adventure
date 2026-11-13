@@ -220,6 +220,75 @@ list mechanism is already generic; the outcome is what grows.
   fire simultaneously sees `A`'s outcome (first match). Put specific
   rules before generic ones; the analyzer does not enforce order.
 
+## Dead conditions
+
+**Status (Ф3.6).** The analyzer
+(`Analyzer.deadConditions`, also included in `Analyzer.lint`) detects
+conditions that can **never** be true.
+
+### What is detected
+
+1. **Contradictory conjunction** — `has_sword && !has_sword`. Any
+   `And`-tree containing both a subexpression `A` and its negation
+   `!A`. Nested: `(a && b) && !a` — caught (`a` is a conjunct of the
+   left side, and `!a` is on the right).
+
+2. **Numeric out-of-bounds** — `health > 100` where `health` is
+   `IntRange(0, 100)`. The condition's required range has no overlap
+   with the declared type.
+
+3. **Numeric combined contradiction** — `health >= 50 && health <= 30`.
+   Both constraints on the same variable, no common value.
+
+### What is NOT detected (deferred)
+
+- **`Or`-tautologies** — `!(a || b) && a` requires normalization of
+  `Or` into `And` of negations; the current check treats `Or` as
+  opaque.
+- **Cross-variable arithmetic** — `gold + health > 1000`; `Condition`
+  has no arithmetic today. When Ф3.2 extends `Condition` with arithmetic,
+  this analyzer will need a matching extension.
+- **Path-sensitive deadness** — a condition that is dead *because*
+  the state it checks is unreachable on any play-through path. The
+  flag side is covered by `ConditionOnUnestablishedFlag` (existential:
+  "flag is never set anywhere"); the numeric and structural side is
+  a future extension.
+- **`Integer` variables** — no declared bounds, any `Int` is
+  representable; the numeric check skips them. `ItemCount` is treated
+  as `IntMin(0)`, `IntMin` as `[min, Int.MAX_VALUE]`.
+
+### Where it applies
+
+- Every `"condition"` on a `choice` in every scene.
+- Every `"condition"` in an `"invariants"` entry.
+
+Nothing else carries a `Condition` (effects are not conditions).
+
+### Severity
+
+`WARNING`. The adventure opens and plays; the affected choice is
+never available, or the affected invariant never fires. Non-blocking —
+the author sees the warning in the editor's validation dialog and
+decides whether to fix the condition or leave it as a placeholder.
+
+### Example editor message
+
+```
+Предупреждений: 2
+• Недостижимое условие — Condition can never be true
+  (choice 'Go north' in scene 'crossroads'): contains both 'has_sword'
+  and its negation in the same conjunction. Remove one side or check
+  for a typo.
+• Недостижимое условие — Condition can never be true
+  (invariant #0): requires 'health' in '101..', but 'health' is
+  IntRange(0..100).
+```
+
+The English `reason` (from `LintKind.DeadCondition.reason`) is
+embedded into `LintIssue.message`; `StoryValidator.titleFor` maps the
+issue kind to a Russian title. Same pattern as all other `LintKind`
+variants.
+
 ## What is not supported (`VarRef`)
 
 A bare identifier — `"health"`, `"sword"` — is **not** a valid condition.

@@ -9,9 +9,25 @@ written, structured and maintained. It is expected to change rarely.
 
 - **All documentation is written in English.**
 - Russian is used only for:
-    - UI strings that appear in the app, quoted as `«Русский текст»` with an
-      English gloss sourced from [`glossary.md`](./glossary.md);
-    - domain terms referenced from the glossary.
+  - UI strings that appear in the app, quoted as `«Русский текст»` with an
+    English gloss sourced from [`glossary.md`](./glossary.md);
+  - domain terms referenced from the glossary.
+- **Quoting Russian-language sources.** When an English document quotes
+  a Russian-language source (`checklist-tracker.md`, the original Russian
+  progress logs `progress-log-1.md` / `-2.md`), the **quote is
+  translated to English** and carries a back-reference to the exact
+  section of the source, e.g. `**DoD** *(translated from
+  checklist-tracker.md §Ф4.1; original is Russian)*. "N3:
+  `ChoiceTemplate` in IR: id, typed parameters, …"`. Verbatim quoting
+  in Russian is **not** allowed in `docs/` files; the source retains
+  the original, the quote is the translation.
+- **The `Ф` prefix is project terminology, not Russian text.** Phase
+  labels (`Ф2.8`, `Ф3.5`, `Ф4.1`) are the established naming from
+  `checklist-tracker.md`, used throughout English documentation
+  (`engine-types.md`, `engine-conditions.md`, all progress logs from
+  `progress-log-3.md`). Do not translate, transliterate, or rename them
+  as part of "make it English" — that is a separate global rename that
+  would touch the tracker itself and every cross-reference.
 - Source-code comments are written in English (see `CONTRIBUTING.md`).
 
 **Exception:** `docs/progress/progress-log-*.md` files created **before

@@ -49,13 +49,14 @@ internal data class AdventureDto(
      */
     val variables: Map<String, VariableDto> = emptyMap(),
     /**
-     * Ф3.5: global invariants. Flat list of `{"condition": "...",
-     * "outcome": "death"}` objects. The condition is a string (parsed
-     * by `JsonToIr` into a `Condition` AST); the outcome is a flat
-     * string (`"death"` today — future variants add more). Empty /
-     * absent → `Engine.evaluateInvariants` falls back to the
-     * pre-Ф3.5 hardcoded `health <= 0 => death` rule.
+     * Ф4.1: reusable choice templates. Flat list of
+     * `ChoiceTemplateDto` — see [ChoiceTemplateDto] KDoc. Empty /
+     * absent → `Adventure.choiceTemplates = emptyList()`.
+     * **No consumer in Ф4.1**: parsed infrastructure only. Ф4.2
+     * adds `Choice.templateRef` + `applyTemplate`.
      */
+    @SerialName("choice_templates")
+    val choiceTemplates: List<ChoiceTemplateDto> = emptyList(),
     val invariants: List<InvariantDto> = emptyList(),
     val tags: List<TagDefinitionDto> = emptyList(),
     @SerialName("death_scene")
@@ -181,6 +182,66 @@ internal data class DeathSceneDto(
  */
 @Serializable
 internal data class VariableDto(
+    val type: String,
+    val min: Int? = null,
+    val max: Int? = null,
+)
+
+
+/**
+ * Ф4.1: wire-format for a single reusable choice template.
+ *
+ * The adventure file uses `choice_templates` (plural, snake_case) at
+ * the top level and `next_scene` / `visibility_condition` /
+ * `availability_condition` (snake_case) inside each entry, matching
+ * `ChoiceDto.nextScene` and the general snake_case convention of
+ * multi-word fields.
+ *
+ * **Flat-vs-typed distinction** (same as everywhere else): `text` is
+ * a plain string; `visibilityCondition` / `availabilityCondition` are
+ * condition **strings** parsed by `ConditionParser`; effects are the
+ * three parallel fields `set_flags` / `remove_flags` /
+ * `modify_stats`. The typed IR counterpart is `ChoiceTemplate`.
+ *
+ * **Why `parameters: List<VarDeclDto>`, not `Map<String, VarType>`.**
+ * Parameters are an ordered list of typed declarations; `VarDeclDto`
+ * has `name` inside the object (`{"name": "itemId", "type":
+ * "item_count"}`), not as the map key. This mirrors how
+ * `Adventure.variables` looks in JSON (`{"health": {"type": ...}}` —
+ * name is the key), except that template parameters use list form
+ * because order is meaningful for documentation and duplicates must
+ * be an error (checked by `JsonToIr`).
+ */
+@Serializable
+internal data class ChoiceTemplateDto(
+    val id: String,
+    val parameters: List<VarDeclDto> = emptyList(),
+    val text: String,
+    @SerialName("visibility_condition")
+    val visibilityCondition: String? = null,
+    @SerialName("availability_condition")
+    val availabilityCondition: String? = null,
+    @SerialName("set_flags")
+    val setFlags: List<String> = emptyList(),
+    @SerialName("remove_flags")
+    val removeFlags: List<String> = emptyList(),
+    @SerialName("modify_stats")
+    val modifyStats: Map<String, Int> = emptyMap(),
+    @SerialName("next_scene")
+    val nextScene: String,
+)
+
+/**
+ * Ф4.1: wire-format for a single typed parameter declaration.
+ *
+ * `name` + `type` + optional `min` / `max` (for `int_min` /
+ * `int_range`). Field set is identical to `VariableDto` plus `name`;
+ * the two types share the `type` / `min` / `max` downgrade logic
+ * (see `JsonToIr.typeStringToVarType`).
+ */
+@Serializable
+internal data class VarDeclDto(
+    val name: String,
     val type: String,
     val min: Int? = null,
     val max: Int? = null,

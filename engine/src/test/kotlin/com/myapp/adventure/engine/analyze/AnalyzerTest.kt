@@ -12,12 +12,15 @@ import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.DeathScene
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.InitialState
+import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagCategory
 import com.myapp.adventure.engine.ir.TagDefinition
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ParseResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -65,6 +68,7 @@ class AnalyzerTest {
     private fun adventureWithLintSetup(
         start: String,
         tags: List<TagDefinition> = emptyList(),
+        variables: Map<String, VarDecl> = emptyMap(),
         initialState: InitialState = InitialState(),
         deathScene: DeathScene? = null,
         vararg chapters: Chapter,
@@ -72,6 +76,7 @@ class AnalyzerTest {
         title = "T",
         startScene = SceneId(start),
         tags = tags,
+        variables = variables,
         initialState = initialState,
         deathScene = deathScene,
         chapters = chapters.toList(),
@@ -796,6 +801,217 @@ class AnalyzerTest {
         )
         val compiled = compile(adv)
         assertEquals(emptyList(), Analyzer.lint(compiled))
+    }
+
+    // ---------- Ф3.6: deadConditions ----------
+
+    @Test
+    fun `dead condition - contradictory flag and negation`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    "c1",
+                    "a",
+                    condition = Condition.And(
+                        Condition.Has("sword"),
+                        Condition.Not(Condition.Has("sword")),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                initialState = InitialState(flags = listOf("sword")),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        val issue = Analyzer.deadConditions(compiled).single()
+        assertTrue(issue.kind is LintKind.DeadCondition)
+        assertEquals(SceneId("a"), issue.sceneId)
+        assertTrue(issue.message.contains("never be true"), issue.message)
+    }
+
+    @Test
+    fun `dead condition - nested contradiction`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    "c1",
+                    "a",
+                    condition = Condition.And(
+                        Condition.And(Condition.Has("x"), Condition.Has("y")),
+                        Condition.Not(Condition.Has("x")),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                initialState = InitialState(flags = listOf("x", "y")),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertTrue(Analyzer.deadConditions(compiled).any { it.kind is LintKind.DeadCondition })
+    }
+
+    @Test
+    fun `live condition - no contradiction`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    "c1",
+                    "a",
+                    condition = Condition.And(Condition.Has("x"), Condition.Has("y")),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                initialState = InitialState(flags = listOf("x", "y")),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertEquals(emptyList(), Analyzer.deadConditions(compiled))
+    }
+
+    @Test
+    fun `dead condition - health above max on IntRange`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice("c1", "a", condition = Condition.Compare("health", CompareOp.GT, 100)),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                variables = mapOf("health" to VarDecl("health", VarType.IntRange(0, 100))),
+                initialState = InitialState(stats = mapOf("health" to 50)),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        val issue = Analyzer.deadConditions(compiled).single()
+        assertTrue(issue.kind is LintKind.DeadCondition)
+        assertTrue(issue.message.contains("health"), issue.message)
+    }
+
+    @Test
+    fun `dead condition - health below min on IntMin`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice("c1", "a", condition = Condition.Compare("health", CompareOp.LT, -100)),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                variables = mapOf("health" to VarDecl("health", VarType.IntMin(0))),
+                initialState = InitialState(stats = mapOf("health" to 50)),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertTrue(Analyzer.deadConditions(compiled).any { it.kind is LintKind.DeadCondition })
+    }
+
+    @Test
+    fun `dead condition - combined lower above upper`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    "c1",
+                    "a",
+                    condition = Condition.And(
+                        Condition.Compare("health", CompareOp.GE, 50),
+                        Condition.Compare("health", CompareOp.LE, 30),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                variables = mapOf("health" to VarDecl("health", VarType.IntRange(0, 100))),
+                initialState = InitialState(stats = mapOf("health" to 50)),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertTrue(Analyzer.deadConditions(compiled).any { it.kind is LintKind.DeadCondition })
+    }
+
+    @Test
+    fun `live condition - health between 30 and 50`() {
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    "c1",
+                    "a",
+                    condition = Condition.And(
+                        Condition.Compare("health", CompareOp.GE, 30),
+                        Condition.Compare("health", CompareOp.LE, 50),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                variables = mapOf("health" to VarDecl("health", VarType.IntRange(0, 100))),
+                initialState = InitialState(stats = mapOf("health" to 50)),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertEquals(emptyList(), Analyzer.deadConditions(compiled))
+    }
+
+    @Test
+    fun `live condition - Integer type has no bounds check`() {
+        // Integer is unbounded — dead-condition numeric analysis is skipped.
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice("c1", "a", condition = Condition.Compare("score", CompareOp.GT, 1_000_000)),
+            ),
+        )
+        val compiled = compile(
+            adventureWithLintSetup(
+                start = "a",
+                variables = mapOf("score" to VarDecl("score", VarType.Integer)),
+                initialState = InitialState(stats = mapOf("score" to 0)),
+                chapters = arrayOf(chapter("ch", a)),
+            ),
+        )
+        assertEquals(emptyList(), Analyzer.deadConditions(compiled))
+    }
+
+    @Test
+    fun `dead condition in invariant`() {
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            variables = mapOf("health" to VarDecl("health", VarType.IntRange(0, 100))),
+            invariants = listOf(
+                Invariant(
+                    condition = Condition.Compare("health", CompareOp.GT, 100),
+                    outcome = Outcome.Death,
+                ),
+            ),
+            chapters = listOf(
+                Chapter("ch", "ch", listOf(scene("a", isEnding = true))),
+            ),
+        )
+        val compiled = compile(adv)
+        val issue = Analyzer.deadConditions(compiled).single()
+        assertTrue(issue.kind is LintKind.DeadCondition)
+        assertEquals(null, issue.sceneId)
     }
 
     @Test

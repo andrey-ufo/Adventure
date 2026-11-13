@@ -5,6 +5,9 @@ import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagCategory
+import com.myapp.adventure.engine.ir.types.VarType
+import com.myapp.adventure.engine.ir.types.displayName
+import com.myapp.adventure.engine.parse.ConditionWriter
 
 /**
  * Semantic analysis of an adventure that **compiles successfully**.
@@ -137,6 +140,7 @@ public object Analyzer {
         issues += lintDeadEnd(compiled)
         issues += lintEndingSceneWithChoices(compiled)
         issues += lintUnreachableInvariants(compiled)
+        issues += deadConditions(compiled)
         return issues.sortedWith(
             compareBy<LintIssue> { it.sceneId == null }
                 .thenBy { it.sceneId?.value ?: "" }
@@ -480,5 +484,207 @@ public object Analyzer {
             )
         }
         return issues
+    }
+
+
+    // ----- Ф3.6: dead conditions -----
+
+    /**
+     * Ф3.6 (N2): finds conditions that can **never** be true. Same
+     * deterministic ordering as [lint]: by scene id (null last), then
+     * by message. Two identical conditions in different scenes produce
+     * two issues.
+     *
+     * **Where it runs.** Every
+     * [com.myapp.adventure.engine.ir.Choice.condition] in every scene,
+     * and every [com.myapp.adventure.engine.ir.Invariant.condition].
+     * `Effect` is not a `Condition`, so effects are not checked here.
+     *
+     * **Three sub-checks**, documented in
+     * [com.myapp.adventure.engine.analyze.LintKind.DeadCondition]:
+     * contradictory conjunction, numeric out-of-bounds, numeric
+     * combined contradiction.
+     *
+     * **Public** so that the editor (Ф9.2, realtime linter) can call
+     * it as a focused unit; `lint()` also invokes it, so the editor's
+     * current validation dialog (Ф2.6) sees these issues without
+     * additional plumbing.
+     *
+     * **Pure and O(small).** Walks the `And`-tree of each condition
+     * once per check; conditions are tiny ASTs (typically 1–3 nodes).
+     */
+    public fun deadConditions(compiled: CompiledAdventure): List<LintIssue> {
+        val varTypes = compiled.adventure.variables.mapValues { it.value.type }
+        val issues = mutableListOf<LintIssue>()
+
+        // Choices — navigable by scene id.
+        for (chapter in compiled.adventure.chapters) {
+            for (scene in chapter.scenes) {
+                for (choice in scene.choices) {
+                    val condition = choice.condition ?: continue
+                    val where = "choice '${choice.text}' in scene '${scene.id.value}'"
+                    issues += checkBooleanTautology(condition, scene.id, where)
+                    issues += checkNumericBounds(condition, varTypes, scene.id, where)
+                }
+            }
+        }
+
+        // Invariants — global, no scene id.
+        for ((index, invariant) in compiled.adventure.invariants.withIndex()) {
+            val where = "invariant #$index"
+            issues += checkBooleanTautology(invariant.condition, null, where)
+            issues += checkNumericBounds(invariant.condition, varTypes, null, where)
+        }
+
+        return issues.sortedWith(
+            compareBy<LintIssue> { it.sceneId == null }
+                .thenBy { it.sceneId?.value ?: "" }
+                .thenBy { it.message },
+        )
+    }
+
+    /**
+     * Flattens `And`-chains into a list of leaves, keeping every
+     * intermediate `And` node in the list too (so that
+     * `And(And(b, c), Not(And(b, c)))` reports the whole `And(b, c)`
+     * as a positive conjunct, not just `b` and `c`). Descends **only**
+     * into `And` — `Not`, `Or`, `Has`, etc. are opaque leaves.
+     */
+    private fun flattenAndNodes(c: Condition): List<Condition> = when (c) {
+        is Condition.And ->
+            listOf(c) + flattenAndNodes(c.left) + flattenAndNodes(c.right)
+        else -> listOf(c)
+    }
+
+    /**
+     * Walks the `And`-tree collecting the inner condition of every
+     * [Condition.Not] — the "negative contributions". Descends only
+     * into `And` (a `Not` at any position in the conjunction says "the
+     * whole inner expression must be false").
+     */
+    private fun collectNotInners(c: Condition): List<Condition> = when (c) {
+        is Condition.And -> collectNotInners(c.left) + collectNotInners(c.right)
+        is Condition.Not -> listOf(c.inner)
+        else -> emptyList()
+    }
+
+    private fun checkBooleanTautology(
+        condition: Condition,
+        sceneId: SceneId?,
+        where: String,
+    ): List<LintIssue> {
+        if (condition !is Condition.And) return emptyList()
+        val positives = flattenAndNodes(condition)
+            .filterNot { it is Condition.Not }
+            .toSet()
+        val negatives = collectNotInners(condition).toSet()
+        val contradiction = negatives.firstOrNull { it in positives } ?: return emptyList()
+        val contradictionText = ConditionWriter.write(contradiction)
+        return listOf(
+            LintIssue(
+                kind = LintKind.DeadCondition(
+                    condition = condition,
+                    reason = "contains both '$contradictionText' and its negation",
+                ),
+                message = "Condition can never be true ($where): " +
+                        "contains both '$contradictionText' and its negation in the " +
+                        "same conjunction. Remove one side or check for a typo.",
+                sceneId = sceneId,
+                severity = Severity.WARNING,
+            ),
+        )
+    }
+
+    /** Strongest interval constraint gathered for one variable in an `And`-tree. */
+    private data class NumericConstraints(
+        val lower: Int? = null,
+        val upper: Int? = null,
+    )
+
+    /**
+     * Extracts interval constraints from every `Compare` / `InRange`
+     * inside the `And`-tree of [condition]. Skips `Or` (would need
+     * disjunctive reasoning — out of scope) and `Not` (would need
+     * negation of an interval — also out of scope; `Not(Compare(...))`
+     * is not extracted).
+     *
+     * `CompareOp.NE` is skipped — "not equal to X" is not an interval
+     * bound, and expressing it as two intervals is not worth the
+     * complexity for Ф3.6.
+     */
+    private fun collectNumericConstraints(condition: Condition): Map<String, NumericConstraints> {
+        val result = mutableMapOf<String, NumericConstraints>()
+        fun addConstraint(name: String, lower: Int?, upper: Int?) {
+            val existing = result[name] ?: NumericConstraints()
+            result[name] = NumericConstraints(
+                lower = listOfNotNull(existing.lower, lower).maxOrNull(),
+                upper = listOfNotNull(existing.upper, upper).minOrNull(),
+            )
+        }
+        fun visit(c: Condition) {
+            when (c) {
+                is Condition.Compare -> {
+                    when (c.op) {
+                        com.myapp.adventure.engine.ir.CompareOp.LT ->
+                            addConstraint(c.varName, lower = null, upper = c.value - 1)
+                        com.myapp.adventure.engine.ir.CompareOp.LE ->
+                            addConstraint(c.varName, lower = null, upper = c.value)
+                        com.myapp.adventure.engine.ir.CompareOp.GT ->
+                            addConstraint(c.varName, lower = c.value + 1, upper = null)
+                        com.myapp.adventure.engine.ir.CompareOp.GE ->
+                            addConstraint(c.varName, lower = c.value, upper = null)
+                        com.myapp.adventure.engine.ir.CompareOp.EQ ->
+                            addConstraint(c.varName, lower = c.value, upper = c.value)
+                        com.myapp.adventure.engine.ir.CompareOp.NE -> Unit // not an interval
+                    }
+                }
+                is Condition.InRange -> addConstraint(c.varName, c.min, c.max)
+                is Condition.And -> {
+                    visit(c.left)
+                    visit(c.right)
+                }
+                else -> Unit // Or / Not / Has / VarRef / Literal — no interval extractable
+            }
+        }
+        visit(condition)
+        return result
+    }
+
+    private fun checkNumericBounds(
+        condition: Condition,
+        varTypes: Map<String, VarType>,
+        sceneId: SceneId?,
+        where: String,
+    ): List<LintIssue> {
+        val constraints = collectNumericConstraints(condition)
+        val issues = mutableListOf<LintIssue>()
+        for ((varName, c) in constraints) {
+            val declared = varTypes[varName] ?: continue
+            val (declMin, declMax) = when (declared) {
+                is VarType.IntRange -> declared.min to declared.max
+                is VarType.IntMin -> declared.min to Int.MAX_VALUE
+                is VarType.ItemCount -> 0 to Int.MAX_VALUE
+                else -> continue // Integer (unbounded), Bool, ItemList — nothing to check
+            }
+            val finalLower = maxOf(c.lower ?: Int.MIN_VALUE, declMin)
+            val finalUpper = minOf(c.upper ?: Int.MAX_VALUE, declMax)
+            if (finalLower <= finalUpper) continue
+            val reason = "requires '$varName' in ${formatInterval(c)}, " +
+                    "but '$varName' is ${declared.displayName()}"
+            issues += LintIssue(
+                kind = LintKind.DeadCondition(condition = condition, reason = reason),
+                message = "Condition can never be true ($where): $reason.",
+                sceneId = sceneId,
+                severity = Severity.WARNING,
+            )
+        }
+        return issues
+    }
+
+    private fun formatInterval(c: NumericConstraints): String = when {
+        c.lower != null && c.upper != null -> "${c.lower}..${c.upper}"
+        c.lower != null -> "${c.lower}.."
+        c.upper != null -> "..${c.upper}"
+        else -> "any"
     }
 }

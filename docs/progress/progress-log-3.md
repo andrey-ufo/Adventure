@@ -1074,4 +1074,435 @@ convention "progress log entries are in English" (CONTRIBUTING.md).
       on the AST).
     - `StoryValidator.titleFor(LintKind)` needs two more Russian titles
       (compiler will force it).
-  
+
+---
+
+- **2026-11-13 · Ф3.6 — dead conditions (`Analyzer.deadConditions`)**
+
+  **DoD.** "N2: анализ недостижимых условий: `Analyzer.deadConditions(ir)`;
+  анализатор находит условия, которые не могут быть true ни в одном
+  достижимом состоянии (пересечение с `computeReachable`); отчёт в UI
+  редактора; тест: `has_sword && !has_sword` → предупреждение."
+
+  **DoD reconciliation.** The DoD mentions "пересечение с
+  `computeReachable`" — i.e. path-sensitive reachability. **Not
+  implemented in Ф3.6** (decision A1). Path-sensitive deadness requires
+  flow analysis (intersection of "where is this flag set" × "where is
+  the condition checked" × "is that path reachable"), which is close to
+  full dataflow. The DoD example (`has_sword && !has_sword`) is a
+  **boolean tautology** — statically provable from the AST alone. Ф3.6
+  detects the two most-common classes (boolean contradiction, numeric
+  out-of-bounds); path-sensitive analysis is a future
+  `Analyzer.deadConditions`-advanced entry, not a blocker for the
+  current phase gate.
+
+  Three classes of "dead condition" were evaluated:
+
+    - **Boolean tautology** (`A && !A`) — detected. ✅
+    - **Numeric out-of-bounds** (`health > 100` on `IntRange(0, 100)`) —
+      detected. ✅
+    - **Path-sensitive** (`has_x` set only in an unreachable scene) —
+      deferred. The **existential** half (`has_x` never set anywhere) is
+      already covered by `ConditionOnUnestablishedFlag` (Ф1.6.2.3).
+
+  **Scope decisions (agreed before coding).**
+
+    - **A1** — classes 1 + 2 only. Path-sensitive → roadmap.
+    - **B1** — one `LintKind.DeadCondition(condition, reason)`, not
+      three sub-variants. `reason` distinguishes cause ("contains both
+      `X` and its negation", "requires `health` in `101..` but `health`
+      is `IntRange(0..100)`"). Adding a new detection sub-type does not
+      add a new `LintKind`.
+    - **C1** — public `Analyzer.deadConditions(compiled): List<LintIssue>`,
+      parallel to `Analyzer.reachable` / `Analyzer.lint`. `lint()`
+      invokes it (single integration point).
+    - **D1** — applies to both `Choice.condition` and `Invariant.condition`.
+    - **E1** — boolean tautology by flattening the `And`-tree: positives
+      (non-`Not` conjuncts, including nested `And` nodes) vs negatives
+      (inner of every `Not` conjunct). Intersection → contradiction.
+      `Or`, `Not(Or)`, etc. treated as opaque; no SAT solving.
+    - **F1** — numeric bounds: `IntRange(min, max)`, `IntMin(min)` →
+      `[min, ∞)`, `ItemCount` → `[0, ∞)`. `Integer` skipped (no bounds).
+      For each variable in the `And`-tree, collect `Compare` / `InRange`
+      constraints, reduce to `(lower, upper)`, intersect with the
+      declared type. Empty intersection → dead.
+    - **G1** — combined-numeric contradictions (`health >= 50 && health
+    <= 30`) fall out of the same interval reduction — no extra code.
+    - **H1** — `reason` is **English** (matches `TypeError.message`,
+      `CompileError.message`); `StoryValidator.titleFor` maps the issue
+      kind to a Russian title, `message` embeds `reason` verbatim. Same
+      separation as everywhere else.
+    - **I1** — single batch. `:engine`-only + one line in `:app`
+      (`StoryValidator.titleFor`).
+
+  **What changed (5 files).**
+
+    1. `engine/.../analyze/LintIssue.kt` — new `LintKind.DeadCondition
+     (condition: Condition, reason: String)`. KDoc covers:
+       three sub-detections; `WARNING` severity; what is **not**
+       detected (Or-tautologies, cross-variable arithmetic,
+       path-sensitive, `Integer`); relationship to
+       `ConditionOnUnestablishedFlag` (existential half already
+       covered). Import `Condition`.
+    2. `engine/.../analyze/Analyzer.kt` — new
+       `public fun deadConditions(compiled): List<LintIssue>` + 5
+       private helpers (`flattenAndNodes`, `collectNotInners`,
+       `checkBooleanTautology`, `collectNumericConstraints`,
+       `checkNumericBounds`, `formatInterval`, `NumericConstraints`
+       data class). `lint()` now calls `deadConditions`. Imports:
+       `VarType`, `VarType.displayName`, `ConditionWriter`. Walks
+       every choice + every invariant; result sorted by
+       `(sceneId == null, sceneId.value, message)` — same convention
+       as `lint`.
+    3. `app/src/main/java/com/myapp/adventure/utils/StoryValidator.kt`
+       — `titleFor(LintKind.DeadCondition) -> "Недостижимое условие"`.
+       Compiler forced this (sealed `when` in `StoryValidator`), same
+       pattern as `UnreachableInvariant` in Ф3.5.
+    4. `engine/.../analyze/AnalyzerTest.kt` — 10 new tests:
+        - Boolean: contradictory flag (DoD example), nested
+          contradiction, live (no contradiction).
+        - Numeric: `IntRange` upper bound (`health > 100`), `IntMin`
+          lower bound (`health < -100`), combined contradiction
+          (`health >= 50 && health <= 30`), live (`30..50`),
+          `Integer` skipped.
+        - Invariant: dead condition in `invariants` (no sceneId).
+          Helper `adventureWithLintSetup` gains `variables` parameter.
+    5. `docs/engine-conditions.md` — new §Dead conditions: what is
+       detected (3 classes), what is not (4 deferred), where it
+       applies, severity, worked example with the editor's Russian
+       dialog. Precedes §"What is not supported (`VarRef`)".
+
+  **No changes:** `test_adventure.json`, `golden_ir.json`,
+  `JsonToIr`, `Engine`, `Evaluator`, `StepResult`, `Condition`,
+  `Outcome`, `Invariant` — the check is purely additive on the
+  analyzer side.
+
+  **Compiler-driven fix.** `StoryValidator.kt:200` (once) — see
+  file 3. Same rule as Ф3.5: adding a `LintKind` variant breaks
+  `:app:compileDebugKotlin` because `StoryValidator.titleFor(LintKind)`
+  is exhaustive. Recorded as "compiler consumers of sealed types"
+  table in Ф3.5 record; Ф3.6 adds one line, the table does not
+  grow (same consumer, new branch).
+
+  **User benefit.** (a) The two most common authoring bugs are caught
+  before the reader ever opens the file:
+    - `has_sword && !has_sword` (contradiction) — the choice could
+      **never** be visible; today the author sees "why is the button
+      always hidden?".
+    - `health > 100` on `IntRange(0, 100)` — the invariant / choice
+      is dead code; today the author sees "why doesn't the death rule
+      fire?".
+      (b) The warning lands in the editor's "Проверить" dialog **now** —
+      no new UI, no new plumbing (Ф2.6 `StoryValidator` bridge already
+      routes `LintIssue` into the dialog). (c) The pattern extends
+      cleanly: `LintKind.DeadCondition.reason` is a string, so a future
+      `Or`-tautology check or path-sensitive deadness adds a new `reason`
+      branch, **not** a new `LintKind` — one title in
+      `StoryValidator.titleFor` covers the whole family.
+
+  **What was NOT done (deliberately).**
+
+    - **Path-sensitive deadness** — decision A1. Requires dataflow;
+      roadmap "Ф3.6-advanced".
+    - **`Or`-tautologies** — `!(a || b) && a` needs normalization of
+      `Or` into `And` of negations. Deferred; treated as opaque.
+    - **Cross-variable arithmetic** — `gold + health > 1000`.
+      `Condition` has no arithmetic today (Ф3.2 deliberately kept the
+      grammar to `Compare` on a single variable). When arithmetic is
+      added (future), the analyzer will need extension.
+    - **Numeric deadness on `Integer`** — no declared bounds, any
+      `Int` representable, false-negative is fine (conservative
+      analyzer).
+    - **`Not(Compare(...))` constraints** — `!(health >= 50)` is not
+      extracted as `health < 50`; the interval collector skips `Not`.
+      Could be added cheaply (`Not` of `Compare` → opposite op), but
+      is not required for any DoD example. Deferred.
+
+  **Verified.** `./gradlew :engine:test --rerun-tasks` →
+  **306/306 PASSED** (296 from Ф3.5 + 10 new in `AnalyzerTest`).
+  `./gradlew :app:assembleDebug` → BUILD SUCCESSFUL, 1 unrelated
+  warning (`FontManager.scaledDensity`, pre-existing). Smoke
+  (phone): open `test_adventure.json` in editor → «Проверить» →
+  «Проблем не найдено» (sample has no dead conditions). Added a
+  manual `"condition": "has_initial_flag && !has_initial_flag"` to
+  `conditions_advanced_test` → «Проверить» → «Предупреждений: 1 •
+  Недостижимое условие» with the exact message. Reverted. ✅
+
+  **Gate Ф3 — status after 3.6:**
+
+  | Item | Status |
+    |---|---|
+  | Single evaluator for all conditions | ✅ Ф3.4 |
+  | `isConditionMet` / `extractHasFlagName` removed | ✅ Ф2.6 + Ф3.4 |
+  | `&&`, `\|\|`, `!`, parentheses, quantitative | ✅ Ф3.2 |
+  | Global invariants as first-class IR | ✅ Ф3.5 |
+  | Analyzer detects unreachable conditions | ✅ Ф3.5 (flag-side) + Ф3.6 (boolean + numeric) |
+  | Sandbox criterion (no reflection/IO in `:engine` main) | ⏳ Ф3.7 |
+
+  Five of six gate items closed. Ф3.7 is the last, then the phase
+  gate closes.
+
+  **Next — Ф3.7.** Sandbox criterion (задел под Q1): `evaluate()` /
+  `:engine` main has no access to reflection, file IO, network,
+  process execution, wall-clock randomness. Static test (Kotlin
+  unit test, no ArchUnit — see Я1 in plan) verifies via import
+  scanning. Not full Q1 (HTML escaping — Ф10); but sandbox is ready.
+
+---
+
+- **2026-11-13 · Ф3.7 — sandbox criterion (static test)**
+
+  **DoD.** "Sandbox-evaluator (задел под Q1): без доступа к
+  рефлексии/IO/DOM, только `State` + `decls`. `evaluate()` в
+  `:engine` не имеет `java.lang.reflect`, `System.*`, файлового IO;
+  статический тест (grep или ArchUnit) подтверждает; это **не**
+  полный Q1 (экранирование — Ф10), но sandbox готов."
+
+  **Scope decisions (agreed before coding).**
+
+    - **A1 — Kotlin unit test, not a CI bash script, not ArchUnit.**
+      A test in `:engine/src/test/kotlin/com/myapp/adventure/engine/SandboxTest.kt`
+      runs locally with `./gradlew :engine:test` — the same command a
+      contributor runs anyway. A CI-only bash check would be invisible
+      until push; ArchUnit adds a dependency for a 100-line scan.
+    - **B1 — both import patterns and identifier patterns.** Import-only
+      would miss `System.exit` / `Runtime.getRuntime` /
+      `ProcessBuilder`, all of which live in `java.lang` and are
+      auto-imported. Identifier patterns are applied to non-comment
+      lines (see KDoc for the "comments are approximated" limitation —
+      documented, not a bug).
+    - **C1 — only `:engine/src/main/kotlin`.** Test sources use
+      `File`, `Random`, `System.currentTimeMillis` legitimately
+      (reading source files, generating data, measuring); the sandbox
+      criterion is about production code.
+    - **D1 — `System.currentTimeMillis` / `System.nanoTime`
+      forbidden.** The engine must be pure; tests must be
+      deterministic; save/restore (`Ф5`) must behave identically
+      across runs; future JS runtime (`E1.base`) has no `System`.
+      Future features needing time (e.g. "night-only invariants")
+      will inject a `Clock`, same pattern as future `RandomSource`
+      for `Ф12`.
+    - **E1 — `System.getenv` / `System.getProperties` forbidden.**
+      The engine must not depend on the host environment — tests
+      would be non-deterministic. Injection, not global read.
+    - **F1 — `java.util.UUID` allowed.** Uses `SecureRandom`
+      internally, but UUIDs are not used in `evaluate` /
+      `Engine.step` today, and forbidding `UUID` without forbidding
+      `SecureRandom` (which is in `java.security`, ubiquitous,
+      never imported) would be inconsistent. If `UUID.randomUUID()`
+      appears inside `Evaluator`/`Engine` later, code review will
+      catch it, and the pattern list can be extended.
+    - **G1 — `java.time.*` allowed, with `TODO`.** `LocalDate`,
+      `Duration`, `Instant` as **value types** are deterministic.
+      `LocalDate.now()` / `Instant.now()` / etc. call
+      `System.currentTimeMillis()` indirectly; today `:engine` uses
+      none of the `*.now()` variants, so the sandbox is clean.
+      `TODO` in `SandboxTest` KDoc: when time enters the engine,
+      add `LocalDate.now` etc. to `forbiddenIdentifiers` and inject
+      a `Clock`.
+    - **H1 — `kotlinx.serialization` allowed.** Reflection inside the
+      library is a dependency concern, not ours; the `@Serializable`
+      compiler plugin generates code without runtime reflection for
+      all common cases. A JS-runtime build (`E1.base`) that lacks
+      reflection will surface any library-level reflection as a
+      build/test failure there, not here.
+    - **I1 — no `docs/security.md`.** That file is `Ф10.9` (X3.base
+      docs). `documentation-rules.md §7` — do not document what has
+      not stabilized. The test's KDoc is the human-readable side
+      for now.
+    - **J1 — single batch.** One new file, one test. Nothing to split.
+
+  **What changed (1 file).**
+
+  `engine/src/test/kotlin/com/myapp/adventure/engine/SandboxTest.kt`
+  (new, ~290 lines with KDoc). Two tests:
+
+    1. `main sources have no forbidden imports or identifiers` —
+       walks every `.kt` under `engine/src/main/kotlin`, line-scans:
+        - `import`-lines against 7 forbidden patterns (reflection,
+          java.io, java.nio.file, java.net, android, kotlin.random.Random,
+          java.util.Random);
+        - non-comment lines against 7 forbidden identifiers
+          (`System.exit`, `System.getenv`, `System.getProperties`,
+          `System.currentTimeMillis`, `System.nanoTime`,
+          `Runtime.getRuntime`, `ProcessBuilder`).
+          Collects all violations with file:line before failing — one
+          `:engine:test` run shows every offender, not just the first.
+    2. `main sources exist and are discoverable` — sanity check
+       against a silently-empty scan: source root is discoverable,
+       ≥ 10 `.kt` files (currently ~20), `Evaluator.kt` present at
+       the expected package root.
+
+  `locateMainSources()` — two candidates (`src/main/kotlin` for
+  Gradle's module working directory; `engine/src/main/kotlin` for
+  IDE "Run" from repo root), validated by
+  `com/myapp/adventure/engine` subdirectory presence.
+
+  **Compiler-driven bug during 3.7.** First run:
+  `SandboxTest.kt:289 — Unclosed comment`. Root cause: the KDoc
+  of the test documented the line-scan approach with the literal
+  characters for a block-comment opener inside a `/** ... */`.
+  Kotlin **nests** block comments: `/**` opens one, a literal
+  `/*` inside opens a **second**, and the final `*/` closes only
+  the inner — the outer runs to EOF. Fixed by replacing the
+  literal characters with the phrase "a block-comment opener".
+  Ironic: the bug was in the comment **documenting** the
+  limitation "comments are approximated, not parsed". Rule now
+  recorded in `documentation-rules.md` (see next item — the
+  "Documenting comment delimiters" addition, part of the
+  documentation discipline batch).
+
+  **User benefit.** (a) The engine's purity contract is
+  **machine-checked**, not aspirational: `./gradlew :engine:test`
+  fails if any `:engine` main source ever imports IO, network,
+  reflection, or reads the wall clock. (b) The criterion is
+  **documented** in the test KDoc, with per-pattern rationale and
+  explicit "what is allowed and why" (UUID, java.time, kotlinx.
+  serialization) — a future contributor knows the intent, not just
+  the rule. (c) The `TODO` for `java.time.*.now()` is where a
+  future time-dependent feature will land — when `:engine` starts
+  using time, the pattern list needs one line added, not a
+  discussion. (d) `E1.base` (JS runtime) inherits the same
+  property: everything that runs in the engine today is
+  representable in a JS sandbox (no `System`, no `File`, no
+  reflection) — the DoD for `E1.base` (`Ф8.9`) becomes a matter of
+  checking the JS code, not redesigning the engine.
+
+  **What was NOT done (deliberately).**
+
+    - **`docs/security.md`** — `Ф10.9`.
+    - **AST-based analysis** (parsing with `kotlin-compiler-embeddable`)
+      — line-based scan is sufficient today. Upgrade path documented
+      in the test KDoc: switch to AST when false positives appear.
+    - **`LocalDate.now` / `Instant.now` etc. in the forbidden list**
+      — `TODO`, not a current rule, because `:engine` does not use
+      them today and pinning them would freeze design decisions not
+      yet made (when time enters the engine, the mechanism will be
+      `Clock` injection, not `LocalDate.now` in `evaluate`).
+    - **Dependency-level reflection** — out of scope (see `H1`).
+    - **HTML escaping / XSS** — `Ф10.2` (Q1 proper, `:app`/exporter
+      concern).
+
+  **Verified.** `./gradlew :engine:test --rerun-tasks` →
+  **308/308 PASSED** (306 from `Ф3.6` + 2 new in `SandboxTest`).
+  `./gradlew :app:assembleDebug` → BUILD SUCCESSFUL (unchanged,
+  `:app` was not touched). No new warnings. Manual negative
+  verification (documented, not kept in the tree): a temporary
+  `import java.io.File` in an `:engine` main file produced
+  `Sandbox violated: ... Violations (1): • ui/Foo.kt:5 — forbidden
+  import (java.io): import java.io.File`; reverted. First-run
+  self-check (`main sources exist and are discoverable`) passes
+  against the current ~20 `.kt` files.
+
+  **Gate Ф3 — closed (see the next entry).**
+
+  **Next — Ф4.1.** `ChoiceTemplate` in IR: id, typed parameters,
+  body (visibility / availability conditions, effects, target),
+  no scene binding. Followed by `Ф4.2` (instantiation) — see plan
+  in the next message.
+
+---
+
+- **2026-11-13 · Gate Ф3 — closed**
+
+  **DoD (checklist-tracker, Ф3 gate):** all six items. Status of
+  each:
+
+  | Item | Status | Where |
+    |---|---|---|
+  | Любая проверка условия в приложении проходит через **один** evaluator (grep подтверждает) | ✅ | `Ф3.4` — `isConditionMet` удалён; `conditionHolds` — тонкий враппер над `Evaluator.evaluate` |
+  | `isConditionMet` и `extractHasFlagName` удалены | ✅ | `Ф2.6` (`extractHasFlagName`) + `Ф3.4` (`isConditionMet`). Grep `:app` = 0 для обоих |
+  | AND/OR, скобки, количественные сравнения работают и покрыты тестами | ✅ | `Ф3.2` — recursive-descent parser; `ConditionParserTest` ~30 тестов; `ConditionWriterTest` round-trip |
+  | Глобальные инварианты — first-class в IR, проверяются после каждого шага | ✅ | `Ф3.5` — `Invariant(condition, outcome)`, `Outcome.Death`, `Engine.evaluateInvariants`, reader `checkDeath()` через invariants |
+  | Анализатор умеет находить недостижимые условия | ✅ | `Ф3.5` (flag-side `UnreachableInvariant`) + `Ф3.6` (boolean tautology + numeric bounds `DeadCondition`) |
+  | Sandbox-критерий: `evaluate()` не имеет доступа к reflection/IO/DOM | ✅ | `Ф3.7` — `SandboxTest` сканирует `:engine/src/main/kotlin` на 7 forbidden import-паттернов + 7 forbidden identifiers |
+
+  **Six of six. Phase Ф3 accepted.**
+
+  **What this phase delivered, in one paragraph.**
+  Before Ф3, conditions were checked in two places (`:app` reader
+  and a `catch → true` fallback in `:app`), there was no global
+  invariant mechanism (just a hardcoded `health <= 0`), and the
+  parser supported only the simplest `has_X` / `X op N` syntax.
+  After Ф3: one evaluator (`Evaluator.evaluateWithReason`), one AST
+  (eight `Condition` variants, all handled exhaustively in every
+  `:engine` consumer), one grammar (`has_X`, `!has_X`, `X op N`,
+  `X in A..B`, `true`/`false`, `&&`, `||`, `!`, parentheses — with
+  canonical round-trip via `ConditionWriter`), global invariants as
+  first-class IR (`Invariant` + `Outcome`), and three analyzer
+  checks (`ConditionOnUnestablishedFlag`, `UnreachableInvariant`,
+  `DeadCondition`) — plus a machine-checked purity criterion
+  (`SandboxTest`). The reader has no local condition logic. The
+  editor has no local condition parsing (`StoryValidator` is a
+  bridge to `:engine`). The engine has no access to reflection,
+  IO, network, or wall clock.
+
+  **Phase-spanning decisions recorded during Ф3** (do not re-debate
+  in Ф4+):
+
+    - **One evaluator, two entry points.** `evaluate(condition, state):
+    Boolean` (fast path for `Engine.step` / `Analyzer`) and
+      `evaluateWithReason(condition, state): EvaluationResult`
+      (structured reason for N4 / Ф4). Both funnel through the same
+      `when(condition)` — no second implementation.
+    - **`Reason` is structured data, not formatted strings.**
+      Formatting is a `:app` / `strings.xml` / Ф7 concern (i18n).
+      `:engine` never builds a user-facing sentence.
+    - **`VarRef` AST exists but is not produced by the parser yet.**
+      Deferred from `Ф3.2` (see record there); tracked as a roadmap
+      item ("VarRef + `has_X` deprecation"). Adding the parser branch
+      later is ~30 lines; the AST consumer work (`Evaluator`,
+      `TypeChecker`, `TypeInference`, `Analyzer`, `ConditionWriter`)
+      is already done.
+    - **Explicit replaces implicit.** Non-empty `Adventure.invariants`
+      replaces the `health <= 0` fallback — the author's rules are
+      authoritative. Same contract for `Adventure.variables`
+      (non-empty → strict typecheck; empty → fallback to `tags` +
+      `initialState`).
+    - **`has_X` is the canonical Bool syntax.** No bare `sword` /
+      `health` today. `has_` prefix disambiguation is a future
+      `VarRef` decision (`VarRef + has_X deprecation`, roadmap).
+    - **`LintKind` / `TypeError` / `CompileError` sealed → `:app`
+      `when`-consumers must be updated in the same batch.** Compiler
+      forces this; table in `Ф3.5` record. Ф3.6 added one line
+      (`DeadCondition`); the table does not grow.
+
+  **What is not closed by this phase (by design — these are Ф4+).**
+
+    - **N3** — reusable `ChoiceTemplate` (Ф4.1 + Ф4.2 + Ф4.3).
+    - **N4** — disabled choice with reason (Ф4.4). The `Reason`
+      structure landed in Ф3.3; the UI display is `Ф3.8` / N4 / Ф4.
+    - **N5** — explicit merge node (Ф4.5 + Ф4.6).
+    - **N6.base** — subroutines (Ф4.7 + Ф4.8).
+    - **`Or`-tautologies, cross-variable arithmetic, path-sensitive
+      deadness** in `Analyzer.deadConditions` — see `Ф3.6` record
+      ("What was NOT done"). Roadmap item "Ф3.6-advanced".
+    - **`VarRef` in the parser** — roadmap item, see `Ф3.2` record.
+    - **Q1 proper (HTML escaping, XSS)** — Ф10.2.
+    - **Full threat model doc** — Ф10.9 (`docs/security.md`).
+
+  **What this file covers.**
+
+  `progress-log-3.md` (this file) begins at **Ф2.8.1** (2026-11-12)
+  and ends here, at **Gate Ф3 (2026-11-13)**. It covers:
+
+    - **Ф2.8** — `JsonToIr` reads `variables` from JSON (2.8.1),
+      `inferTypes` (2.8.2);
+    - **Ф2.9** — golden auto-closure (2.9);
+    - **Ф2.10** — `docs/engine-types.md` (2.10);
+    - **Ф3.1** — AST additions + `ConditionWriter` (3.1.1 + 3.1.2);
+    - **Ф3.2** — condition grammar (`&&`, `||`, `!`, `in`,
+      `Literal`) (3.2.1 + 3.2.2);
+    - **Ф3.3** — `Evaluator.evaluateWithReason` + `Reason`;
+    - **Ф3.4** — `isConditionMet` removal (3.4 + fix + fix2);
+    - **Ф3.5** — global invariants (3.5.1 + 3.5.2);
+    - **Ф3.6** — dead conditions;
+    - **Ф3.7** — sandbox criterion.
+
+  **This file is now sealed.** New entries from `Ф4.1` onward go
+  into [`progress-log-4.md`](./progress-log-4.md) — see the
+  one-phase-per-file rule in
+  [`../documentation-rules.md §2`](../documentation-rules.md#2-file-format-and-naming).
+
+  **Next — Ф4.1** (`ChoiceTemplate` in IR). See
+  `progress-log-4.md`.

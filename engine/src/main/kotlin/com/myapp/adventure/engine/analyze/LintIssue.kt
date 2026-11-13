@@ -1,5 +1,6 @@
 package com.myapp.adventure.engine.analyze
 
+import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.SceneId
 
 /**
@@ -46,7 +47,8 @@ public enum class Severity {
  *
  * **Why sealed and not an enum.** Future checks need per-variant data
  * ([LintKind.UnreachableScene] today; `TypeMismatch(variable)` in Ф2.2,
- * `DeadCondition(condition)` in Ф3.6, `MergeConflict(nodeId)` in Ф4.6).
+ * `DeadCondition(condition, reason)` in Ф3.6, `MergeConflict(nodeId)`
+ * in Ф4.6).
  * Ф3.5 added [UnreachableInvariant] with a `reason` field, so
  * "reference to unset flag" and (future) "numeric condition never
  * holds" coexist in one variant.
@@ -235,6 +237,59 @@ public sealed class LintKind {
      *   by the UI without a new variant.
      */
     public data class UnreachableInvariant(
+        public val reason: String,
+    ) : LintKind()
+
+    /**
+     * Ф3.6 (N2): a condition that can **never** be true, given its
+     * structure and/or the declared variable types. Detected by
+     * [Analyzer.deadConditions].
+     *
+     * Three sub-detections today:
+     *
+     * 1. **Contradictory conjunction** — the `And`-tree contains both
+     *    `A` and `!A` for some subexpression `A`. Example:
+     *    `has_sword && !has_sword`. [reason] holds a canonical string
+     *    of the conflicting subexpression (via `ConditionWriter`,
+     *    e.g. `"has_sword"`).
+     * 2. **Numeric out-of-bounds** — a `Compare` / `InRange` on a
+     *    variable whose declared `VarType` makes the required range
+     *    empty. Example: `health > 100` where `health` is
+     *    `IntRange(0, 100)`. [reason] names the variable, the required
+     *    interval, and the declared type.
+     * 3. **Numeric combined-contradiction** — two constraints on the
+     *    same variable in one conjunction that cannot both hold.
+     *    Example: `health >= 50 && health <= 30`.
+     *
+     * **WARNING, not ERROR.** The adventure runs; the affected choice
+     * (or invariant) is simply never active / never fires. If the
+     * author meant a different condition, they have a bug to fix. Not
+     * an error because the rest of the adventure still works.
+     *
+     * **What is NOT detected (deferred to roadmap).**
+     * - **`Or`-tautologies** — `!(a || b) && a` requires normalization;
+     *   the current check treats `Or` as opaque.
+     * - **Cross-variable arithmetic** — `gold + health > 1000`;
+     *   `Condition` has no arithmetic today.
+     * - **Path-sensitive deadness** — a condition is dead *because*
+     *   the state it checks is unreachable on any path. The flag side
+     *   of this is covered by [ConditionOnUnestablishedFlag]
+     *   (existential); the rest is a future `Analyzer.deadConditions`-
+     *   advanced.
+     * - **`Integer` variables** — no declared bounds, any value
+     *   representable; the numeric check skips them.
+     *
+     * **Severity mapping.** [Analyzer.lint] returns this issue with
+     * `Severity.WARNING`. The reader does **not** block on it — the
+     * adventure opens; the specific choice is just never available.
+     *
+     * @property condition the AST, so the UI can render it via
+     *   `ConditionWriter` if it wants.
+     * @property reason human-readable explanation, embedded into
+     *   `LintIssue.message`.
+     */
+    public data class DeadCondition(
+        public val condition: Condition,
         public val reason: String,
     ) : LintKind()
 

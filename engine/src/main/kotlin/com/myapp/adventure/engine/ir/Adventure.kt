@@ -59,6 +59,8 @@ public data class Adventure(
     public val author: String = "",
     public val description: String = "",
     public val variables: Map<String, VarDecl> = emptyMap(),
+    @SerialName("choice_templates")
+    public val choiceTemplates: List<ChoiceTemplate> = emptyList(),
     public val invariants: List<Invariant> = emptyList(),
     public val tags: List<TagDefinition> = emptyList(),
     @SerialName("initial_state")
@@ -126,6 +128,13 @@ public data class Adventure(
          *   documented fallback is backward-compatible in both
          *   directions (old readers ignore the field; new readers
          *   apply the fallback when it is empty).
+         * - Still `5` (Ф4.1) — `Adventure.choice_templates:
+         *   List<ChoiceTemplate>` added. `ChoiceTemplate(id,
+         *   parameters, text, visibilityCondition,
+         *   availabilityCondition, effects, nextScene)` — reusable
+         *   choice templates, no scene binding. **No version bump**:
+         *   optional list, empty default, identity migration. Same
+         *   reasoning as `variables` (Ф2.8) and `invariants` (Ф3.5).
          */
         public const val CURRENT_VERSION: Int = 5
     }

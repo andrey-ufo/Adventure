@@ -206,5 +206,6 @@ object StoryValidator {
         is LintKind.DeadEnd -> "Тупик"
         is LintKind.EndingSceneWithChoices -> "Конец игры с выборами"
         is LintKind.UnreachableInvariant -> "Инвариант не сработает"
+        is LintKind.DeadCondition -> "Недостижимое условие"
     }
 }

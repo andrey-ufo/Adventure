@@ -14,8 +14,12 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.ir.Gate
+import com.myapp.adventure.engine.format.dto.ChoiceTemplateDto
 import com.myapp.adventure.engine.format.dto.InvariantDto
+import com.myapp.adventure.engine.format.dto.VarDeclDto
 import com.myapp.adventure.engine.format.dto.VariableDto
+import com.myapp.adventure.engine.ir.ChoiceTemplate
+import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.types.VarDecl
@@ -203,6 +207,19 @@ public object JsonToIr {
                 )
                 SceneId("")
             }
+        val choiceTemplates = dto.choiceTemplates.mapIndexed { i, t ->
+            buildChoiceTemplate(t, "choice_templates[$i]", errors)
+        }
+        val duplicateTemplateIds = choiceTemplates
+            .groupBy { it.id }
+            .filter { it.value.size > 1 }
+            .keys
+        duplicateTemplateIds.forEach { id ->
+            errors += ParseError.Structure(
+                message = "Duplicate choice template id '$id'",
+                path = "choice_templates",
+            )
+        }
         return Adventure(
             version = dto.version ?: Adventure.CURRENT_VERSION,
             title = dto.title,
@@ -211,6 +228,7 @@ public object JsonToIr {
             variables = dto.variables.mapValues { (name, vDto) ->
                 VarDecl(name, vDto.toVarType())
             },
+            choiceTemplates = choiceTemplates,
             invariants = dto.invariants.mapIndexedNotNull { index, invDto ->
                 buildInvariant(invDto, index, errors)
             },
@@ -337,19 +355,7 @@ public object JsonToIr {
             )
         }
         val condition = dto.condition?.let { raw ->
-            when (val result = ConditionParser.parse(raw)) {
-                is ParseResult.Success -> result.value
-                is ParseResult.Failure -> {
-                    result.errors.forEach { err ->
-                        errors += if (err is ParseError.ConditionError) {
-                            err.copy(path = "$path.condition")
-                        } else {
-                            err
-                        }
-                    }
-                    null
-                }
-            }
+            parseCondition(raw, "$path.condition", errors)
         }
         val effects = buildEffects(dto.setFlags, dto.removeFlags, dto.modifyStats)
         val choiceId = dto.id?.takeIf { it.isNotBlank() }
@@ -445,19 +451,7 @@ public object JsonToIr {
         errors: MutableList<ParseError>,
     ): Invariant? {
         val path = "invariants[$index]"
-        val condition = when (val r = ConditionParser.parse(dto.condition)) {
-            is ParseResult.Success -> r.value
-            is ParseResult.Failure -> {
-                r.errors.forEach { err ->
-                    errors += if (err is ParseError.ConditionError) {
-                        err.copy(path = "$path.condition")
-                    } else {
-                        err
-                    }
-                }
-                null
-            }
-        }
+        val condition = parseCondition(dto.condition, "$path.condition", errors)
         val outcome = when (dto.outcome) {
             "death" -> Outcome.Death
             else -> {
@@ -476,21 +470,154 @@ public object JsonToIr {
         }
     }
 
-    private fun VariableDto.toVarType(): VarType = when (type) {
-        "bool" -> VarType.Bool
-        "int" -> VarType.Integer
-        "int_min" -> min?.let { VarType.IntMin(it) } ?: VarType.Integer
-        "int_range" -> {
-            val minLocal = min
-            val maxLocal = max
-            if (minLocal != null && maxLocal != null) {
-                VarType.IntRange(minLocal, maxLocal)
-            } else {
-                VarType.Integer
+    /**
+     * Ф3.5 / Ф3.6 / Ф4.1: shared "parse a raw condition string into
+     * an IR `Condition?`, collecting errors at [path]".
+     *
+     * Extracted from `buildChoice` and `buildInvariant`, both of which
+     * had the same 15-line block. Ф4.1 adds two more callers
+     * (`ChoiceTemplate.visibilityCondition` /
+     * `availabilityCondition`); four duplicates would be worse than
+     * one helper.
+     */
+    private fun parseCondition(
+        raw: String,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): Condition? = when (val result = ConditionParser.parse(raw)) {
+        is ParseResult.Success -> result.value
+        is ParseResult.Failure -> {
+            result.errors.forEach { err ->
+                errors += if (err is ParseError.ConditionError) {
+                    err.copy(path = path)
+                } else {
+                    err
+                }
             }
+            null
         }
-        "item_count" -> VarType.ItemCount
-        "item_list" -> VarType.ItemList
-        else -> VarType.Integer  // forward-compat
     }
+
+    /**
+     * Ф4.1: converts a [ChoiceTemplateDto] to an IR [ChoiceTemplate].
+     *
+     * **Two-stage validation** (same shape as `buildInvariant` /
+     * `buildChoice`):
+     * - blank `id` → `ParseError.Structure` at [path].
+     * - blank parameter name → `ParseError.Structure` at
+     *   `$path.parameters[i]`.
+     * - `visibility_condition` / `availability_condition` parsed by
+     *   `ConditionParser` → on failure, `ParseError.ConditionError` is
+     *   re-anchored to the field path.
+     * - blank `next_scene` → `ParseError.Structure`.
+     *
+     * If any of these fail, the template is still constructed and
+     * passed to `Adventure.choiceTemplates` (parser already records
+     * errors, so `JsonToIr.parse` returns `Failure` overall — the
+     * partial IR is not used by callers).
+     *
+     * **Not checked here:**
+     * - Duplicate `id`s across templates → caught by `buildAdventure`
+     *   in one pass over the whole list.
+     * - Duplicate parameter names within one template → **not**
+     *   checked in Ф4.1 (would surface as ambiguous scope in Ф4.2's
+     *   `checkChoiceTemplate`). Can be added as an extra
+     *   `ParseError.Structure` if it becomes a real source of bugs.
+     * - Condition validity against `parameters` — `TypeChecker`
+     *   extension in Ф4.2.
+     */
+    private fun buildChoiceTemplate(
+        dto: ChoiceTemplateDto,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): ChoiceTemplate {
+        if (dto.id.isBlank()) {
+            errors += ParseError.Structure(
+                message = "Choice template id is blank",
+                path = path,
+            )
+        }
+        val parameters = dto.parameters.mapIndexed { i, p ->
+            if (p.name.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Parameter name is blank",
+                    path = "$path.parameters[$i]",
+                )
+            }
+            VarDecl(name = p.name, type = p.toVarType())
+        }
+        val visibilityCondition = dto.visibilityCondition?.let {
+            parseCondition(it, "$path.visibility_condition", errors)
+        }
+        val availabilityCondition = dto.availabilityCondition?.let {
+            parseCondition(it, "$path.availability_condition", errors)
+        }
+        val effects = buildEffects(dto.setFlags, dto.removeFlags, dto.modifyStats)
+        if (dto.nextScene.isBlank()) {
+            errors += ParseError.Structure(
+                message = "Choice template next_scene is blank",
+                path = path,
+            )
+        }
+        return ChoiceTemplate(
+            id = dto.id,
+            parameters = parameters,
+            text = dto.text,
+            visibilityCondition = visibilityCondition,
+            availabilityCondition = availabilityCondition,
+            effects = effects,
+            nextScene = SceneId(dto.nextScene),
+        )
+    }
+
+    private fun VariableDto.toVarType(): VarType =
+        typeStringToVarType(type, min, max)
+
+    private fun VarDeclDto.toVarType(): VarType =
+        typeStringToVarType(type, min, max)
+
+    /**
+     * Ф2.8 / Ф4.1: shared downgrade logic for wire-format type strings
+     * (`VariableDto`, `VarDeclDto`). Extracted in Ф4.1 because
+     * `ChoiceTemplate.parameters` uses `VarDeclDto` and needs the same
+     * permissive-default rules.
+     *
+     * **Permissive defaults.** Unknown `type`, or `int_min` / `int_range`
+     * without `min` / `max`, fall back to [VarType.Integer] (the widest
+     * numeric type). Rationale (from Ф2.8):
+     *
+     * - **Unknown type** → forward compatibility: a file written by a
+     *   future version may carry a type this version does not know.
+     *   Failing would reject the whole file; defaulting to `Integer`
+     *   keeps the adventure playable, and `TypeChecker` still catches
+     *   typos in **variable names** (the most common authoring error).
+     * - **Incomplete `IntMin` / `IntRange`** → the author typed a type
+     *   but not the bounds. The `:app` editor (`EditorVarDecl.toVarType`)
+     *   does the same downgrade in Ф2.7 — matching behaviour means the
+     *   editor's «Проверить» report and the reader's runtime view agree.
+     *
+     * **Not downgraded to `Bool`.** `Bool` is not a superset of numeric
+     * types; an `IntRange` that loses its bounds is still intended as a
+     * number, just an unbounded one. Defaulting to `Bool` would turn a
+     * `modify_stat` on it into `ModifyStatOnNonNumeric` — a spurious
+     * error.
+     */
+    private fun typeStringToVarType(type: String, min: Int?, max: Int?): VarType =
+        when (type) {
+            "bool" -> VarType.Bool
+            "int" -> VarType.Integer
+            "int_min" -> min?.let { VarType.IntMin(it) } ?: VarType.Integer
+            "int_range" -> {
+                val minLocal = min
+                val maxLocal = max
+                if (minLocal != null && maxLocal != null) {
+                    VarType.IntRange(minLocal, maxLocal)
+                } else {
+                    VarType.Integer
+                }
+            }
+            "item_count" -> VarType.ItemCount
+            "item_list" -> VarType.ItemList
+            else -> VarType.Integer  // forward-compat
+        }
 }

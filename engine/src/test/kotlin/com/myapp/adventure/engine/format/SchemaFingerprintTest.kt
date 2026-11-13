@@ -15,6 +15,8 @@ import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.format.dto.VariableDto
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.format.dto.VarDeclDto
+import com.myapp.adventure.engine.ir.ChoiceTemplate
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -67,8 +69,8 @@ class SchemaFingerprintTest {
     private val expectedFlatFields: Map<String, Set<String>> = mapOf(
         "Adventure" to setOf(
             "version", "title", "author", "description",
-            "variables", "invariants", "tags", "initial_state",
-            "death_scene", "start_scene", "chapters",
+            "variables", "choice_templates", "invariants", "tags",
+            "initial_state", "death_scene", "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
         "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending"),
@@ -81,6 +83,12 @@ class SchemaFingerprintTest {
         "VarDecl" to setOf("name", "type"),
         "Gate" to setOf("required_steps", "repeatable"),
         "VariableDto" to setOf("type", "min", "max"),
+        "ChoiceTemplate" to setOf(
+            "id", "parameters", "text",
+            "visibility_condition", "availability_condition",
+            "effects", "next_scene",
+        ),
+        "VarDeclDto" to setOf("name", "type", "min", "max"),
         "Invariant" to setOf("condition", "outcome"),
     )
 
@@ -174,6 +182,8 @@ class SchemaFingerprintTest {
         assertFlat("VarDecl", VarDecl.serializer().descriptor)
         assertFlat("Gate", Gate.serializer().descriptor)
         assertFlat("VariableDto", VariableDto.serializer().descriptor)
+        assertFlat("ChoiceTemplate", ChoiceTemplate.serializer().descriptor)
+        assertFlat("VarDeclDto", VarDeclDto.serializer().descriptor)
         assertFlat("Invariant", Invariant.serializer().descriptor)
     }
 
