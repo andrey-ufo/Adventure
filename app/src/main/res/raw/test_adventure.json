@@ -3,7 +3,7 @@
   "version": 5,
   "start_scene": "start",
   "title": "Тестовое приключение",
-  "author": "Claude (AI-ассистент)",
+  "author": "Безумный монах",
   "description": "Приключение создано исключительно для тестирования функций приложения Adventure. Не является связной историей. Сцены, метки и переходы предназначены для проверки редактора, читалки, отладочной панели и шаговых шлюзов.",
   "initial_state": {
     "flags": ["initial_flag"],
@@ -30,7 +30,7 @@
   },
   "death_scene": {
     "id": "death_scene",
-    "text": "💀 Вы погибли. Здоровье закончилось.",
+    "text": "💀 Вы погибли.",
     "allow_step_back": true,
     "allow_chapter_restart": true,
     "allow_adventure_restart": true
@@ -58,24 +58,24 @@
       "scenes": [
         {
           "id": "start",
-          "text": "Добро пожаловать в тестовое приключение. Здесь можно проверить все функции приложения.",
+          "text": "Добро пожаловать в тестовое приключение.",
           "choices": [
             { "text": "Проверить здоровье", "next_scene": "health_test", "modify_stats": {"health": 10} },
             { "text": "Проверить предметы", "next_scene": "items_test", "modify_stats": {"potion": 2} },
             { "text": "Проверить журнал", "next_scene": "journal_test", "set_flags": ["visited_forest", "knows_secret"] },
             { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "sword > 0" },
             { "text": "Перейти к концу главы", "next_scene": "chapter_end_1" },
-            { "text": "Составные условия (демо, сразу)", "next_scene": "conditions_advanced_test" },
-            { "text": "Тест шагового гейта (демо)", "next_scene": "gate_test" }
+            { "text": "Составные условия", "next_scene": "conditions_advanced_test" },
+            { "text": "Тест шагового гейта", "next_scene": "gate_test" }
           ]
         },
         {
           "id": "health_test",
-          "text": "Здесь можно наблюдать за HUD здоровья. Также можно проверить смерть. Шаговый гейт здесь не задан — сразу можно щёлкать урон / лечение / смерть.",
+          "text": "Здесь можно наблюдать за HUD здоровья или проверить смерть.",
           "choices": [
-            { "text": "Получить урон (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
-            { "text": "Получить лечение (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
-            { "text": "Погибнуть (урон -999)", "next_scene": "health_test", "modify_stats": {"health": -999} },
+            { "text": "Съесть мухомор (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
+            { "text": "Выпить лекарство (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
+            { "text": "Получить удар тапком (урон -999)", "next_scene": "health_test", "modify_stats": {"health": -999} },
             { "text": "Назад", "next_scene": "start" }
           ]
         },

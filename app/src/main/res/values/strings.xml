@@ -682,4 +682,26 @@
         <item quantity="many">%d ссылок</item>
         <item quantity="other">%d ссылок</item>
     </plurals>
+
+    <!-- Editor: apply template to scene -->
+    <string name="editor_add_from_template">📦 Из шаблона</string>
+    <string name="editor_template_no_templates_toast">Сначала создайте шаблон в «📦 Шаблоны»</string>
+    <string name="editor_template_pick_title">Выбрать шаблон</string>
+    <string name="editor_template_picker_empty">Нет шаблонов</string>
+    <string name="editor_template_picker_no_text">(без текста)</string>
+    <string name="editor_template_args_title_fmt">Параметры шаблона «%1$s»</string>
+    <string name="editor_template_args_label_fmt">%1$s (%2$s)</string>
+    <string name="editor_template_args_hint_item_count">Имя переменной, например potion</string>
+    <string name="editor_template_args_hint_bool">Имя флага, например has_sword</string>
+    <string name="editor_template_args_hint_integer">Имя переменной или число</string>
+    <string name="editor_template_args_hint_default">Имя переменной</string>
+    <string name="editor_template_args_missing">Заполните все параметры</string>
+    <string name="editor_template_apply_failed">Не удалось применить шаблон</string>
+    <string name="editor_toast_template_applied">Шаблон применён</string>
+
+    <!-- Reader: disabled choice suffix -->
+    <string name="reader_choice_disabled">(недоступно)</string>
+
+    <!-- Validation dialog: merge source missing -->
+    <string name="validation_title_missing_merge_source">Источник слияния не найден</string>
 </resources>

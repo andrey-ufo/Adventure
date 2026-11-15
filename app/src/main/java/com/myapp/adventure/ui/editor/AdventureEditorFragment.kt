@@ -521,13 +521,28 @@ class AdventureEditorFragment : Fragment() {
                         // map `null` to `false` — the same identity
                         // migration that `JsonToIr` applies.
                         isEnding = scene.isEnding ?: false,
+                        // Ф4.5: round-trip `merge` / `merge_sources`.
+                        // `null` / absent → `false` / `emptyList()` —
+                        // same identity migration as `isEnding`.
+                        isMerge = scene.merge ?: false,
+                        mergeSources = scene.mergeSources ?: emptyList(),
                         tags = extractTags(scene, tagDefs),
                         choices = scene.choices?.map { choice ->
                             EditorChoice(
                                 text = choice.text,
                                 nextSceneId = choice.nextScene,
                                 conditionTag = choice.condition ?: "",
-                                tags = extractChoiceTags(choice, tagDefs)
+                                // Ф4.3.2b: read `"visibility_condition"` back
+                                // from JSON. Absent / null → empty string, same
+                                // convention as `conditionTag`.
+                                visibilityConditionTag = choice.visibilityCondition ?: "",
+                                tags = extractChoiceTags(choice, tagDefs),
+                                // Ф4.3.2b: round-trip of `template_ref`.
+                                // Absent / null (hand-written choice) → both
+                                // `templateUid = null` and `templateArgs =
+                                // emptyMap`, matching the pre-4.3.2b state.
+                                templateUid = choice.templateRef?.templateId,
+                                templateArgs = choice.templateRef?.args ?: emptyMap(),
                             )
                         }?.toMutableList() ?: mutableListOf()
                     )

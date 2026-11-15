@@ -149,7 +149,25 @@ data class Scene(
      * (matches the `is_ending` pattern).
      */
     @SerializedName("gate_repeatable")
-    val gateRepeatable: Boolean? = null
+    val gateRepeatable: Boolean? = null,
+    /**
+     * Ф4.5 (N5): `"merge": true` — this scene is a merge point. Nullable,
+     * `null` means "field absent" (identity migration — merge = false).
+     * Written by `buildAdventure` from `EditorScene.isMerge` (currently
+     * only reachable via hand-edited JSON; the editor UI for merge
+     * lands in Ф4.10).
+     */
+    @SerializedName("merge")
+    val merge: Boolean? = null,
+    /**
+     * Ф4.5 (N5): `"merge_sources": ["s1", "s2"]` — declared incoming
+     * branches. `null`/empty = no sources declared (the analyzer in Ф4.6
+     * will collect them from the `nextScene` graph). Written by
+     * `buildAdventure` from `EditorScene.mergeSources` (empty → `null`,
+     * Gson omits the field).
+     */
+    @SerializedName("merge_sources")
+    val mergeSources: List<String>? = null,
 )
 
 data class Choice(
@@ -157,12 +175,73 @@ data class Choice(
     @SerializedName("next_scene")
     val nextScene: String,
     val condition: String? = null,
+    /**
+     * Ф4.3.2b: "show this choice?" condition (distinct from
+     * [condition] which is "enable this choice?"). Populated from a
+     * template's `visibilityCondition` when the choice is expanded via
+     * `applyTemplate`. Persisted to JSON as `"visibility_condition"`.
+     *
+     * **`:engine` ignores this field today.** `JsonToIr`'s
+     * `ChoiceDto` has no `visibility_condition`, and
+     * `Json { ignoreUnknownKeys = true }` silently drops it. The
+     * runtime gates only on [condition]. When Ф4.4 / N4 adds the
+     * visibility behaviour to the reader, a matching
+     * `visibility_condition` field lands in `engine/format/dto/ChoiceDto`
+     * and `:engine/ir/Choice.visibilityCondition` (already exists —
+     * added in Ф4.2.1) is populated by the parser.
+     */
+    @SerializedName("visibility_condition")
+    val visibilityCondition: String? = null,
     @SerializedName("set_flags")
     val setFlags: List<String>? = null,
     @SerializedName("remove_flags")
     val removeFlags: List<String>? = null,
     @SerializedName("modify_stats")
-    val modifyStats: Map<String, Int>? = null
+    val modifyStats: Map<String, Int>? = null,
+    /**
+     * Ф4.3.2b: if this choice was expanded from a template, the source
+     * reference (template id + args). `null` for hand-written choices.
+     *
+     * **JSON shape:** `"template_ref": { "template_id": "...", "args": {
+     * ... } }`. Written by the editor's `buildAdventure()`; read back by
+     * `loadFromUri` so the reference survives a save / load round-trip.
+     *
+     * **Runtime sees only the expanded fields** (`text`, `condition`,
+     * `setFlags`, `removeFlags`, `modifyStats`, `nextScene`). `:engine`'s
+     * `JsonToIr` does not parse `template_ref` (its `ChoiceDto` has no
+     * field for it, and `Json { ignoreUnknownKeys = true }` silently
+     * drops it) — this is intentional: the runtime does not need the
+     * reference, only the expanded content. When / if `:engine` needs
+     * the reference (e.g. for a future "un-expand" tool), a matching
+     * `template_ref` field lands in `engine/format/dto/ChoiceDto` and
+     * `Choice.templateRef` (IR) is populated by the parser.
+     */
+    @SerializedName("template_ref")
+    val templateRef: TemplateRefDto? = null,
+)
+
+/**
+ * Ф4.3.2b: JSON shape of a `template_ref` on a `Choice`.
+ *
+ * **Same wire shape as `:engine/ir/TemplateRef`:** `template_id` (the
+ * id of the source `ChoiceTemplate`) + `args` (parameter name → actual
+ * variable name). The two classes are deliberately separate — `:app` uses
+ * Gson, `:engine` uses kotlinx.serialization — and live in different
+ * modules (see `docs/architecture.md` invariant I1). Keeping the **wire**
+ * shape identical (hand-maintained) is what makes the editor ↔ reader
+ * round-trip lossless: `:app` writes `template_id` / `args`, `:engine`
+ * (in future) reads the same keys.
+ *
+ * **Why `template_id`, not `id` or `templateId`.** Matches the IR
+ * `TemplateRef` `@SerialName` and the choice-template adventure-file
+ * convention (`choice_templates[].id` is the referenced id; the reference
+ * itself uses `template_id` for unambiguity, mirroring
+ * `"death_scene": { "id": ... }`).
+ */
+data class TemplateRefDto(
+    @SerializedName("template_id")
+    val templateId: String,
+    val args: Map<String, String> = emptyMap(),
 )
 
 data class PlayerState(

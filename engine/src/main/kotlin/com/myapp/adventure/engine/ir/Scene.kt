@@ -58,4 +58,46 @@ public data class Scene(
     public val gate: Gate? = null,
     @SerialName("is_ending")
     public val isEnding: Boolean = false,
+    /**
+     * Ф4.5 (N5): this scene is a **merge point** — a deliberate convergence
+     * of two or more narrative branches. The field is metadata: it does
+     * **not** change runtime behaviour (a merge point is an ordinary
+     * scene; entering it via `Engine.step` applies the incoming choice's
+     * effects as usual, and subsequent steps see the accumulated state).
+     *
+     * **Why the metadata then?** The analyzer (Ф4.6) will use it to
+     * verify "all declared source branches are actually reachable and
+     * lead here" — unreachable or inconsistent merges are author
+     * mistakes. It also lets the editor's map view (Ф4.10) render a
+     * visual join. Without the marker, a merge point is
+     * indistinguishable from an ordinary scene that happens to have
+     * multiple incoming edges.
+     *
+     * **Delta semantics (Ф4.5 decision C1).** "Merge transfers the
+     * delta" is satisfied **implicitly**: each branch applies its own
+     * `choice.effects` (and `scene.effects`, once per first entry)
+     * before entering the merge scene; `PlayerState` arriving at the
+     * merge is the sum of those deltas on top of the pre-branch state.
+     * There is **no** runtime "merge delta" application — the current
+     * model does not track per-branch deltas separately from the state.
+     * The `merge: true` flag is a *declaration* that this scene is where
+     * branches converge, not a runtime operation.
+     */
+    @SerialName("merge")
+    public val isMerge: Boolean = false,
+    /**
+     * Ф4.5 (N5): declared source branches — scene ids that the author
+     * says lead into this merge point. Optional even when [isMerge] is
+     * `true`: if empty, the analyzer (Ф4.6) will collect incoming edges
+     * from the `nextScene` graph. If non-empty, each id must exist —
+     * [com.myapp.adventure.engine.CompileError.MissingMergeSource]
+     * otherwise.
+     *
+     * The declaration is what makes the merge *explicit*: a plain scene
+     * with two incoming choices is an *implicit* merge; a scene with
+     * `merge: true` + `mergeSources` declares "these are the branches I
+     * intended to join here", which the analyzer can then validate.
+     */
+    @SerialName("merge_sources")
+    public val mergeSources: List<SceneId> = emptyList(),
 )

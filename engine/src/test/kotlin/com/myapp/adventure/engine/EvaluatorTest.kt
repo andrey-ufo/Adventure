@@ -3,6 +3,9 @@ package com.myapp.adventure.engine
 import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.PlayerState
+import com.myapp.adventure.engine.ir.Choice
+import com.myapp.adventure.engine.ir.ChoiceId
+import com.myapp.adventure.engine.ir.SceneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -397,5 +400,57 @@ class EvaluatorTest {
         // error, so the only valid form is `EvaluationResult.Success`.
         val success: EvaluationResult = EvaluationResult.Success
         assertIs<EvaluationResult.Success>(success)
+
     }
-}
+// ---------- Ф4.4: choiceState ----------
+
+        @Test
+        fun `choiceState visible when no conditions`() {
+            val choice = Choice(
+                id = ChoiceId("c"),
+                text = "Go",
+                nextScene = SceneId("next"),
+            )
+            assertEquals(ChoiceState.Visible, Evaluator.choiceState(choice, state()))
+        }
+
+        @Test
+        fun `choiceState disabled with reason when condition false`() {
+            val choice = Choice(
+                id = ChoiceId("c"),
+                text = "Go",
+                nextScene = SceneId("next"),
+                condition = Condition.Has("sword"),
+            )
+            val result = Evaluator.choiceState(choice, state())
+            assertIs<ChoiceState.Disabled>(result)
+            assertEquals(
+                Reason.HasFailed("sword"),
+                result.reason,
+            )
+        }
+
+        @Test
+        fun `choiceState hidden when visibilityCondition false`() {
+            val choice = Choice(
+                id = ChoiceId("c"),
+                text = "Go",
+                nextScene = SceneId("next"),
+                visibilityCondition = Condition.Has("sword"),
+            )
+            assertEquals(ChoiceState.Hidden, Evaluator.choiceState(choice, state()))
+        }
+
+        @Test
+        fun `choiceState hidden wins over disabled`() {
+            // Decision G1: both conditions are false → Hidden, not Disabled.
+            val choice = Choice(
+                id = ChoiceId("c"),
+                text = "Go",
+                nextScene = SceneId("next"),
+                condition = Condition.Has("magic"),
+                visibilityCondition = Condition.Has("sword"),
+            )
+            assertEquals(ChoiceState.Hidden, Evaluator.choiceState(choice, state()))
+        }
+    }

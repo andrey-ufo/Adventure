@@ -1,5 +1,6 @@
 package com.myapp.adventure.engine
 
+import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.PlayerState
@@ -199,6 +200,51 @@ public object Evaluator {
     public fun isDead(state: PlayerState): Boolean {
         val health = state.stats["health"] ?: 1
         return health <= 0
+    }
+
+    /**
+     * Ф4.4 (N4): computes the *display state* of [choice] against
+     * [state] — [ChoiceState.Visible] / [ChoiceState.Disabled] /
+     * [ChoiceState.Hidden]. See [ChoiceState] KDoc for the meaning of
+     * each variant.
+     *
+     * **Order of checks (decision G1).**
+     * 1. [com.myapp.adventure.engine.ir.Choice.visibilityCondition] —
+     *    if `false`, return [ChoiceState.Hidden]. No condition check on
+     *    a hidden choice: the reason would be dead information.
+     * 2. [com.myapp.adventure.engine.ir.Choice.condition] — if
+     *    `false`, return [ChoiceState.Disabled] with the structured
+     *    reason from [evaluateWithReason].
+     * 3. Else [ChoiceState.Visible].
+     *
+     * **What this does NOT check.** Scene-level gates (`Scene.gate`) —
+     * those are a *scene* property, not a *choice* property. The
+     * reader shows the gate progress once ("Пройдено X из Y") and
+     * disables **all** choice buttons uniformly while the gate is
+     * active (decision F1 in 4.4: `forceDisabled = true`), rather than
+     * appending the same "walk N more steps" reason to every button.
+     *
+     * **Pure.** No I/O, no `Context`, no allocation beyond what
+     * [evaluateWithReason] already does.
+     */
+    public fun choiceState(choice: Choice, state: PlayerState): ChoiceState {
+        // Step 1: visibility gates everything.
+        choice.visibilityCondition?.let { visibility ->
+            if (evaluateWithReason(visibility, state) is EvaluationResult.Failure) {
+                return ChoiceState.Hidden
+            }
+        }
+
+        // Step 2: availability.
+        choice.condition?.let { condition ->
+            return when (val result = evaluateWithReason(condition, state)) {
+                is EvaluationResult.Failure -> ChoiceState.Disabled(result.reason)
+                is EvaluationResult.Success -> ChoiceState.Visible
+            }
+        }
+
+        // Step 3: no conditions.
+        return ChoiceState.Visible
     }
 
     // ---------- Private helpers ----------

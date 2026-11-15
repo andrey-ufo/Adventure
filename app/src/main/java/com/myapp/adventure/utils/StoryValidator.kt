@@ -170,6 +170,8 @@ object StoryValidator {
         is CompileError.MissingStartScene -> ""
         is CompileError.MissingNextScene ->
             uidBySceneId[compileError.sceneId.value] ?: ""
+        is CompileError.MissingMergeSource ->
+            uidBySceneId[compileError.sceneId.value] ?: ""
     }
 
     // ---------- Titles (Russian UI) ----------
@@ -199,6 +201,7 @@ object StoryValidator {
         is CompileError.DuplicateSceneId -> R.string.validation_title_duplicate_scene_id
         is CompileError.MissingStartScene -> R.string.validation_title_missing_start_scene
         is CompileError.MissingNextScene -> R.string.validation_title_missing_next_scene
+        is CompileError.MissingMergeSource -> R.string.validation_title_missing_merge_source
     }
 
     @StringRes

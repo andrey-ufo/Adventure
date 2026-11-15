@@ -115,4 +115,34 @@ public sealed class CompileError {
             "Choice '${choiceId.value}' in scene '${sceneId.value}' points " +
                     "to missing scene '${targetSceneId.value}'."
     }
+
+    /**
+     * Ф4.5 (N5): a scene's `merge_sources` declares a scene id that
+     * does not exist in any chapter.
+     *
+     * **Why this is a compile error.** Same reasoning as
+     * [MissingNextScene]: the declaration names a branch that the
+     * author intended to converge here; if that branch does not exist,
+     * the merge is structurally wrong (the analyzer cannot reason about
+     * it, the editor's map cannot draw it). The file is not just
+     * "suboptimally authored" — the declared graph is inconsistent.
+     *
+     * **Why not a `ParseError`.** `merge_sources` is a cross-scene
+     * reference — the parser does not know the full scene set while
+     * building one scene. Same layer as `nextScene` references.
+     *
+     * **Not checked here (deferred to Ф4.6).** Whether the declared
+     * source actually has a `choice.nextScene` pointing at this scene
+     * (declaration vs reality); whether the source is reachable from
+     * the start. Those are analyzer concerns, not compile errors —
+     * the scene might be reachable through paths the analyzer will see.
+     */
+    public data class MissingMergeSource(
+        public val sceneId: SceneId,
+        public val mergeSourceId: SceneId,
+    ) : CompileError() {
+        override val message: String =
+            "Scene '${sceneId.value}' declares merge source " +
+                    "'${mergeSourceId.value}', which does not exist in any chapter."
+    }
 }

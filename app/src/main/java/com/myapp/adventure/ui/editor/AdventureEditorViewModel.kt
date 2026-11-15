@@ -20,6 +20,7 @@ import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
+import com.myapp.adventure.data.TemplateRefDto
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.data.ChoiceTemplateDto
 import com.myapp.adventure.data.EditorTemplate
@@ -37,7 +38,11 @@ import com.myapp.adventure.engine.ir.Scene as IrScene
 import com.myapp.adventure.engine.ir.SceneId as IrSceneId
 import com.myapp.adventure.engine.ir.TagCategory as IrTagCategory
 import com.myapp.adventure.engine.ir.TagDefinition as IrTagDefinition
+import com.myapp.adventure.engine.ir.ChoiceTemplate as IrChoiceTemplate
+import com.myapp.adventure.engine.ir.applyTemplate as irApplyTemplate
+import com.myapp.adventure.engine.ir.types.VarDecl as IrVarDecl
 import com.myapp.adventure.engine.parse.ConditionParser
+import com.myapp.adventure.engine.parse.ConditionWriter
 import com.myapp.adventure.engine.parse.ParseError
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.utils.Logger
@@ -682,26 +687,38 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                         text = choice.text,
                         nextScene = choice.nextSceneId,
                         condition = choice.conditionTag.ifEmpty { null },
+                        // Ф4.3.2b: "show" condition (distinct from
+                        // `condition`). `:engine` ignores it today;
+                        // Ф4.4 / N4 will gate on it in the reader.
+                        visibilityCondition = choice.visibilityConditionTag.ifEmpty { null },
                         setFlags = choiceSetFlags,
                         removeFlags = choiceRemoveFlags,
-                        modifyStats = choiceModifyStats
+                        modifyStats = choiceModifyStats,
+                        // Ф4.3.2b: template ref survives save/load.
+                        // `templateUid == null` for hand-written choices →
+                        // `templateRef = null` → Gson omits the field.
+                        templateRef = choice.templateUid?.let { uid ->
+                            TemplateRefDto(
+                                templateId = uid,
+                                args = choice.templateArgs,
+                            )
+                        },
                     )
                 }.ifEmpty { null },
                 // Ф1.7.5: emit `"is_ending": true` only when the flag is
-                // set. Gson with a non-null `false` would write
-                // `"is_ending": false` on every scene, cluttering the
-                // JSON and making the field appear on files where the
-                // author never touched it. `null` → Gson omits the
-                // field → on load, `JsonToIr` defaults it to `false`
-                // (identity migration). This matches the style of
-                // `setFlags` / `choices` above (empty → omit).
+                // set. `null` → Gson omits the field, parser defaults to
+                // false (identity migration).
                 isEnding = if (scene.isEnding) true else null,
-                // b2: per-scene gate. Omit `"gate"` when 0 (no gate);
-                // omit `"gate_repeatable"` when `false` (default).
-                // Same "empty → omit" style as `setFlags` above.
+                // b2: per-scene gate. Omit `"gate"` when 0; omit
+                // `"gate_repeatable"` when false (default).
                 gate = if (scene.gateRequiredSteps > 0) scene.gateRequiredSteps else null,
                 gateRepeatable =
-                    if (scene.gateRequiredSteps > 0 && scene.gateRepeatable) true else null
+                    if (scene.gateRequiredSteps > 0 && scene.gateRepeatable) true else null,
+                // Ф4.5: emit `"merge": true` + `"merge_sources": [...]`
+                // only when the author declared them. `null` for the
+                // common case — Gson omits the fields, JSON stays clean.
+                merge = if (scene.isMerge) true else null,
+                mergeSources = scene.mergeSources.ifEmpty { null },
             )
             sceneList.add(sceneObj)
 
@@ -889,7 +906,12 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             return result
         }
 
-        fun conditionOf(raw: String, fallbackSceneId: String, choiceIndex: Int): IrCondition? {
+        fun conditionOf(
+            raw: String,
+            fallbackSceneId: String,
+            choiceIndex: Int,
+            field: String = "condition",
+        ): IrCondition? {
             val trimmed = raw.trim()
             if (trimmed.isEmpty()) return null
             return when (val r = ConditionParser.parse(trimmed)) {
@@ -897,10 +919,12 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 is ParseResult.Failure -> {
                     // Re-anchor the error with a JSON-like path so the
                     // author gets "which scene / which choice" — same
-                    // convention as JsonToIr's path strings.
+                    // convention as JsonToIr's path strings. Ф4.3.2b:
+                    // `field` distinguishes `condition` from
+                    // `visibility_condition` on the same choice.
                     r.errors.forEach { err ->
                         parseErrors += if (err is ParseError.ConditionError) {
-                            err.copy(path = "scene[$fallbackSceneId].choices[$choiceIndex].condition")
+                            err.copy(path = "scene[$fallbackSceneId].choices[$choiceIndex].$field")
                         } else {
                             err
                         }
@@ -946,6 +970,18 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                     text = choice.text,
                     nextScene = IrSceneId(choice.nextSceneId),
                     condition = conditionOf(choice.conditionTag, scene.id, idx),
+                    // Ф4.3.2b: propagate the "show" condition into the IR.
+                    // `:engine`'s Choice.visibilityCondition exists since
+                    // Ф4.2.1 but is dormant (reader gates only on
+                    // `condition`); populating it now closes the editor
+                    // round-trip and prepares for Ф4.4 / N4. Parse errors
+                    // land in `parseErrors` with `field = "visibility_condition"`.
+                    visibilityCondition = conditionOf(
+                        choice.visibilityConditionTag,
+                        scene.id,
+                        idx,
+                        field = "visibility_condition",
+                    ),
                     effects = effectsOf(choice.tags),
                 )
             }
@@ -956,6 +992,11 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 choices = irChoices,
                 gate = sceneGate,
                 isEnding = scene.isEnding,
+                // Ф4.5: propagate merge metadata into the IR so
+                // `StoryValidator` (Ф4.6) and the editor's map view can
+                // see the declared convergence.
+                isMerge = scene.isMerge,
+                mergeSources = scene.mergeSources.map { IrSceneId(it) },
             )
             if (scene.isChapterEnd || scene === lastNonDeathScene) {
                 flushChapter()
@@ -1084,6 +1125,167 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         return list.ifEmpty { null }
     }
 
+
+    // ---------- Ф4.3.2b: template → editor choice ----------
+
+    /**
+     * Ф4.3.2b: `EditorTemplate` → `:engine/ir/ChoiceTemplate`.
+     *
+     * Returns `null` if any condition fails to parse (the author is
+     * mid-edit); the caller propagates `null` and the UI shows a generic
+     * "cannot apply" message. Parameters with blank names or
+     * unresolvable types are silently skipped — same permissive default
+     * as `buildIrAdventure`: a half-declared parameter must not block
+     * the whole template.
+     *
+     * Effects go through `serializeTags` — the same three-field
+     * (`set_flags` / `remove_flags` / `modify_stats`) decomposition
+     * used everywhere else in the editor, so `applyTemplate` sees
+     * exactly the same effect list it would get if the author had
+     * written the choice by hand.
+     */
+    private fun editorTemplateToIr(template: EditorTemplate): IrChoiceTemplate? {
+        val params = template.parameters.mapNotNull { decl ->
+            val clean = decl.name.trim()
+            if (clean.isEmpty()) return@mapNotNull null
+            val type = decl.toVarType() ?: return@mapNotNull null
+            IrVarDecl(clean, type)
+        }
+        val visibility = template.visibilityCondition.trim().takeIf { it.isNotEmpty() }?.let {
+            when (val r = ConditionParser.parse(it)) {
+                is ParseResult.Success -> r.value
+                is ParseResult.Failure -> return null
+            }
+        }
+        val availability = template.availabilityCondition.trim().takeIf { it.isNotEmpty() }?.let {
+            when (val r = ConditionParser.parse(it)) {
+                is ParseResult.Success -> r.value
+                is ParseResult.Failure -> return null
+            }
+        }
+        val (setFlags, removeFlags, modifyStats) = serializeTags(template.effects)
+        val effects = mutableListOf<IrEffect>()
+        setFlags.orEmpty().forEach { effects += IrEffect.SetFlag(it) }
+        removeFlags.orEmpty().forEach { effects += IrEffect.RemoveFlag(it) }
+        modifyStats.orEmpty().forEach { (name, delta) -> effects += IrEffect.ModifyStat(name, delta) }
+        return IrChoiceTemplate(
+            id = template.id,
+            parameters = params,
+            text = template.text,
+            visibilityCondition = visibility,
+            availabilityCondition = availability,
+            effects = effects,
+            nextScene = IrSceneId(template.nextSceneId),
+        )
+    }
+
+    /**
+     * Ф4.3.2b: `:engine/ir/Choice` (already expanded) → `EditorChoice`.
+     *
+     * **Discarded fields.** `irChoice.id` and `irChoice.templateRef` are
+     * not used — the editor's `EditorChoice.uid` is the identity
+     * (`buildAdventure` regenerates JSON `choice.id` from scene order),
+     * and `templateUid` / `templateArgs` are passed explicitly by the
+     * caller so that `EditorTemplate.id` (author-editable) is the source
+     * of truth for `template_ref`.
+     *
+     * **Converted fields.** `irChoice.condition` /
+     * `visibilityCondition` → strings via `ConditionWriter.write` (the
+     * same canonical form the editor uses for hand-written conditions).
+     * `irChoice.effects` → `EditorTag`s with default `JOURNAL`
+     * category; the category is restored on the next edit through
+     * `renderTagRow` (the tag registry in `Adventure` may know the
+     * true category; the editor does not).
+     */
+    private fun irChoiceToEditorChoice(
+        irChoice: IrChoice,
+        templateUid: String,
+        templateArgs: Map<String, String>,
+    ): EditorChoice {
+        val conditionTag = irChoice.condition?.let { ConditionWriter.write(it) } ?: ""
+        val visibilityTag = irChoice.visibilityCondition?.let { ConditionWriter.write(it) } ?: ""
+        val editorTags = mutableListOf<EditorTag>()
+        for (effect in irChoice.effects) {
+            when (effect) {
+                is IrEffect.SetFlag -> editorTags += EditorTag(
+                    name = effect.name, value = 0, isStatModifier = false,
+                    category = TagCategory.JOURNAL,
+                )
+                is IrEffect.RemoveFlag -> editorTags += EditorTag(
+                    name = "!${effect.name}", value = 0, isStatModifier = false,
+                    category = TagCategory.JOURNAL,
+                )
+                is IrEffect.ModifyStat -> editorTags += EditorTag(
+                    name = effect.name, value = effect.delta, isStatModifier = true,
+                    category = TagCategory.JOURNAL,
+                )
+                is IrEffect.Set -> editorTags += EditorTag(
+                    name = effect.name, value = effect.value, isStatModifier = true,
+                    category = TagCategory.JOURNAL,
+                )
+            }
+        }
+        return EditorChoice(
+            text = irChoice.text,
+            nextSceneId = irChoice.nextScene.value,
+            conditionTag = conditionTag,
+            visibilityConditionTag = visibilityTag,
+            tags = editorTags,
+            templateUid = templateUid,
+            templateArgs = templateArgs.toMap(),
+        )
+    }
+
+    /**
+     * Ф4.3.2b: apply a template to a scene, producing a new
+     * `EditorChoice`.
+     *
+     * **Expansion (decision A1, Ф4.2).** The returned choice is fully
+     * expanded — `text`, `conditionTag`, `visibilityConditionTag`,
+     * `tags`, `nextSceneId` are filled in. `templateUid` +
+     * `templateArgs` are kept as metadata for Ф4.3.3 ("update all uses").
+     *
+     * **`@self` resolution.** `currentSceneId` is the id of the scene
+     * where the choice is being inserted. If the template's `nextScene`
+     * is `ChoiceTemplate.SELF` (`SceneId("@self")`), the resulting
+     * `EditorChoice.nextSceneId` is `currentSceneId`. Otherwise it is
+     * the template's fixed target.
+     *
+     * **Failure modes.** Returns `null` if (a) no template with
+     * `templateUid` exists (author deleted it mid-dialog); (b)
+     * `editorTemplateToIr` returns `null` (a condition failed to parse —
+     * author is mid-edit); (c) `applyTemplate` throws
+     * `IllegalArgumentException` (missing/extra args — race if the
+     * template was edited between picker and apply). The UI shows a
+     * generic toast on `null`; no partial state is created.
+     *
+     * **Idempotence.** Does not mutate `templates`. Calling twice with
+     * the same args produces structurally equal `EditorChoice`
+     * (different `uid`).
+     */
+    fun applyTemplateToChoice(
+        templateUid: String,
+        args: Map<String, String>,
+        currentSceneId: String,
+    ): EditorChoice? {
+        val template = templates.firstOrNull { it.id == templateUid } ?: return null
+        val irTemplate = editorTemplateToIr(template) ?: return null
+        // Placeholder ChoiceId — discarded by irChoiceToEditorChoice;
+        // `EditorChoice.uid` is the real identity.
+        val placeholderId = IrChoiceId("editor_apply")
+        return try {
+            val irChoice = irApplyTemplate(
+                template = irTemplate,
+                args = args,
+                choiceId = placeholderId,
+                currentSceneId = IrSceneId(currentSceneId),
+            )
+            irChoiceToEditorChoice(irChoice, templateUid, args)
+        } catch (e: IllegalArgumentException) {
+            Logger.log(context, "applyTemplateToChoice failed: ${e.message}")
+            null
+        }
+    }
 
     companion object {
         private const val MAX_HISTORY = 20

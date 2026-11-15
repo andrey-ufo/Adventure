@@ -139,4 +139,52 @@ class EngineCompileTest {
         assertEquals(SceneId("b"), missing[2].sceneId)
         assertEquals(ChoiceId("c1"), missing[2].choiceId)
     }
+
+    // ---------- Ф4.5: merge sources ----------
+
+    @Test
+    fun `merge source pointing to missing scene fails compile`() {
+        val m = Scene(
+            id = SceneId("m"),
+            text = "M",
+            isMerge = true,
+            mergeSources = listOf(SceneId("ghost")),
+        )
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("m"),
+            chapters = listOf(chapter("ch", m)),
+        )
+        val errors = assertIs<CompileResult.Failure>(Engine.compile(adv)).errors
+        val missing = errors.filterIsInstance<CompileError.MissingMergeSource>().single()
+        assertEquals(SceneId("m"), missing.sceneId)
+        assertEquals(SceneId("ghost"), missing.mergeSourceId)
+        assertTrue(missing.message.contains("ghost"), missing.message)
+    }
+
+    @Test
+    fun `valid merge sources compile`() {
+        val a = Scene(
+            id = SceneId("a"),
+            text = "A",
+            choices = listOf(Choice(ChoiceId("ca"), "Go", SceneId("m"))),
+        )
+        val b = Scene(
+            id = SceneId("b"),
+            text = "B",
+            choices = listOf(Choice(ChoiceId("cb"), "Go", SceneId("m"))),
+        )
+        val m = Scene(
+            id = SceneId("m"),
+            text = "M",
+            isMerge = true,
+            mergeSources = listOf(SceneId("a"), SceneId("b")),
+        )
+        val adv = Adventure(
+            title = "T",
+            startScene = SceneId("a"),
+            chapters = listOf(chapter("ch", a, b, m)),
+        )
+        assertIs<CompileResult.Success>(Engine.compile(adv))
+    }
 }

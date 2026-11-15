@@ -809,4 +809,34 @@ class JsonToIrTest {
             "expected Duplicate error, got $errors",
         )
     }
+
+    // ---------- Ф4.5: merge point ----------
+
+    @Test
+    fun `scene merge absent defaults to false and empty sources`() {
+        val json = """
+            {"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi"}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        val scene = adv.chapters[0].scenes.single()
+        assertEquals(false, scene.isMerge)
+        assertEquals(emptyList(), scene.mergeSources)
+    }
+
+    @Test
+    fun `scene with merge true and sources is parsed`() {
+        val json = """
+            {"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"A","choices":[{"text":"Go","next_scene":"m"}]},
+              {"id":"s2","text":"B","choices":[{"text":"Go","next_scene":"m"}]},
+              {"id":"m","text":"M","merge":true,"merge_sources":["s1","s2"]}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        val m = adv.chapters[0].scenes.first { it.id == SceneId("m") }
+        assertEquals(true, m.isMerge)
+        assertEquals(listOf(SceneId("s1"), SceneId("s2")), m.mergeSources)
+    }
 }

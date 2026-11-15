@@ -111,6 +111,27 @@ public object Engine {
         )
         errors += missingNextScenes
 
+        // Ф4.5 (N5): merge sources must exist. Same layer as
+        // `MissingNextScene` (cross-scene refs, compiled once, deterministic).
+        val missingMergeSources = mutableListOf<CompileError.MissingMergeSource>()
+        adventure.chapters.forEach { chapter ->
+            chapter.scenes.forEach { scene ->
+                scene.mergeSources.forEach { sourceId ->
+                    if (sourceId !in scenesById) {
+                        missingMergeSources += CompileError.MissingMergeSource(
+                            sceneId = scene.id,
+                            mergeSourceId = sourceId,
+                        )
+                    }
+                }
+            }
+        }
+        // Stable order: by scene id, then by merge source id.
+        missingMergeSources.sortWith(
+            compareBy({ it.sceneId.value }, { it.mergeSourceId.value }),
+        )
+        errors += missingMergeSources
+
         return if (errors.isEmpty()) {
             CompileResult.Success(
                 CompiledAdventure(

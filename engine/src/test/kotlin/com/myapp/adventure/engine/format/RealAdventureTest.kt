@@ -70,7 +70,7 @@ class RealAdventureTest {
     fun `metadata`() {
         val adv = parseRealFile()
         assertEquals("Тестовое приключение", adv.title)
-        assertEquals("Claude (AI-ассистент)", adv.author)
+        assertEquals("Безумный монах", adv.author)
         // test_adventure.json explicitly carries "version": CURRENT_VERSION.
         // It is the reference sample — a reader opening it should see the
         // current schema, not a legacy one. When CURRENT_VERSION bumps, the

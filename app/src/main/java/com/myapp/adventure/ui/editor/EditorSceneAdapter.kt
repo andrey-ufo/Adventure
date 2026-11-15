@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.myapp.adventure.R
@@ -21,6 +22,7 @@ import com.myapp.adventure.utils.ruQuantityString
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.EditorTemplate
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.databinding.ItemEditorSceneBinding
@@ -634,6 +636,106 @@ class EditorSceneAdapter(
                 submitList()
             }
         }
+
+        // Ф4.3.2b-2b: apply a choice template to this scene. Chain:
+        // (a) no templates → toast, return;
+        // (b) TemplatePickerDialog → chosen template;
+        // (c) if template has parameters → TemplateArgsDialog, else empty args;
+        // (d) viewModel.applyTemplateToChoice(...) → expanded EditorChoice;
+        // (e) append to scene + onDirty(true) + submitList.
+        // `@self` resolution happens inside `applyTemplateToChoice` from
+        // `currentSceneId`, which we pass as `scene.id`. `context` and
+        // `scene` are captured by the dialog lambdas; both outlive
+        // `onBindViewHolder` (see `applyTemplateAndInsert` KDoc).
+        binding.btnAddFromTemplate.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+            val scene = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
+
+            if (viewModel.templates.isEmpty()) {
+                Toast.makeText(
+                    context,
+                    R.string.editor_template_no_templates_toast,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return@setOnClickListener
+            }
+
+            TemplatePickerDialog.show(
+                context = context,
+                templates = viewModel.templates.toList(),
+            ) { template ->
+                if (template.parameters.isEmpty()) {
+                    applyTemplateAndInsert(context, scene, template, emptyMap())
+                } else {
+                    TemplateArgsDialog.show(
+                        context = context,
+                        template = template,
+                    ) { args ->
+                        applyTemplateAndInsert(context, scene, template, args)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Ф4.3.2b-2b: expand `template` with `args` and append the resulting
+     * `EditorChoice` to `scene.choices`.
+     *
+     * **Context parameter.** `RecyclerView.Adapter` has no `Context`
+     * field (only through `holder.binding.root.context` or
+     * `parent.context` in `onCreateViewHolder`). Every adapter helper
+     * that needs one takes it as a parameter — same rule as
+     * `formatStepsDisplay(context, …)` / `formatSceneIdLabel(context, …)`.
+     * See the 3b-6d progress-log entry ("`RecyclerView.Adapter` helpers
+     * take `Context` as a parameter, never `binding`").
+     *
+     * **Why `context` and `scene` survive the dialog.** `context` is
+     * `binding.root.context` — the Activity, which outlives the holder.
+     * `scene` is a reference to an element of `viewModel.scenes` — the
+     * underlying object lives in the ViewModel, not in the RecyclerView
+     * holder; even after the holder is recycled, the reference is still
+     * to the live model. Mutating `scene.choices` and calling
+     * `submitList()` works from any point in the fragment's lifecycle.
+     *
+     * **Failure path.** `applyTemplateToChoice` returns `null` when (a)
+     * the template was deleted between picker and apply, (b) a template
+     * condition fails to parse (author is mid-edit), or (c)
+     * `applyTemplate` throws `IllegalArgumentException` (args mismatch —
+     * a race). In all cases: generic toast, scene unchanged. No partial
+     * state.
+     *
+     * **Why `onDirty(true)`.** Adding a choice is a structural change
+     * (undo / redo must capture it). The existing `btnAddChoice` handler
+     * uses the same flag.
+     */
+    private fun applyTemplateAndInsert(
+        context: android.content.Context,
+        scene: EditorScene,
+        template: EditorTemplate,
+        args: Map<String, String>,
+    ) {
+        val newChoice = viewModel.applyTemplateToChoice(
+            templateUid = template.id,
+            args = args,
+            currentSceneId = scene.id,
+        ) ?: run {
+            Toast.makeText(
+                context,
+                R.string.editor_template_apply_failed,
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        scene.choices.add(newChoice)
+        onDirty(true)
+        submitList()
+        Toast.makeText(
+            context,
+            R.string.editor_toast_template_applied,
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     // ---------- Диалог эффектов выбора ----------

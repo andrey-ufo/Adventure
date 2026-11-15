@@ -331,6 +331,13 @@ public object JsonToIr {
             // have no is_ending field; treat as false. Files that carry
             // it use the value as written.
             isEnding = dto.isEnding ?: false,
+            // Ф4.5: identity migration — absent merge / merge_sources
+            // default to false / emptyList. Cross-scene validation of
+            // `mergeSources` lives in `Engine.compile` (a reference to a
+            // missing scene is a `CompileError`, not a `ParseError` —
+            // same layer as `MissingNextScene`).
+            isMerge = dto.merge ?: false,
+            mergeSources = dto.mergeSources.map { SceneId(it) },
         )
     }
 

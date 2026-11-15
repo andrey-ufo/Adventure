@@ -50,6 +50,19 @@ data class EditorScene(
     var deathAllowChapterRestart: Boolean = true,
     var deathAllowAdventureRestart: Boolean = true,
     var isEnding: Boolean = false,
+    /**
+     * Ф4.5 (N5): the author marked this scene as a merge point. Round-
+     * trips with `:app/data/Scene.merge` (save/load). **No editor UI in
+     * 4.5** — the checkbox is Ф4.10; the field exists so that a scene
+     * with `"merge": true` in JSON survives open→save.
+     */
+    var isMerge: Boolean = false,
+    /**
+     * Ф4.5 (N5): declared incoming branches. Round-trips with
+     * `:app/data/Scene.mergeSources`. Empty → `null` in JSON (Gson
+     * omits). Same UI deferral as [isMerge].
+     */
+    var mergeSources: List<String> = emptyList(),
     val tags: MutableList<EditorTag> = mutableListOf(),
     val choices: MutableList<EditorChoice> = mutableListOf()
 )
@@ -59,7 +72,31 @@ data class EditorChoice(
     var text: String = "",
     var nextSceneId: String = "",
     var conditionTag: String = "",
-    val tags: MutableList<EditorTag> = mutableListOf()
+    /**
+     * Ф4.3.2b: "show this choice?" condition — distinct from
+     * [conditionTag], which is "enable this choice?". Populated by
+     * `AdventureEditorViewModel.applyTemplateToChoice()` from a
+     * template's `visibilityCondition`; persisted to JSON as
+     * `choices[].visibility_condition`. The reader (Ф4.4 / N4) will use
+     * it to distinguish hidden vs disabled; today it is stored but
+     * dormant (reader gates only on [conditionTag] via IR `condition`).
+     */
+    var visibilityConditionTag: String = "",
+    val tags: MutableList<EditorTag> = mutableListOf(),
+    /**
+     * Ф4.3.2b: if this choice was expanded from a `ChoiceTemplate`, the
+     * template's id. `null` for hand-written choices. Editor-only
+     * metadata — the runtime sees only the expanded [text] /
+     * [conditionTag] / [visibilityConditionTag] / [tags] /
+     * [nextSceneId]. Used by the "update all uses" flow (Ф4.3.3).
+     */
+    var templateUid: String? = null,
+    /**
+     * Ф4.3.2b: arguments used when this choice was expanded. Empty map
+     * for hand-written choices. Persisted to JSON as
+     * `template_ref.args` so Ф4.3.3 can re-apply with the same args.
+     */
+    var templateArgs: Map<String, String> = emptyMap(),
 )
 
 data class EditorTag(
@@ -72,9 +109,19 @@ data class EditorTag(
 )
 
 fun EditorScene.deepCopy(): EditorScene = copy(
+    // Ф4.5: freeze `mergeSources` so undo/redo snapshots cannot alias
+    // the live editor state (same principle as `templateArgs`).
+    mergeSources = mergeSources.toList(),
     tags = tags.map { it.copy() }.toMutableList(),
     choices = choices.map { choice ->
-        choice.copy(tags = choice.tags.map { it.copy() }.toMutableList())
+        choice.copy(
+            tags = choice.tags.map { it.copy() }.toMutableList(),
+            // Ф4.3.2b: `templateArgs` is `Map` (immutable interface), but
+            // the caller could have passed a `MutableMap`. `toMap()`
+            // freezes it so that undo/redo snapshots cannot alias the
+            // live editor state.
+            templateArgs = choice.templateArgs.toMap(),
+        )
     }.toMutableList()
 )
 

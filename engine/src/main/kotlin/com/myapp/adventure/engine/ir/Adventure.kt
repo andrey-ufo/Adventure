@@ -135,6 +135,13 @@ public data class Adventure(
          *   choice templates, no scene binding. **No version bump**:
          *   optional list, empty default, identity migration. Same
          *   reasoning as `variables` (Ф2.8) and `invariants` (Ф3.5).
+         * - Still `5` (Ф4.5) — `Scene.merge: Boolean` and
+         *   `Scene.merge_sources: List<SceneId>` added. Both optional,
+         *   defaults `false` / `emptyList()`, identity migration. Merge
+         *   points are metadata for the analyzer (Ф4.6) and the editor
+         *   map (Ф4.10); runtime is a no-op (decision C1 in Ф4.5).
+         *   **No version bump**: same reasoning as `variables` (Ф2.8),
+         *   `invariants` (Ф3.5), `choice_templates` (Ф4.1).
          */
         public const val CURRENT_VERSION: Int = 5
     }

@@ -116,6 +116,19 @@ internal data class SceneDto(
      */
     @SerialName("is_ending")
     val isEnding: Boolean? = null,
+    /**
+     * Ф4.5: `"merge": true` marks this scene as a merge point.
+     * `null` (field absent) → false (identity migration). See
+     * `:engine/ir/Scene.isMerge`.
+     */
+    val merge: Boolean? = null,
+    /**
+     * Ф4.5: `"merge_sources": ["s1", "s2"]` — declared incoming
+     * branches. Empty list (field absent) → no sources declared; the
+     * analyzer (Ф4.6) will collect them from the `nextScene` graph.
+     */
+    @SerialName("merge_sources")
+    val mergeSources: List<String> = emptyList(),
 )
 
 @Serializable

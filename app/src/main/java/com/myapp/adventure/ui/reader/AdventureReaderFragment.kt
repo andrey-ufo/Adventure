@@ -26,6 +26,7 @@ import com.myapp.adventure.R
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
 import com.myapp.adventure.databinding.FragmentAdventureReadBinding
+import com.myapp.adventure.engine.ChoiceState
 import com.myapp.adventure.engine.CompileResult
 import com.myapp.adventure.engine.CompiledAdventure
 import com.myapp.adventure.engine.EffectsApplier
@@ -1121,12 +1122,9 @@ class AdventureReaderFragment : Fragment() {
         // player is currently in. When we render choices for a scene
         // **without** an active gate (either no gate, or the gate was
         // just passed), the previous scene's text is stale and must be
-        // hidden. Without this, walking `health_test` (gate 50) →
-        // `start` → `journal_test` would show `health_test`'s
-        // "Пройдено 30 из 50" on `journal_test` — visible bug,
-        // reported in smoke. `showGateWaiting` passes
-        // `forceDisabled = true` and sets `VISIBLE` itself, so the
-        // indicator still shows during a gate.
+        // hidden. `showGateWaiting` passes `forceDisabled = true` and
+        // sets `VISIBLE` itself, so the indicator still shows during a
+        // gate.
         if (!forceDisabled) {
             binding.tvStepsRequired.visibility = View.GONE
         }
@@ -1137,67 +1135,78 @@ class AdventureReaderFragment : Fragment() {
         // in the same scene sees the same `PlayerState` — no chance of
         // divergence if something mutates `flags`/`stats` mid-loop
         // (it should not, but consistency is cheap here).
+        //
+        // Ф4.4 (N4): the snapshot is also what `Evaluator.choiceState`
+        // sees, so the three-way state (Visible / Disabled / Hidden)
+        // for every choice in this scene is computed against **one**
+        // state, never a mix.
         val stateSnapshot = PlayerState(flags = flags.toSet(), stats = stats.toMap())
 
         for (choice in choices) {
-            val available = !forceDisabled && conditionHolds(choice.condition, stateSnapshot)
+            val state = Evaluator.choiceState(choice, stateSnapshot)
+            // Decision D1 (Ф4.4): a hidden choice is not rendered at all
+            // (visibilityCondition == false). The author decided the
+            // player should not even see this option.
+            if (state is ChoiceState.Hidden) continue
+
             val button = Button(requireContext()).apply {
                 text = choice.text
-                if (available) {
-                    setOnClickListener {
-                        previousStepSnapshot = captureSnapshot()
-                        applyEffects(choice.effects)
-                        currentSceneId = choice.nextScene.value
-                        saveProgress()
-
-                        if (checkDeath()) {
-                            showDeathScreen()
-                            return@setOnClickListener
-                        }
-
-                        loadCurrentScene()
-                    }
-                } else {
+                if (forceDisabled) {
+                    // Decision F1 (Ф4.4): a scene gate disables **all**
+                    // choice buttons uniformly. The reason is the
+                    // shared gate banner (`tvStepsRequired`, "Пройдено X
+                    // из Y"), not per-button text — duplicating the gate
+                    // progress on every button is noise.
                     isEnabled = false
                     alpha = 0.5f
+                } else when (state) {
+                    ChoiceState.Visible -> {
+                        setOnClickListener {
+                            previousStepSnapshot = captureSnapshot()
+                            applyEffects(choice.effects)
+                            currentSceneId = choice.nextScene.value
+                            saveProgress()
+
+                            if (checkDeath()) {
+                                showDeathScreen()
+                                return@setOnClickListener
+                            }
+
+                            loadCurrentScene()
+                        }
+                    }
+                    is ChoiceState.Disabled -> {
+                        // Decision C1-revised (Ф4.4-fix): show a plain
+                        // "(недоступно)" suffix, no reason text.
+                        //
+                        // **Why we do not render the reason.**
+                        // - Russian morphology (declining `displayName`)
+                        //   is unsolvable cheaply — "нужен Ржавый меч",
+                        //   "мало Ржавый меч" read as broken grammar.
+                        // - Most choices are self-explanatory ("Ударить
+                        //   мечом" / "Пройти проверку"); the reason is
+                        //   redundant with the choice text or HUD.
+                        // - Gamebook convention: greyed-out options
+                        //   without explanation; the player tries another
+                        //   path.
+                        //
+                        // The engine still carries the structured
+                        // `Reason` inside `ChoiceState.Disabled(reason)`;
+                        // displaying it is deferred to a future
+                        // "long-press for hint" feature (if requested) or
+                        // the debug panel.
+                        isEnabled = false
+                        alpha = 0.5f
+                        text = "${choice.text}\n${getString(R.string.reader_choice_disabled)}"
+                    }
+                    ChoiceState.Hidden -> {
+                        // Unreachable: handled by `continue` above.
+                        // Kept for exhaustiveness.
+                    }
                 }
             }
             container.addView(button)
         }
-    }
-
-    /**
-     * Thin wrapper over [Evaluator.evaluate] for the `updateChoices` loop.
-     *
-     * **What this is not.** Not a condition evaluator — the actual
-     * condition semantics live in `:engine` (`Evaluator`, Ф1.5.5.1 /
-     * Ф3.3). This method's only job is:
-     * 1. Treat `null` as "no condition, always available".
-     * 2. Take an explicit [PlayerState] snapshot, so the caller controls
-     *    when the snapshot is taken (once per `updateChoices`, C1 of
-     *    Ф3.4) and the loop is consistent.
-     *
-     * **Why a snapshot parameter, not "read the fragment's `flags` /
-     * `stats` fields".** A method that reads fragment fields has a
-     * hidden dependency: if `flags`/`stats` change during the loop, the
-     * available choices for one scene could disagree. Passing the state
-     * explicitly makes the helper pure w.r.t. the fragment and matches
-     * `Evaluator.evaluate(condition, state)`'s signature.
-     *
-     * **Historical note.** Before Ф3.4 the fragment had a private
-     * method that took only a `Condition?` and read `flags`/`stats`
-     * directly — the "second evaluator" that N2 forbids. Ф2.5
-     * removed the `catch → return true` fallback; Ф3.4 removed the
-     * last piece of local condition logic. The old method name is
-     * gone from `:app` entirely; the only condition evaluator is
-     * `:engine`'s [Evaluator].
-     */
-    private fun conditionHolds(
-        condition: Condition?,
-        state: PlayerState,
-    ): Boolean {
-        if (condition == null) return true
-        return Evaluator.evaluate(condition, state)
     }
 
     // ==================== Death screen ====================

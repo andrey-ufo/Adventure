@@ -74,7 +74,7 @@ class SchemaFingerprintTest {
             "initial_state", "death_scene", "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
-        "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending"),
+        "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending", "merge", "merge_sources"),
         "Choice" to setOf(
             "id", "text", "next_scene", "condition", "visibility_condition",
             "effects", "template_ref",
