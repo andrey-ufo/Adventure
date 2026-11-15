@@ -39,6 +39,7 @@ import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.IssueSeverity
+import com.myapp.adventure.data.EditorTemplate
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.ValidationIssue
@@ -48,6 +49,7 @@ import com.myapp.adventure.ui.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
 import com.myapp.adventure.utils.EditorDraftManager
 import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.utils.ruQuantityString
 import com.myapp.adventure.utils.SearchService
 import com.myapp.adventure.utils.StoryStatsService
 import com.myapp.adventure.utils.StoryValidator
@@ -161,6 +163,12 @@ class AdventureEditorFragment : Fragment() {
                 .addToBackStack(null)
                 .commit()
         }
+        binding.btnTemplates.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, TemplateListFragment())
+                .addToBackStack(null)
+                .commit()
+        }
 
         (binding.rvScenes.layoutManager as? LinearLayoutManager)
             ?.initialPrefetchItemCount = 4
@@ -210,7 +218,7 @@ class AdventureEditorFragment : Fragment() {
 
     private fun updateTitleField() {
         if (_binding == null) return
-        binding.tvAdventureTitle.text = viewModel.title.ifBlank { "Без названия" }
+        binding.tvAdventureTitle.text = viewModel.title.ifBlank { getString(R.string.editor_title_untitled) }
     }
 
     private fun updateUndoRedoButtons() {
@@ -237,16 +245,16 @@ class AdventureEditorFragment : Fragment() {
         etDesc.setText(viewModel.description)
 
         AlertDialog.Builder(requireContext())
-            .setTitle("Редактировать приключение")
+            .setTitle(R.string.editor_dialog_edit_meta_title)
             .setView(dialogView)
-            .setPositiveButton("Применить") { _, _ ->
+            .setPositiveButton(R.string.dialog_apply) { _, _ ->
                 viewModel.title = etTitle.text.toString().trim()
                 viewModel.author = etAuthor.text.toString().trim()
                 viewModel.description = etDesc.text.toString().trim()
                 updateTitleField()
                 markDirty()
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(R.string.dialog_cancel, null)
             .show()
     }
 
@@ -281,7 +289,7 @@ class AdventureEditorFragment : Fragment() {
     private fun markDirty() {
         if (_binding == null) return
         hasUnsavedChanges = true
-        binding.tvSaveStatus.text = "Изменения…"
+        binding.tvSaveStatus.text = getString(R.string.editor_save_status_editing)
         binding.tvSaveStatus.setTextColor(Color.parseColor("#FFC107"))
         updateUndoRedoButtons()
         debounceHandler.removeCallbacks(saveRunnable)
@@ -291,7 +299,7 @@ class AdventureEditorFragment : Fragment() {
     private fun saveDraftImmediate() {
         if (_binding == null) return
         debounceHandler.removeCallbacks(saveRunnable)
-        binding.tvSaveStatus.text = "Сохранение…"
+        binding.tvSaveStatus.text = getString(R.string.editor_save_status_saving)
         binding.tvSaveStatus.setTextColor(Color.parseColor("#9E9E9E"))
 
         viewModel.commitSnapshot()
@@ -301,11 +309,12 @@ class AdventureEditorFragment : Fragment() {
             viewModel.author,
             viewModel.description,
             viewModel.variables,
+            viewModel.templates,
             viewModel.initialStateTags,
             viewModel.scenes
         )
         hasUnsavedChanges = false
-        binding.tvSaveStatus.text = "Сохранено"
+        binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved)
         binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
         updateUndoRedoButtons()
         Logger.log(requireContext(), "Черновик автосохранён, сцен: ${viewModel.scenes.size}")
@@ -331,18 +340,22 @@ class AdventureEditorFragment : Fragment() {
         val draftDateStr = dateFormat.format(Date(draft.savedAt))
 
         AlertDialog.Builder(requireContext())
-            .setTitle("Восстановить черновик?")
+            .setTitle(R.string.editor_dialog_restore_draft_title)
             .setMessage(
-                "Найден несохранённый черновик от $draftDateStr\n" +
-                        "Сцен: ${draft.scenes.size}\n\n" +
-                        "Восстановить?"
+                getString(
+                    R.string.editor_draft_restore_message_fmt,
+                    draftDateStr,
+                    draft.scenes.size
+                )
             )
-            .setPositiveButton("Восстановить") { _, _ ->
+            .setPositiveButton(R.string.dialog_restore) { _, _ ->
                 viewModel.title = draft.title
                 viewModel.author = draft.author
                 viewModel.description = draft.description
                 viewModel.variables.clear()
                 viewModel.variables.addAll(draft.variables.map { it.copy() })
+                viewModel.templates.clear()
+                viewModel.templates.addAll(draft.templates.map { it.deepCopy() })
                 viewModel.initialStateTags.clear()
                 viewModel.initialStateTags.addAll(draft.initialStateTags.map { it.copy() })
                 viewModel.scenes.clear()
@@ -359,11 +372,11 @@ class AdventureEditorFragment : Fragment() {
                 updateUndoRedoButtons()
 
                 hasUnsavedChanges = false
-                binding.tvSaveStatus.text = "Сохранено"
+                binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved)
                 binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
                 Logger.log(requireContext(), "Черновик восстановлен, сцен: ${draft.scenes.size}")
             }
-            .setNegativeButton("Удалить") { _, _ ->
+            .setNegativeButton(R.string.dialog_delete) { _, _ ->
                 EditorDraftManager.clearDraft(requireContext())
             }
             .show()
@@ -388,12 +401,22 @@ class AdventureEditorFragment : Fragment() {
             viewModel.description = adventure.description
             viewModel.scenes.clear()
 
-            // Ф2.7: восстановить объявления переменных из JSON.
-            // `adventure.variables` — `Map<String, VariableDto>?`
-            // (nullable, Gson опускает поле если ничего не объявлено).
+            // Ф2.7: restore variable declarations from JSON.
+            // `adventure.variables` is `Map<String, VariableDto>?`
+            // (nullable; Gson omits the field when nothing is declared).
             viewModel.variables.clear()
             adventure.variables?.forEach { (name, dto) ->
                 viewModel.variables.add(viewModel.editorVarDeclFromDto(name, dto))
+            }
+
+            // Ф4.3.1: restore choice templates from JSON.
+            // `adventure.choiceTemplates` is `List<ChoiceTemplateDto>?`
+            // (nullable; Gson omits the field when nothing is declared).
+            // Round-trip: templates stored in JSON survive a re-save
+            // (this fixes the data-loss bug).
+            viewModel.templates.clear()
+            adventure.choiceTemplates?.forEach { dto ->
+                viewModel.templates.add(viewModel.editorTemplateFromDto(dto))
             }
             // Ф2.7 DoD: «при открытии приключения без объявлений —
             // предупреждение». Показываем один раз при загрузке, с
@@ -401,14 +424,9 @@ class AdventureEditorFragment : Fragment() {
             // секцию «📋 Переменные».
             if (viewModel.variables.isEmpty()) {
                 AlertDialog.Builder(requireContext())
-                    .setTitle("Типы не заданы")
-                    .setMessage(
-                        "Файл без объявлений типов переменных. " +
-                                "Type checking работает в fallback-режиме " +
-                                "(по tags + initial_state).\n\n" +
-                                "Объявить типы сейчас?",
-                    )
-                    .setPositiveButton("Объявить") { _, _ ->
+                    .setTitle(R.string.editor_dialog_types_missing_title)
+                    .setMessage(R.string.editor_dialog_types_missing_message)
+                    .setPositiveButton(R.string.dialog_declare) { _, _ ->
                         viewModel.variablesExpanded = true
                         variablesAdapter.notifyDataSetChanged()
                         binding.rvScenes.post {
@@ -417,7 +435,7 @@ class AdventureEditorFragment : Fragment() {
                             }
                         }
                     }
-                    .setNegativeButton("Позже", null)
+                    .setNegativeButton(R.string.dialog_later, null)
                     .show()
             }
 
@@ -530,7 +548,7 @@ class AdventureEditorFragment : Fragment() {
                     val deathSceneEditor = EditorScene(
                         id = deathDef.id,
                         idIsAuto = false,
-                        title = "Сцена смерти",
+                        title = getString(R.string.item_editor_scene_death_scene),
                         text = deathDef.text,
                         isDeathScene = true,
                         deathAllowStepBack = deathDef.allowStepBack,
@@ -551,14 +569,14 @@ class AdventureEditorFragment : Fragment() {
             updateTitleField()
             updateUndoRedoButtons()
 
-            binding.tvSaveStatus.text = "Загружено из файла"
+            binding.tvSaveStatus.text = getString(R.string.editor_save_status_loaded)
             binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
 
             Logger.log(requireContext(), "Приключение загружено из файла: ${uri.lastPathSegment}")
-            Toast.makeText(requireContext(), "Приключение загружено", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.editor_toast_loaded, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка загрузки приключения: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.editor_toast_load_error, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -646,7 +664,7 @@ class AdventureEditorFragment : Fragment() {
 
     private fun saveAdventure() {
         if (viewModel.scenes.isEmpty()) {
-            Toast.makeText(requireContext(), "Добавьте хотя бы одну сцену", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.editor_toast_add_scene_first, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -660,7 +678,7 @@ class AdventureEditorFragment : Fragment() {
         val prefs = requireContext().getSharedPreferences("adventure_prefs", 0)
         val folderUriString = prefs.getString("adventure_folder_uri", null)
         if (folderUriString == null) {
-            Toast.makeText(requireContext(), "Папка не выбрана", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.editor_toast_folder_not_selected, Toast.LENGTH_SHORT).show()
             return
         }
         val folderUri = Uri.parse(folderUriString)
@@ -679,7 +697,7 @@ class AdventureEditorFragment : Fragment() {
                     it.write(json.toByteArray())
                 }
                 Logger.log(requireContext(), "Приключение перезаписано: $fileName")
-                Toast.makeText(requireContext(), "Приключение обновлено: $fileName", Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), getString(R.string.editor_toast_updated, fileName), Toast.LENGTH_LONG).show()
                 saved = true
             } else {
                 val newUri = DocumentsContract.createDocument(
@@ -693,23 +711,23 @@ class AdventureEditorFragment : Fragment() {
                         it.write(json.toByteArray())
                     }
                     Logger.log(requireContext(), "Приключение сохранено: $fileName")
-                    Toast.makeText(requireContext(), "Приключение сохранено: $fileName", Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), getString(R.string.editor_toast_saved, fileName), Toast.LENGTH_LONG).show()
                     saved = true
                 } else {
-                    Toast.makeText(requireContext(), "Не удалось создать файл", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), R.string.editor_toast_create_failed, Toast.LENGTH_SHORT).show()
                 }
             }
 
             if (saved) {
                 EditorDraftManager.clearDraft(requireContext())
                 hasUnsavedChanges = false
-                binding.tvSaveStatus.text = "Сохранено в файл"
+                binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved_to_file)
                 binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
                 updateUndoRedoButtons()
             }
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка сохранения: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка сохранения: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.editor_toast_save_error, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -761,11 +779,8 @@ class AdventureEditorFragment : Fragment() {
         for (err in conditionParseErrors) {
             issues += ValidationIssue(
                 severity = IssueSeverity.ERROR,
-                // Condition parse errors carry a JSON-like path, but no
-                // per-scene uid. "" means "not clickable" — the dialog's
-                // click handler is a no-op for such issues.
                 sceneUid = "",
-                title = "Ошибка синтаксиса условия",
+                titleRes = R.string.validation_title_condition_parse_error,
                 description = err.message,
             )
         }
@@ -781,19 +796,16 @@ class AdventureEditorFragment : Fragment() {
             issues += ValidationIssue(
                 severity = IssueSeverity.WARNING,
                 sceneUid = "",
-                title = "Типы переменных не заданы",
-                description = "Файл без объявлений типов. Type checking " +
-                        "работает в fallback-режиме (по tags + " +
-                        "initial_state). Объявите типы в секции " +
-                        "«📋 Переменные» для полной проверки.",
+                titleRes = R.string.validation_title_types_not_declared,
+                description = getString(R.string.validation_desc_types_not_declared),
             )
         }
 
         if (issues.isEmpty()) {
             AlertDialog.Builder(requireContext())
-                .setTitle("Здоровье истории")
-                .setMessage("Проблем не найдено. История выглядит здоровой! ✅")
-                .setPositiveButton("Закрыть", null)
+                .setTitle(R.string.editor_dialog_health_title)
+                .setMessage(R.string.editor_dialog_health_no_issues_message)
+                .setPositiveButton(R.string.dialog_close, null)
                 .show()
             return
         }
@@ -806,15 +818,19 @@ class AdventureEditorFragment : Fragment() {
         val tvSummary = dialogView.findViewById<TextView>(R.id.tv_summary)
         val container = dialogView.findViewById<LinearLayout>(R.id.container_issues)
 
-        val summaryParts = mutableListOf<String>()
-        if (errorCount > 0) summaryParts.add("Ошибок: $errorCount")
-        if (warningCount > 0) summaryParts.add("Предупреждений: $warningCount")
+            val summaryParts = mutableListOf<String>()
+            if (errorCount > 0) {
+                summaryParts.add(getString(R.string.validation_summary_errors_fmt, errorCount))
+            }
+            if (warningCount > 0) {
+                summaryParts.add(getString(R.string.validation_summary_warnings_fmt, warningCount))
+            }
         tvSummary.text = summaryParts.joinToString(" • ")
 
         val dialog = AlertDialog.Builder(requireContext())
-            .setTitle("Здоровье истории")
+            .setTitle(R.string.editor_dialog_health_title)
             .setView(dialogView)
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(R.string.dialog_close, null)
             .create()
 
         val ordered = issues.filter { it.severity == IssueSeverity.ERROR } +
@@ -828,7 +844,7 @@ class AdventureEditorFragment : Fragment() {
             val desc = rowView.findViewById<TextView>(R.id.tv_description)
 
             icon.text = if (issue.severity == IssueSeverity.ERROR) "❌" else "⚠️"
-            title.text = issue.title
+            title.text = getString(issue.titleRes)
             desc.text = issue.description
 
             rowView.setOnClickListener {
@@ -861,9 +877,9 @@ class AdventureEditorFragment : Fragment() {
         cbTags.isChecked = true
 
         val dialog = AlertDialog.Builder(requireContext())
-            .setTitle("Поиск по истории")
+            .setTitle(R.string.editor_dialog_search_title)
             .setView(dialogView)
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(R.string.dialog_close, null)
             .create()
 
         val searchHandler = Handler(Looper.getMainLooper())
@@ -872,7 +888,7 @@ class AdventureEditorFragment : Fragment() {
         fun runSearch() {
             val query = etQuery.text.toString()
             if (query.trim().length < 2) {
-                tvSummary.text = "Введите минимум 2 символа"
+                tvSummary.text = getString(R.string.editor_search_enter_query)
                 container.removeAllViews()
                 return
             }
@@ -883,26 +899,27 @@ class AdventureEditorFragment : Fragment() {
                 searchInTitles = cbTitles.isChecked,
                 searchInTexts = cbTexts.isChecked,
                 searchInChoices = cbChoices.isChecked,
-                searchInTags = cbTags.isChecked
+                searchInTags = cbTags.isChecked,
+                titleFallback = getString(R.string.label_without_title),
             )
 
             container.removeAllViews()
 
             if (results.isEmpty()) {
-                tvSummary.text = "Ничего не найдено"
+                tvSummary.text = getString(R.string.editor_search_nothing_found)
                 return
             }
 
             val scenesCount = results.map { it.sceneUid }.distinct().size
             val totalMatches = results.sumOf { it.totalMatchesInField }
 
-            val summary = StringBuilder("Найдено ")
-            summary.append(formatMatchesCount(totalMatches))
-            if (scenesCount > 1) {
-                summary.append(" ")
-                summary.append(formatScenesPrepositional(scenesCount))
+            val matchesText = formatMatchesCount(totalMatches)
+            val scenesText = if (scenesCount > 1) {
+                " " + formatScenesPrepositional(scenesCount)
+            } else {
+                ""
             }
-            tvSummary.text = summary.toString()
+            tvSummary.text = getString(R.string.editor_search_matches_fmt, matchesText + scenesText)
 
             for (result in results) {
                 val rowView = LayoutInflater.from(requireContext())
@@ -913,14 +930,17 @@ class AdventureEditorFragment : Fragment() {
 
                 tvIcon.text = result.fieldType.icon
 
+                val detailText = if (result.detailArg != null) {
+                    getString(result.detailRes, result.detailArg)
+                } else {
+                    getString(result.detailRes)
+                }
                 val titleDetailText = buildString {
                     append(result.sceneTitle)
                     append("  ·  ")
-                    append(result.detail)
+                    append(detailText)
                     if (result.totalMatchesInField > 1) {
-                        append("  (ещё ")
-                        append(result.totalMatchesInField - 1)
-                        append(")")
+                        append(getString(R.string.editor_search_more_fmt, result.totalMatchesInField - 1))
                     }
                 }
                 val spannableTitle = SpannableString(titleDetailText)
@@ -985,26 +1005,22 @@ class AdventureEditorFragment : Fragment() {
 
         dialog.show()
         etQuery.requestFocus()
-        tvSummary.text = "Введите минимум 2 символа"
+        tvSummary.text = getString(R.string.editor_search_enter_query)
     }
 
-    private fun formatMatchesCount(n: Int): String = when {
-        n % 100 in 11..14 -> "$n совпадений"
-        n % 10 == 1 -> "$n совпадение"
-        n % 10 in 2..4 -> "$n совпадения"
-        else -> "$n совпадений"
-    }
+    private fun formatMatchesCount(n: Int): String =
+        resources.getQuantityString(R.plurals.word_matches, n, n)
 
-    private fun formatScenesPrepositional(n: Int): String = when {
-        n % 100 in 11..14 -> "в $n сценах"
-        n % 10 == 1 -> "в $n сцене"
-        else -> "в $n сценах"
-    }
+    private fun formatScenesPrepositional(n: Int): String =
+        resources.getQuantityString(R.plurals.word_scenes_in, n, n)
 
     // ---------- Статистика ----------
 
     private fun showStatsDialog() {
-        val stats = StoryStatsService.calculate(viewModel.scenes)
+        val stats = StoryStatsService.calculate(
+            viewModel.scenes,
+            titleFallback = getString(R.string.label_without_title),
+        )
 
         val dialogView = LayoutInflater.from(requireContext())
             .inflate(R.layout.dialog_story_stats, null)
@@ -1019,17 +1035,35 @@ class AdventureEditorFragment : Fragment() {
         val tvShortest = dialogView.findViewById<TextView>(R.id.tv_stat_shortest)
         val containerChapters = dialogView.findViewById<LinearLayout>(R.id.container_chapters)
 
-        tvScenes.text = "📄  Сцен: ${formatInt(stats.totalScenes)} (${formatScenes(stats.totalScenes)})"
-        tvWords.text = "📝  Слов: ${formatInt(stats.totalWords)}"
-        tvChoices.text = "🔀  Выборов: ${formatInt(stats.totalChoices)}"
-        tvChapters.text = "📚  Глав: ${formatInt(stats.totalChapters)}"
+        tvScenes.text = getString(
+            R.string.editor_stats_scenes_fmt,
+            formatInt(stats.totalScenes),
+            formatScenes(stats.totalScenes)
+        )
+        tvWords.text = getString(R.string.editor_stats_words_fmt, formatInt(stats.totalWords))
+        tvChoices.text = getString(R.string.editor_stats_choices_fmt, formatInt(stats.totalChoices))
+        tvChapters.text = getString(R.string.editor_stats_chapters_fmt, formatInt(stats.totalChapters))
 
-        tvReading.text = "⏱  Примерное время чтения: ${formatReadingTime(stats.estimatedReadingMinutes)}"
+        tvReading.text = getString(
+            R.string.editor_stats_reading_fmt,
+            formatReadingTime(stats.estimatedReadingMinutes)
+        )
 
         if (stats.totalScenes > 0) {
-            tvAvg.text = "Средняя длина сцены: ${formatInt(stats.avgWordsPerScene)} ${formatWords(stats.avgWordsPerScene)}"
-            tvLongest.text = "Самая длинная: «${stats.longestSceneTitle}» — ${formatInt(stats.longestSceneWords)} ${formatWords(stats.longestSceneWords)}"
-            tvShortest.text = "Самая короткая: «${stats.shortestSceneTitle}» — ${formatInt(stats.shortestSceneWords)} ${formatWords(stats.shortestSceneWords)}"
+            tvAvg.text = getString(
+                R.string.editor_stats_avg_fmt,
+                formatWords(stats.avgWordsPerScene)
+            )
+            tvLongest.text = getString(
+                R.string.editor_stats_longest_fmt,
+                stats.longestSceneTitle,
+                formatWords(stats.longestSceneWords)
+            )
+            tvShortest.text = getString(
+                R.string.editor_stats_shortest_fmt,
+                stats.shortestSceneTitle,
+                formatWords(stats.shortestSceneWords)
+            )
         } else {
             tvAvg.text = ""
             tvLongest.text = ""
@@ -1042,9 +1076,9 @@ class AdventureEditorFragment : Fragment() {
         }
 
         AlertDialog.Builder(requireContext())
-            .setTitle("Статистика истории")
+            .setTitle(R.string.editor_dialog_stats_title)
             .setView(dialogView)
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(R.string.dialog_close, null)
             .show()
     }
 
@@ -1058,20 +1092,26 @@ class AdventureEditorFragment : Fragment() {
         val tvDetails = rowView.findViewById<TextView>(R.id.tv_chapter_details)
         val tvSteps = rowView.findViewById<TextView>(R.id.tv_chapter_steps)
 
-        tvTitle.text = "Глава ${chapter.index}"
+        tvTitle.text = getString(R.string.editor_chapter_title_fmt, chapter.index)
 
-        tvDetails.text = "${formatInt(chapter.sceneCount)} ${formatScenes(chapter.sceneCount)}" +
-                " · ${formatInt(chapter.wordCount)} ${formatWords(chapter.wordCount)}" +
-                " · ${formatInt(chapter.choiceCount)} ${formatChoices(chapter.choiceCount)}"
+        tvDetails.text = getString(
+            R.string.editor_chapter_details_fmt,
+            formatScenes(chapter.sceneCount),
+            formatWords(chapter.wordCount),
+            formatChoices(chapter.choiceCount)
+        )
 
         if (chapter.isLast) {
-            tvSteps.text = "🏁 Финальная глава"
+            tvSteps.text = getString(R.string.editor_chapter_last)
             tvSteps.setTextColor(Color.parseColor("#4CAF50"))
         } else if (chapter.requiredSteps > 0) {
-            tvSteps.text = "🚶 До следующей главы: ${formatInt(chapter.requiredSteps)} ${formatSteps(chapter.requiredSteps)}"
+            tvSteps.text = getString(
+                R.string.editor_chapter_next_steps_fmt,
+                formatSteps(chapter.requiredSteps)
+            )
             tvSteps.setTextColor(Color.parseColor("#FFC107"))
         } else {
-            tvSteps.text = "⚠️ До следующей главы: 0 шагов (откроется сразу)"
+            tvSteps.text = getString(R.string.editor_chapter_no_gate)
             tvSteps.setTextColor(Color.parseColor("#FF9800"))
         }
 
@@ -1080,45 +1120,25 @@ class AdventureEditorFragment : Fragment() {
 
     // ---------- Форматирование чисел и склонений ----------
 
-    private fun formatInt(n: Int): String =
-        String.format(Locale.getDefault(), "%,d", n).replace(',', ' ')
+    // Ф4-infra (3b-6a): `formatInt` and `pluralWithNumber` are now
+    // top-level in `EditorHelpers.kt` (same package). Delete the local
+    // copies to keep one source of truth. The per-`format` wrappers
+    // below stay — they bind each `@PluralsRes` id to its callers.
+    private fun formatScenes(n: Int): String =
+        pluralWithNumber(requireContext(), R.plurals.word_scenes, n)
 
-    private fun formatScenes(n: Int): String = when {
-        n % 100 in 11..14 -> "сцен"
-        n % 10 == 1 -> "сцена"
-        n % 10 in 2..4 -> "сцены"
-        else -> "сцен"
-    }
+    private fun formatWords(n: Int): String =
+        pluralWithNumber(requireContext(), R.plurals.word_words, n)
 
-    private fun formatWords(n: Int): String = when {
-        n % 100 in 11..14 -> "слов"
-        n % 10 == 1 -> "слово"
-        n % 10 in 2..4 -> "слова"
-        else -> "слов"
-    }
+    private fun formatChoices(n: Int): String =
+        pluralWithNumber(requireContext(), R.plurals.word_choices, n)
 
-    private fun formatChoices(n: Int): String = when {
-        n % 100 in 11..14 -> "выборов"
-        n % 10 == 1 -> "выбор"
-        n % 10 in 2..4 -> "выбора"
-        else -> "выборов"
-    }
-
-    private fun formatSteps(n: Int): String = when {
-        n % 100 in 11..14 -> "шагов"
-        n % 10 == 1 -> "шаг"
-        n % 10 in 2..4 -> "шага"
-        else -> "шагов"
-    }
+    private fun formatSteps(n: Int): String =
+        pluralWithNumber(requireContext(), R.plurals.steps, n)
 
     private fun formatReadingTime(minutes: Int): String {
-        if (minutes < 1) return "меньше минуты"
-        return "${formatInt(minutes)} ${when {
-            minutes % 100 in 11..14 -> "минут"
-            minutes % 10 == 1 -> "минута"
-            minutes % 10 in 2..4 -> "минуты"
-            else -> "минут"
-        }}"
+        if (minutes < 1) return getString(R.string.editor_stats_reading_less_than_minute)
+        return pluralWithNumber(requireContext(), R.plurals.word_minutes, minutes)
     }
 
     // ---------- Прыжок к сцене ----------
@@ -1152,7 +1172,7 @@ class AdventureEditorFragment : Fragment() {
         if (scene.title.isBlank()) {
             Toast.makeText(
                 requireContext(),
-                "Сначала задайте название сцены",
+                R.string.editor_toast_title_first,
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -1163,7 +1183,7 @@ class AdventureEditorFragment : Fragment() {
         if (scene.id.isBlank()) {
             Toast.makeText(
                 requireContext(),
-                "Не удалось сгенерировать ID сцены",
+                R.string.editor_toast_id_generate_failed,
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -1179,7 +1199,7 @@ class AdventureEditorFragment : Fragment() {
         if (chapterIndex < 0) {
             Toast.makeText(
                 requireContext(),
-                "Сцена не найдена в собранной истории",
+                R.string.editor_toast_scene_not_found,
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -1213,6 +1233,7 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.author,
                 viewModel.description,
                 viewModel.variables,
+                viewModel.templates,
                 viewModel.initialStateTags,
                 viewModel.scenes
             )

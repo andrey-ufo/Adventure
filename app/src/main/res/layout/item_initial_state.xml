@@ -7,7 +7,6 @@
     android:background="@drawable/scene_background"
     android:layout_marginBottom="12dp">
 
-    <!-- Шапка -->
     <LinearLayout
         android:id="@+id/initial_header"
         android:layout_width="match_parent"
@@ -22,7 +21,7 @@
             android:id="@+id/tv_init_chevron"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:text="▼"
+            android:text="@string/icon_chevron_down"
             android:textSize="14sp"
             android:textColor="#FFFFFF"
             android:gravity="center" />
@@ -31,7 +30,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="🎬 Начальное состояние"
+            android:text="@string/item_initial_state_title"
             android:textSize="15sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -46,7 +45,6 @@
             android:textColor="#9E9E9E" />
     </LinearLayout>
 
-    <!-- Тело -->
     <LinearLayout
         android:id="@+id/initial_body"
         android:layout_width="match_parent"
@@ -57,7 +55,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Метки и статы, с которыми игрок входит в историю до первой сцены. Например, стартовое здоровье, инвентарь, флаги."
+            android:text="@string/item_initial_state_description"
             android:textSize="11sp"
             android:textColor="#9E9E9E"
             android:layout_marginBottom="8dp" />
@@ -73,7 +71,7 @@
             android:id="@+id/btn_add_init_tag"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="+ Метка"
+            android:text="@string/item_initial_state_add_tag"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="12sp" />

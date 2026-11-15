@@ -1,5 +1,7 @@
 package com.myapp.adventure.utils
 
+import androidx.annotation.StringRes
+import com.myapp.adventure.R
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.ValidationIssue
@@ -111,7 +113,7 @@ object StoryValidator {
             issues += ValidationIssue(
                 severity = IssueSeverity.ERROR,
                 sceneUid = typeError.sceneId?.let { uidBySceneId[it.value] } ?: "",
-                title = titleFor(typeError),
+                titleRes = titleFor(typeError),
                 description = typeError.message,
             )
         }
@@ -127,7 +129,7 @@ object StoryValidator {
                     issues += ValidationIssue(
                         severity = IssueSeverity.ERROR,
                         sceneUid = sceneUidOf(compileError, uidBySceneId),
-                        title = titleFor(compileError),
+                        titleRes = titleFor(compileError),
                         description = compileError.message,
                     )
                 }
@@ -147,7 +149,7 @@ object StoryValidator {
                     issues += ValidationIssue(
                         severity = severity,
                         sceneUid = lintIssue.sceneId?.let { uidBySceneId[it.value] } ?: "",
-                        title = titleFor(lintIssue),
+                        titleRes = titleFor(lintIssue),
                         description = lintIssue.message,
                     )
                 }
@@ -179,33 +181,36 @@ object StoryValidator {
     // someone adds a title here — intentional, no silent English text
     // sneaking into a Russian-language dialog.
 
-    private fun titleFor(typeError: TypeError): String = when (typeError) {
-        is TypeError.UnknownVariable -> "Неизвестная переменная"
-        is TypeError.HasOnNonBool -> "has_ на не-Bool переменной"
-        is TypeError.SetFlagOnNonBool -> "set_flag на не-Bool переменной"
-        is TypeError.RemoveFlagOnNonBool -> "remove_flag на не-Bool переменной"
-        is TypeError.ModifyStatOnNonNumeric -> "modify_stat на не-числовой переменной"
-        is TypeError.CompareOnNonNumeric -> "Сравнение не-числовой переменной"
-        is TypeError.InRangeOnNonNumeric -> "Диапазон на не-числовой переменной"
-        is TypeError.InitialFlagOnNonBool -> "Флаг в initial_state не-Bool"
-        is TypeError.InitialStatOnNonNumeric -> "Стат в initial_state не-числовой"
+    @StringRes
+    private fun titleFor(typeError: TypeError): Int = when (typeError) {
+        is TypeError.UnknownVariable -> R.string.validation_title_unknown_variable
+        is TypeError.HasOnNonBool -> R.string.validation_title_has_on_non_bool
+        is TypeError.SetFlagOnNonBool -> R.string.validation_title_set_flag_on_non_bool
+        is TypeError.RemoveFlagOnNonBool -> R.string.validation_title_remove_flag_on_non_bool
+        is TypeError.ModifyStatOnNonNumeric -> R.string.validation_title_modify_stat_on_non_numeric
+        is TypeError.CompareOnNonNumeric -> R.string.validation_title_compare_on_non_numeric
+        is TypeError.InRangeOnNonNumeric -> R.string.validation_title_in_range_on_non_numeric
+        is TypeError.InitialFlagOnNonBool -> R.string.validation_title_initial_flag_on_non_bool
+        is TypeError.InitialStatOnNonNumeric -> R.string.validation_title_initial_stat_on_non_numeric
     }
 
-    private fun titleFor(compileError: CompileError): String = when (compileError) {
-        is CompileError.DuplicateSceneId -> "Дублирующийся ID сцены"
-        is CompileError.MissingStartScene -> "Не найдена стартовая сцена"
-        is CompileError.MissingNextScene -> "Выбор ведёт на несуществующую сцену"
+    @StringRes
+    private fun titleFor(compileError: CompileError): Int = when (compileError) {
+        is CompileError.DuplicateSceneId -> R.string.validation_title_duplicate_scene_id
+        is CompileError.MissingStartScene -> R.string.validation_title_missing_start_scene
+        is CompileError.MissingNextScene -> R.string.validation_title_missing_next_scene
     }
 
-    private fun titleFor(lintIssue: LintIssue): String = when (lintIssue.kind) {
-        is LintKind.UnreachableScene -> "Недостижимая сцена"
-        is LintKind.RemovingUnestablishedItem -> "Снятие неустанавливаемого ресурса"
-        is LintKind.DeathSceneWithoutHealth -> "Сцена смерти без health"
-        is LintKind.ConditionOnUnestablishedFlag -> "Условие на неустанавливаемую метку"
-        is LintKind.DeathWithoutDeathScene -> "Смерть без сцены смерти"
-        is LintKind.DeadEnd -> "Тупик"
-        is LintKind.EndingSceneWithChoices -> "Конец игры с выборами"
-        is LintKind.UnreachableInvariant -> "Инвариант не сработает"
-        is LintKind.DeadCondition -> "Недостижимое условие"
+    @StringRes
+    private fun titleFor(lintIssue: LintIssue): Int = when (lintIssue.kind) {
+        is LintKind.UnreachableScene -> R.string.validation_title_unreachable_scene
+        is LintKind.RemovingUnestablishedItem -> R.string.validation_title_removing_unestablished_item
+        is LintKind.DeathSceneWithoutHealth -> R.string.validation_title_death_scene_without_health
+        is LintKind.ConditionOnUnestablishedFlag -> R.string.validation_title_condition_on_unestablished_flag
+        is LintKind.DeathWithoutDeathScene -> R.string.validation_title_death_without_death_scene
+        is LintKind.DeadEnd -> R.string.validation_title_dead_end
+        is LintKind.EndingSceneWithChoices -> R.string.validation_title_ending_scene_with_choices
+        is LintKind.UnreachableInvariant -> R.string.validation_title_unreachable_invariant
+        is LintKind.DeadCondition -> R.string.validation_title_dead_condition
     }
 }

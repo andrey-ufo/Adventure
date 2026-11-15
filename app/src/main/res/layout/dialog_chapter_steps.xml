@@ -8,14 +8,14 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Сколько шагов нужно пройти, чтобы открыть следующую главу?"
+        android:text="@string/dialog_chapter_steps_title"
         android:textSize="14sp"
         android:layout_marginBottom="8dp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Средний пользователь проходит ~6000 шагов в день (~60 минут ходьбы)."
+        android:text="@string/dialog_chapter_steps_average_hint"
         android:textSize="11sp"
         android:textColor="#9E9E9E"
         android:layout_marginBottom="16dp" />
@@ -24,7 +24,7 @@
         android:id="@+id/btn_steps_500"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🚶 500 шагов  (≈ 5 минут)"
+        android:text="@string/dialog_chapter_steps_preset_500"
         android:textColor="#FFFFFF"
         android:gravity="start|center_vertical"
         style="?android:attr/borderlessButtonStyle" />
@@ -33,7 +33,7 @@
         android:id="@+id/btn_steps_1000"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🚶 1 000 шагов  (≈ 10 минут)"
+        android:text="@string/dialog_chapter_steps_preset_1000"
         android:textColor="#FFFFFF"
         android:gravity="start|center_vertical"
         style="?android:attr/borderlessButtonStyle" />
@@ -42,7 +42,7 @@
         android:id="@+id/btn_steps_4000"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🚶 4 000 шагов  (≈ 40 минут)"
+        android:text="@string/dialog_chapter_steps_preset_4000"
         android:textColor="#FFFFFF"
         android:gravity="start|center_vertical"
         style="?android:attr/borderlessButtonStyle" />
@@ -51,7 +51,7 @@
         android:id="@+id/btn_steps_8000"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🚶 8 000 шагов  (≈ 1 ч 20 мин)"
+        android:text="@string/dialog_chapter_steps_preset_8000"
         android:textColor="#FFFFFF"
         android:gravity="start|center_vertical"
         style="?android:attr/borderlessButtonStyle" />
@@ -66,7 +66,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Своё значение:"
+        android:text="@string/dialog_chapter_steps_custom_label"
         android:textSize="13sp"
         android:layout_marginBottom="4dp" />
 
@@ -74,7 +74,7 @@
         android:id="@+id/et_custom_steps"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Например, 2500"
+        android:hint="@string/dialog_chapter_steps_custom_hint"
         android:inputType="number"
         android:autofillHints="" />
 
@@ -83,14 +83,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="↻ Повторять гейт при каждом входе"
+        android:text="@string/dialog_chapter_steps_repeatable"
         android:textColor="#FFFFFF" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Выкл.: гейт сработает один раз, дальше глава/путь открыты. Вкл.: каждый вход в сцену снова требует шагов (например, путь между локациями)."
+        android:text="@string/dialog_chapter_steps_repeatable_hint"
         android:textSize="11sp"
         android:textColor="#9E9E9E" />
 

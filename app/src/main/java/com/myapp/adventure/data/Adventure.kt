@@ -14,7 +14,15 @@ data class Adventure(
     @SerializedName("version")
     val version: Int? = null,
     val title: String,
-    val author: String = "Неизвестен",
+    /**
+     * Ф4-infra (3b-6h): empty default. The old RU default
+     * `"Неизвестен"` propagated into the JSON file on save for
+     * legacy adventures without `author`, and then into the library
+     * list. An empty string is honest (no author set); the library
+     * shows a blank author line, same as an adventure with
+     * `"author": ""`.
+     */
+    val author: String = "",
     val description: String = "",
     @SerializedName("initial_state")
     val initialState: PlayerState? = null,
@@ -36,6 +44,13 @@ data class Adventure(
      */
     @SerializedName("variables")
     val variables: Map<String, VariableDto>? = null,
+    /**
+     * Ф4.3.1: reusable choice templates. `null` (field absent) means
+     * Gson does not write `"choice_templates": []` into files that have
+     * no templates — same "empty → omit" policy as `variables` / `tags`.
+     */
+    @SerializedName("choice_templates")
+    val choiceTemplates: List<ChoiceTemplateDto>? = null,
     val tags: List<TagDefinition>? = null,
     @SerializedName("death_scene")
     val deathScene: DeathScene? = null,
@@ -53,7 +68,12 @@ data class Adventure(
 
 data class DeathScene(
     val id: String = "death_scene",
-    val text: String = "💀 Вы погибли.",
+    /**
+     * Ф4-infra (3b-6h): empty default. Reader falls back to
+     * `R.string.reader_default_death_text`; see
+     * `:engine/ir/DeathScene.text` KDoc.
+     */
+    val text: String = "",
     @SerializedName("allow_step_back")
     val allowStepBack: Boolean = true,
     @SerializedName("allow_chapter_restart")
@@ -167,6 +187,50 @@ data class PlayerState(
  * в JSON валидно и не мешает парсингу Ф2.8).
  */
 data class VariableDto(
+    val type: String,
+    val min: Int? = null,
+    val max: Int? = null,
+)
+
+
+/**
+ * Ф4.3.1 — choice-template DTO for Gson-save.
+ *
+ * Mirrors `engine/.../format/dto/ChoiceTemplateDto`, but lives in
+ * `:app/data` — the editor's write-side model. Conditions are strings
+ * (as in JSON); effects are three parallel fields (as in `Scene` /
+ * `Choice`).
+ *
+ * Parameters are `List<VarDeclDto>`, not `Map`: the parameter name is
+ * a value (not a key), and order matters for the UI.
+ */
+data class ChoiceTemplateDto(
+    val id: String,
+    val parameters: List<VarDeclDto>? = null,
+    val text: String,
+    @SerializedName("visibility_condition")
+    val visibilityCondition: String? = null,
+    @SerializedName("availability_condition")
+    val availabilityCondition: String? = null,
+    @SerializedName("set_flags")
+    val setFlags: List<String>? = null,
+    @SerializedName("remove_flags")
+    val removeFlags: List<String>? = null,
+    @SerializedName("modify_stats")
+    val modifyStats: Map<String, Int>? = null,
+    @SerializedName("next_scene")
+    val nextScene: String,
+)
+
+/**
+ * Ф4.3.1 — DTO for one typed template parameter.
+ *
+ * Differs from `VariableDto` (`type`, `min`, `max`) by carrying `name`:
+ * in `Adventure.variables` the name is a map key; in
+ * `ChoiceTemplate.parameters` it is an object field.
+ */
+data class VarDeclDto(
+    val name: String,
     val type: String,
     val min: Int? = null,
     val max: Int? = null,

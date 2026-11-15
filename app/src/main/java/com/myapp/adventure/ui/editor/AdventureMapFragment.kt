@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.myapp.adventure.R
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.databinding.FragmentAdventureMapBinding
 
@@ -43,7 +44,7 @@ class AdventureMapFragment : Fragment() {
             insets
         }
 
-        binding.tvMapTitle.text = viewModel.title.ifBlank { "Карта приключения" }
+        binding.tvMapTitle.text = viewModel.title.ifBlank { getString(R.string.map_title) }
 
         binding.btnBack.setOnClickListener {
             parentFragmentManager.popBackStack()
@@ -117,7 +118,7 @@ class AdventureMapFragment : Fragment() {
             items.add(
                 MapItem.ChapterHeader(
                     index = chapterIdx,
-                    title = "Глава ${chapterIdx + 1}",
+                    title = getString(R.string.editor_chapter_title_fmt, chapterIdx + 1),
                     sceneCount = group.size,
                     wordCount = wordCount,
                     expanded = expanded
@@ -125,7 +126,7 @@ class AdventureMapFragment : Fragment() {
             )
 
             if (!expanded) {
-                // Свёрнутая глава — показываем шлюз (если он есть) и идём дальше
+                // Collapsed chapter — show the gate (if any) and continue
                 if (chapterIdx < chapterGroups.size - 1) {
                     // b2 TODO: search any scene in the group, not just
                     // the last one — gates can sit anywhere now. This
@@ -140,7 +141,7 @@ class AdventureMapFragment : Fragment() {
                 continue
             }
 
-            // Развёрнутая глава — сцены с переходами
+            // Expanded chapter — scenes with transitions
             val uidById = scenes.associateBy { it.id }.mapValues { it.value.uid }
             for (scene in group) {
                 val transitions = scene.choices.map { choice ->
@@ -148,10 +149,11 @@ class AdventureMapFragment : Fragment() {
                     TransitionInfo(
                         targetSceneUid = targetUid,
                         targetTitle = if (targetUid != null) {
-                            scenes.find { it.uid == targetUid }?.title?.ifBlank { "(без названия)" }
-                                ?: choice.nextSceneId
+                            scenes.find { it.uid == targetUid }?.title?.ifBlank {
+                                getString(R.string.label_without_title)
+                            } ?: choice.nextSceneId
                         } else {
-                            choice.nextSceneId.ifBlank { "(не задан)" }
+                            choice.nextSceneId.ifBlank { getString(R.string.map_choice_target_unset) }
                         },
                         condition = choice.conditionTag.ifEmpty { null },
                         missing = targetUid == null && choice.nextSceneId.isNotEmpty()
@@ -160,7 +162,7 @@ class AdventureMapFragment : Fragment() {
                 items.add(MapItem.SceneRow(scene = scene, transitions = transitions))
             }
 
-            // Шлюз после главы (если не последняя)
+            // Gate after the chapter (if not the last)
             if (chapterIdx < chapterGroups.size - 1) {
                 // b2 TODO: same as above — search any gate in the group.
                 val steps = group.lastOrNull()?.gateRequiredSteps ?: 0
@@ -173,7 +175,7 @@ class AdventureMapFragment : Fragment() {
         return items
     }
 
-    /** Тот же алгоритм группировки, что в buildAdventure() и StoryValidator. */
+    /** Same grouping algorithm as `buildAdventure()` and `StoryValidator`. */
     private fun buildChapterGroups(scenes: List<EditorScene>): List<List<EditorScene>> {
         val groups = mutableListOf<List<EditorScene>>()
         var current = mutableListOf<EditorScene>()

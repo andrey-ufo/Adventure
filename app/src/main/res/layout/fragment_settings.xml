@@ -9,7 +9,7 @@
         android:id="@+id/tv_settings_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Настройки"
+        android:text="@string/settings_title"
         android:textSize="24sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
@@ -20,7 +20,7 @@
         android:id="@+id/cb_logging"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Включить запись лога в файл"
+        android:text="@string/settings_logging"
         android:textColor="#FFFFFF"
         android:layout_marginBottom="16dp" />
 
@@ -29,7 +29,7 @@
         android:id="@+id/cb_health_connect"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Синхронизация с Health Connect"
+        android:text="@string/settings_health_connect"
         android:textColor="#FFFFFF"
         android:layout_marginBottom="4dp" />
 
@@ -47,7 +47,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Размер шрифта интерфейса:"
+        android:text="@string/settings_font_size_label"
         android:textSize="16sp"
         android:textColor="#FFFFFF"
         android:layout_marginBottom="8dp" />
@@ -62,7 +62,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Шрифт интерфейса:"
+        android:text="@string/settings_font_label"
         android:textSize="16sp"
         android:textColor="#FFFFFF"
         android:layout_marginBottom="8dp" />
@@ -84,7 +84,7 @@
             android:id="@+id/btn_add_font"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Добавить"
+            android:text="@string/settings_add_font"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>
@@ -94,7 +94,7 @@
         android:id="@+id/tv_font_sample"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Образец текста"
+        android:text="@string/settings_font_sample"
         android:textSize="20sp"
         android:textColor="#FFFFFF"
         android:gravity="center"

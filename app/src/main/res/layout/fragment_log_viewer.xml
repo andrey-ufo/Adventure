@@ -16,7 +16,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Логи"
+            android:text="@string/logs_title"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -24,14 +24,14 @@
             android:id="@+id/btn_copy_log"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Копировать"
+            android:text="@string/logs_copy"
             style="?android:attr/borderlessButtonStyle" />
 
         <Button
             android:id="@+id/btn_clear_log"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Очистить"
+            android:text="@string/dialog_clear"
             android:textColor="#FF9800"
             style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>

@@ -20,7 +20,7 @@
             android:id="@+id/btn_menu"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Меню"
+            android:text="@string/action_menu"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle"
             android:minWidth="0dp"
@@ -33,7 +33,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Без названия"
+            android:text="@string/editor_title_untitled"
             android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -56,7 +56,7 @@
             android:layout_height="40dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/arrow_down_float"
-            android:contentDescription="Свернуть/развернуть меню" />
+            android:contentDescription="@string/editor_menu_toggle_content_description" />
     </LinearLayout>
 
     <!-- ===== Раскрываемое меню действий ===== -->
@@ -82,7 +82,7 @@
                 android:id="@+id/btn_undo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="↶"
+                android:text="@string/action_undo"
                 android:textSize="20sp"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
@@ -92,7 +92,7 @@
                 android:id="@+id/btn_redo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="↷"
+                android:text="@string/action_redo"
                 android:textSize="20sp"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
@@ -109,7 +109,7 @@
                 android:id="@+id/btn_add_scene"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="+ Сцена"
+                android:text="@string/editor_add_scene"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -118,7 +118,7 @@
                 android:id="@+id/btn_save"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Сохранить"
+                android:text="@string/dialog_save"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -127,7 +127,7 @@
                 android:id="@+id/btn_load"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Загрузить"
+                android:text="@string/editor_load"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -136,7 +136,7 @@
                 android:id="@+id/btn_edit_meta"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Название"
+                android:text="@string/editor_edit_meta"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -145,7 +145,7 @@
                 android:id="@+id/btn_validate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Проверить"
+                android:text="@string/editor_validate"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -154,7 +154,7 @@
                 android:id="@+id/btn_search"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Поиск"
+                android:text="@string/editor_search"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -163,7 +163,7 @@
                 android:id="@+id/btn_stats"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Статистика"
+                android:text="@string/menu_statistics"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />
@@ -172,7 +172,16 @@
                 android:id="@+id/btn_map"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Карта"
+                android:text="@string/editor_map"
+                android:textColor="#FFFFFF"
+                style="?android:attr/borderlessButtonStyle"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_templates"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/editor_templates_button"
                 android:textColor="#FFFFFF"
                 style="?android:attr/borderlessButtonStyle"
                 android:textSize="13sp" />

@@ -334,6 +334,93 @@ blocked at import; a translator can round-trip `.po` inside the app.
 
 **Entry trigger:** after Ф10 (checklist accepted) **and** after L1–L4
 have shipped; T1 depends on E7 (ZIP) being stable.
+
+### i18n cleanup — RU source comments (C1)
+
+**Goal:** translate every remaining Russian **source comment** (`// …`
+and `/** … */` KDoc) in `:app/src/main/java/` to English, per
+[`CONTRIBUTING.md`](../CONTRIBUTING.md)'s "source-code comments are in
+English" rule.
+
+**Status (as of 2026-11-15).** User-facing migration is complete across
+`:app` **and** `:engine`:
+
+- every user-facing string lives in
+  `app/src/main/res/values/strings.xml`;
+- `:engine` **code** is clean of RU (data defaults that used to carry
+  RU — `DeathScene.text = "💀 Вы погибли."`, `Dto.DeathSceneDto.text`,
+  `:app/data/Adventure.author = "Неизвестен"` — are now empty strings,
+  and the reader / library fall back to `R.string.*`; see 3b-6h in
+  `progress-log-4.md`);
+- KDoc **quotations** of UI strings remain in both `:app` and
+  `:engine` (e.g. `:engine/.../parse/StepResult.kt:33` quotes
+  `"недоступно"`, `:engine/.../format/JsonToIr.kt:597` quotes
+  `«Проверить»`, `:engine/.../ir/types/TypeChecker.kt:59` quotes the
+  Ф2.2 DoD), and are covered by this item — they are citations, not
+  Russian prose.
+- `HardcodedText = 0` in every layout except the debug-only ones
+  (`dialog_debug_*`, `item_debug_*`), which are exempt per
+  [`i18n-policy.md`](./i18n-policy.md);
+- every `Toast` / `AlertDialog` / `setText` for the user in `:app` goes
+  through `getString(R.string.…)`.
+
+What remains is **developer-facing**: `// ---------- Section ----------`
+dividers, a few `//` notes in adapters, and `Ф`-prefixed KDoc — see the
+table below.
+
+**Data defaults vs user-facing strings.** A `String` constant inside
+`:engine` IR or `:app` data classes is user-facing **iff** the UI reads
+it directly. The `test_adventure.json` reference sample writes
+`author`, `death_scene.text`, `display_name`, etc. explicitly, so the
+defaults only fire for legacy files — but where they do, they land on
+screen. 3b-6h converted every such default to an empty `""` and moved
+the user-visible fallback into `R.string.*` in `:app`. Remaining RU
+constants in code (e.g. `AdventureEditorViewModel` translit map, JSON
+`Chapter.title = "Глава $N"`) are **not** user-facing: the first is a
+transliteration table, the second is never rendered (UI regenerates
+chapter titles from editor state).
+
+| File | ~blocks | Kind |
+|---|---|---|
+| `ui/editor/AdventureEditorFragment.kt` | ~14 | `// --- Section ---` dividers + a few notes |
+| `ui/editor/AdventureEditorViewModel.kt` | ~10 | `// --- Section ---` dividers + `Ф2.7` KDoc |
+| `ui/editor/EditorSceneAdapter.kt` | ~15 | `// --- Section ---` dividers |
+| `ui/editor/VariablesAdapter.kt` | ~4 | KDoc header (Ф2.7) + 3 notes |
+| `ui/editor/EditorHelpers.kt` | 1 | KDoc `/** Renders one tag row … */` |
+| `ui/editor/AdventureMapAdapter.kt` | 2 | KDoc + `// --- Model ---` |
+| `ui/editor/AdventureMapFragment.kt` | 1 | KDoc `/** Same algorithm as … */` |
+| `ui/editor/InitialStateAdapter.kt` | 1 | (already fixed to `// Tag rows` in 3b-6c — one left as example) |
+| `utils/StoryStatsService.kt` | 3 | `/** … */` + 3 `//` notes |
+| `data/ProgressData.kt`, `data/EditorModels.kt`, `data/Adventure.kt` | ~15 | KDoc referencing `Ф2.7` / `Ф1.7.5` |
+| `utils/StoryValidator.kt` | ~10 | `Ф2.6`-prefixed KDoc |
+| `:engine/.../parse/StepResult.kt`, `Condition.kt`, `ir/DeathScene.kt`, `ir/Outcome.kt`, `format/JsonToIr.kt`, `ir/types/TypeChecker.kt`, `ir/types/TypeInference.kt` | ~7 | KDoc quotations of UI strings / DoD text (per §1, translation deferred to the same Ф7.3 pass) |
+
+**Why deferred.** Two reasons:
+
+1. **Nuance.** Many comments carry a deliberate reference — `Ф2.7 DoD`,
+   `Ф1.7.5` decision, direct quotes from `checklist-tracker.md`. A
+   batch-by-batch translation risks dropping that reference. One
+   translation pass, once, preserves it.
+2. **Terminology alignment.** RU → EN for "метка", "сцена", "шаг",
+   "стат", `Ф`-prefix retention, is a **single decision**. Doing it in
+   the same change as `values-en/` guarantees source comments and
+   resource strings use the same final terms.
+
+**Entry trigger:** Ф7.3 (localization). Do it as the **first sub-step**
+of Ф7.3 — before adding `values-en/` — so that source-comment terminology
+and resource-string terminology land together.
+
+**What stays in Russian forever** (by policy, not this item):
+
+- `Logger.log(…)` — diagnostics, not user-facing.
+- Debug-panel strings — `showDebugPanel` and friends.
+- `docs/progress/progress-log-1.md`, `progress-log-2.md` — historical
+  records; `documentation-rules.md §1` explicitly says "do not translate
+  this file retroactively".
+- `Ф`-prefix in KDoc and comments — project terminology, not Russian
+  prose (`documentation-rules.md §1`, "The `Ф` prefix is project
+  terminology, not Russian text").
+
 ### Data path cleanup (after Ф1.7.5)
 
 The same adventure JSON has **two representations** in the codebase

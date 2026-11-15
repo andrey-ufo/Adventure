@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import com.myapp.adventure.R
 import android.content.Context
 import android.content.Intent
 import android.hardware.Sensor
@@ -273,12 +274,10 @@ class StepCounterService : Service(), SensorEventListener {
 
     /** Static notification used to satisfy startForeground() within 5s. */
     private fun buildNotificationStatic(): Notification {
-        val text = if (!isSensorAvailable) {
-            "Датчик шагов недоступен на этом устройстве"
-        } else if (!hasFirstEvent) {
-            "Ожидание данных датчика…"
-        } else {
-            "Отслеживание шагов активно"
+        val text = when {
+            !isSensorAvailable -> getString(R.string.step_service_sensor_unavailable)
+            !hasFirstEvent -> getString(R.string.step_service_waiting_for_sensor)
+            else -> getString(R.string.step_service_tracking_active)
         }
         return newNotificationBuilder()
             .setContentText(text)
@@ -295,9 +294,14 @@ class StepCounterService : Service(), SensorEventListener {
         }
 
         val text = when {
-            !isSensorAvailable -> "Датчик шагов недоступен на этом устройстве"
-            !hasFirstEvent -> "Ожидание данных датчика…"
-            else -> "Сегодня: $todaySteps шагов"
+            !isSensorAvailable -> getString(R.string.step_service_sensor_unavailable)
+            !hasFirstEvent -> getString(R.string.step_service_waiting_for_sensor)
+            else -> {
+                val stepsText = com.myapp.adventure.utils.ruQuantityString(
+                    this, com.myapp.adventure.R.plurals.steps, todaySteps
+                )
+                getString(R.string.step_service_today_steps_fmt, stepsText)
+            }
         }
 
         val notification = newNotificationBuilder()
@@ -316,7 +320,7 @@ class StepCounterService : Service(), SensorEventListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, StepCounterConstants.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Шагомер Adventure")
+            .setContentTitle(getString(R.string.step_service_notification_title))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -326,7 +330,7 @@ class StepCounterService : Service(), SensorEventListener {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             StepCounterConstants.NOTIFICATION_CHANNEL_ID,
-            "Шагомер",
+            getString(R.string.step_service_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

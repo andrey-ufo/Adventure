@@ -32,6 +32,8 @@ You extend the app, add features, or integrate new step sources.
 - [Engine conditions](./engine-conditions.md) — the condition grammar
   (Ф3.2): `has_X`, `Compare`, `InRange`, `&&`, `||`, `!`, parentheses.
 - [Documentation rules](./documentation-rules.md) — how docs are written.
+- [i18n policy](./i18n-policy.md) — where user-facing strings live and
+  how they are named (Ф4-infra; full localization in Ф7).
 
 ### For everyone
 

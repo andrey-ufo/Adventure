@@ -50,7 +50,7 @@ class SetupFragment : Fragment() {
 
                 createSubFolders(uri)
 
-                Toast.makeText(requireContext(), "Папка выбрана!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.setup_toast_folder_selected, Toast.LENGTH_SHORT).show()
 
                 // Запускаем постоянный шагомер, если ещё не работает
                 startStepCounterService()
@@ -60,17 +60,17 @@ class SetupFragment : Fragment() {
                     .commit()
             } catch (e: Exception) {
                 Logger.log(requireContext(), "Ошибка при выборе папки: ${e.message}")
-                Toast.makeText(requireContext(), "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), getString(R.string.setup_toast_error_fmt, e.message), Toast.LENGTH_LONG).show()
             }
         } else {
-            Toast.makeText(requireContext(), "Нужно выбрать папку для продолжения", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.setup_toast_choose_folder, Toast.LENGTH_SHORT).show()
         }
     }
 
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (!granted) {
-                Toast.makeText(requireContext(), "Уведомления отключены. Шагомер не сможет работать в фоне.", Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), R.string.setup_toast_notifications_disabled, Toast.LENGTH_LONG).show()
             }
             requestActivityRecognition()
         }
@@ -78,7 +78,7 @@ class SetupFragment : Fragment() {
     private val requestActivityRecognitionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (!granted) {
-                Toast.makeText(requireContext(), "Разрешение на физическую активность не дано. Шаги не будут считаться.", Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), R.string.setup_toast_activity_denied, Toast.LENGTH_LONG).show()
             }
             permissionsChecked = true
             // После получения разрешений можно запускать шагомер
@@ -151,7 +151,7 @@ class SetupFragment : Fragment() {
                 if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
                     if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
-                        Toast.makeText(requireContext(), "Разрешение на уведомления нужно, чтобы шагомер работал в фоне.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(requireContext(), R.string.setup_toast_notifications_rationale, Toast.LENGTH_LONG).show()
                     }
                     requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     return
@@ -160,7 +160,7 @@ class SetupFragment : Fragment() {
             requestActivityRecognition()
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка при запросе разрешений: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.setup_toast_error_fmt, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -170,7 +170,7 @@ class SetupFragment : Fragment() {
                 if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACTIVITY_RECOGNITION)
                     != PackageManager.PERMISSION_GRANTED) {
                     if (shouldShowRequestPermissionRationale(Manifest.permission.ACTIVITY_RECOGNITION)) {
-                        Toast.makeText(requireContext(), "Доступ к физической активности нужен для подсчёта шагов.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(requireContext(), R.string.setup_toast_activity_rationale, Toast.LENGTH_LONG).show()
                     }
                     requestActivityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                     return

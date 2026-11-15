@@ -48,15 +48,12 @@ from `InitialState`.
 
 Key classes:
 
-- `Adventure` — root. `version: Int` (CURRENT_VERSION = 5), `title`,
-  `author`, `description`, `variables`, `tags`, `initialState`,
-  `deathScene`, `startScene: SceneId`, `chapters`.
+- `Adventure` — root. `version: Int` (CURRENT_VERSION = 5), `title`, `author`, `description`, `variables`, `choiceTemplates`, `invariants`, `tags`, `initialState`, `deathScene`, `startScene: SceneId`, `chapters`.
 - `Chapter` — pure narrative grouping. No mechanical meaning. `id`,
   `title`, `scenes`.
 - `Scene` — `id: SceneId`, `text`, `effects: List<Effect>`,
   `choices: List<Choice>`, `gate: Gate?`, `isEnding: Boolean`.
-- `Choice` — `id: ChoiceId`, `text`, `nextScene: SceneId`,
-  `condition: Condition?`, `effects: List<Effect>`.
+- `Choice` — `id: ChoiceId`, `text`, `nextScene: SceneId`, `condition: Condition?` (enable), `visibilityCondition: Condition?` (show, Ф4.2), `effects: List<Effect>`, `templateRef: TemplateRef?` (Ф4.2, editor metadata).
 - `Condition` — sealed: `Has`, `Not`, `And`, `Or`, `Compare`,
   `InRange`. AST, not string.
 - `Effect` — sealed: `SetFlag`, `RemoveFlag`, `ModifyStat`. List order
@@ -65,6 +62,9 @@ Key classes:
   **scene**, not the chapter (Ф1.5.4).
 - `PlayerState` — runtime state: `flags: Set<String>`,
   `stats: Map<String, Int>`. Immutable.
+- `ChoiceTemplate` — reusable choice template. `id`, `parameters: List<VarDecl>`, `text`, `visibilityCondition`, `availabilityCondition`, `effects`, `nextScene`. See §"Choice templates" below.
+- `Invariant` — global rule. `condition: Condition`, `outcome: Outcome`. Fires when `condition` holds after a step (Ф3.5).
+- `Outcome` — sealed: `Death` today (Ф3.5).
 
 Value classes (`@JvmInline`, serialized transparently):
 `SceneId`, `ChoiceId`.
@@ -306,6 +306,125 @@ a fully parsed IR (Ф2.3 / B1 decision, 2026-11-12).
 Same boundary fixed in Ф1.3.4.1: putting a semantic check in the
 parser makes both harder to test and blurs the error message the
 author sees.
+
+## Choice templates (Ф4.2)
+
+**Status:** evolving.
+
+An author can define a **choice template** once and reuse it in any number
+of scenes with different arguments. The template is declared in
+`Adventure.choiceTemplates` (JSON `choice_templates`); instantiation is
+done by `applyTemplate`.
+
+### Design: expansion
+
+When a template is instantiated — programmatically via `applyTemplate`, or
+from JSON via `template_ref` (Ф4.3) — the resulting `Choice` is **fully
+expanded**. Its `text`, `condition`, `visibilityCondition`, and `effects`
+are filled in with substituted values. The runtime (`Engine.step`,
+`Evaluator`, `EffectsApplier`) and the analyzer (`Analyzer.lint`) see only
+expanded choices; they never look at `Choice.templateRef` or
+`Adventure.choiceTemplates`.
+
+`Choice.templateRef: TemplateRef?` records the source (template id + args)
+for the editor's benefit (Ф4.3). It is metadata; the gameplay-relevant
+content is already in the expanded fields.
+
+**Why expansion over a live `TemplateRef` (decision A1).** A
+`TemplateRef`-based `Choice` would force every consumer (evaluator,
+effects applier, analyzer, save/load) to be template-aware. That is a large
+surface for a feature whose main value is authoring convenience. Expansion
+keeps the runtime simple and the save format flat. The trade-off: when an
+author edits a template, existing expanded choices do not auto-update —
+the editor (Ф4.3) offers "update all uses" as an explicit action, using
+`templateRef` to find the affected choices.
+
+### Substitution semantics (decision B1)
+
+`applyTemplate(template, args, choiceId)` performs two kinds of
+substitution. Args are `Map<String, String>` — parameter name → actual
+variable name.
+
+1. **Text** — `{paramName}` placeholders in `template.text` are replaced
+   with the corresponding arg value. Example: `"Use {itemId}"` +
+   `args = {itemId: "potion"}` → `"Use potion"`. Braces make parameter
+   references unambiguous against ordinary prose.
+2. **AST name slots** — `Condition.Has(name)`, `Condition.VarRef(name)`,
+   `Condition.Compare(varName)`, `Condition.InRange(varName)`,
+   `Effect.SetFlag(name)`, `Effect.RemoveFlag(name)`,
+   `Effect.ModifyStat(name)`, `Effect.Set(name)` are checked for **exact**
+   parameter-name matches. If the string equals a parameter name, it is
+   replaced with the arg value; otherwise it is left as-is (a reference to
+   a global variable). No braces here — an AST name slot is either a
+   parameter or a global, and exact match is unambiguous.
+
+`value` / `delta` / `min` / `max` slots (all `Int`) are **not**
+parameterizable. Integer parameterization requires a placeholder syntax for
+ints and is out of scope for Ф4.2; it can be added later if authors ask.
+
+`nextScene` has two modes:
+
+- **Normal `SceneId`** — copied verbatim. Parameterizing the target
+  through args is out of scope.
+- **`@self` sentinel** (`ChoiceTemplate.SELF` = `SceneId("@self")`) —
+  "the scene where this template is applied". Resolved by
+  `applyTemplate` from its `currentSceneId` argument. The canonical case
+  is "use item" / "drink potion": the choice applies effects in place
+  without moving the player. `@` is stripped by the editor's
+  `transliterate`, so no real scene id can collide with `@self`. A
+  non-template `Choice` with `next_scene: "@self"` is an ordinary
+  dangling reference (`CompileError.MissingNextScene`) — `@self` is a
+  template-only marker.
+### Editor tracking
+
+`Choice.templateRef` is preserved on the expanded choice. The editor
+(Ф4.3) uses it to:
+
+- Show "this choice uses template X" on the choice card.
+- Offer "update all uses" when the author edits a template — find every
+  choice with `templateRef.templateId == X`, re-run `applyTemplate`,
+  replace.
+
+Without `templateRef`, the editor could not distinguish "this choice was
+written by hand to look like the template" from "this choice came from the
+template".
+
+### Editor UI (Ф4.3.2a)
+
+**Status:** first slice shipped.
+
+The template list screen (`TemplateListFragment`) is opened from the
+editor's "📦 Шаблоны" toolbar button. It lists templates as compact
+rows (id mono, text bold, "N параметров · M эффектов" summary). Row
+click opens the edit dialog; the `✕` button deletes with confirmation.
+
+The edit dialog holds all template fields in one place:
+`id`, `text`, two conditions, `nextScene`, the parameter sub-list,
+and the effect sub-list. Parameters reuse `item_editor_variable.xml`
+(same layout as `VariablesAdapter`); effects reuse `renderTagRow` from
+`EditorHelpers`. The positive button is disabled until `id`, `text`,
+and `nextSceneId` are non-empty (`F2` validation).
+
+`nextScene` is picked via a search dialog (`ScenePickerDialog`) — not
+a `Spinner`. Search matches `id` or `title`, case-insensitive,
+debounced 200ms; empty query hides the list (never renders 500
+scenes at once). Special rows at the top: `@self` (only for the
+template editor, `allowSelf = true`) and "create new scene".
+`ScenePickerDialog` is reusable — a future refactor of
+`EditorChoice.nextSceneId` (separate batch) can use the same dialog.
+
+**Not in this batch.** Applying a template to a choice
+(`Choice.templateRefUid` + "Use template…" per scene) is Ф4.3.2b.
+"Update all uses" on template edit is Ф4.3.3.
+
+### Deferred
+
+- **JSON parsing of `template_ref`** (Ф4.3): `ChoiceDto` will get a
+  `template_ref` field; `JsonToIr` will call `applyTemplate` on it.
+- **`TypeChecker.checkChoiceTemplate`** (Ф4.2.2): validate templates
+  against a combined scope (`parameters + globalVariables`).
+- **`Choice.visibilityCondition` UI** (Ф4.4 / N4): the field is stored on
+  the expanded choice but not yet used by the reader.
 
 ## Testing strategy
 

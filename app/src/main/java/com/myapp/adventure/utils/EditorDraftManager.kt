@@ -7,6 +7,7 @@ import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.EditorVarDecl
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.data.EditorTemplate
 
 object EditorDraftManager {
 
@@ -27,6 +28,7 @@ object EditorDraftManager {
         author: String,
         description: String,
         variables: List<EditorVarDecl>,
+        templates: List<EditorTemplate>,
         initialStateTags: List<EditorTag>,
         scenes: List<EditorScene>,
     ) {
@@ -36,6 +38,7 @@ object EditorDraftManager {
                 author = author,
                 description = description,
                 variables = variables.map { it.copy() },
+                templates = templates.map { it.deepCopy() },
                 initialStateTags = initialStateTags.map { it.copy() },
                 scenes = scenes.map { it.deepCopy() },
             )

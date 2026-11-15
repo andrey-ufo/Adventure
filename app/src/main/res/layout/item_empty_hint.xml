@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Пока нет сцен.\nНажмите «+ Сцена» в меню вверху."
+        android:text="@string/item_empty_hint_text"
         android:textColor="#9E9E9E"
         android:textSize="14sp"
         android:gravity="center" />

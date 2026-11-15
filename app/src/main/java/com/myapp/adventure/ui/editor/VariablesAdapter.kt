@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.myapp.adventure.R
 import com.myapp.adventure.data.VarKind
 import com.myapp.adventure.databinding.ItemEditorVariableBinding
 import com.myapp.adventure.databinding.ItemVariablesHeaderBinding
@@ -74,13 +75,14 @@ class VariablesAdapter(
 
     private fun bindHeader(holder: HeaderViewHolder) {
         val binding = holder.binding
+        val context = binding.root.context
         val expanded = viewModel.variablesExpanded
         binding.varBody.visibility = if (expanded) View.VISIBLE else View.GONE
         binding.tvVarChevron.text = if (expanded) "▼" else "▶"
         binding.tvVarSummary.text = if (viewModel.variables.isEmpty()) {
-            "(пусто)"
+            context.getString(R.string.label_empty)
         } else {
-            "${viewModel.variables.size} ${pluralVariables(viewModel.variables.size)}"
+            pluralWithNumber(context, R.plurals.word_variables, viewModel.variables.size)
         }
 
         binding.varHeader.setOnClickListener {
@@ -108,7 +110,7 @@ class VariablesAdapter(
 
         // Spinner: 6 видов VarKind
         val kinds = VarKind.values().toList()
-        val displayList = kinds.map { it.displayName }
+        val displayList = kinds.map { context.getString(it.displayNameRes) }
         val adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, displayList)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerVarKind.onItemSelectedListener = null
@@ -154,7 +156,7 @@ class VariablesAdapter(
         binding.btnDeleteVariable.setOnClickListener {
             val pos = holder.bindingAdapterPosition
             if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
-            val idx = pos - 1  // header на позиции 0
+            val idx = pos - 1  // header is at position 0
             if (idx in viewModel.variables.indices) {
                 viewModel.removeVariable(idx)
                 onDirty(true)
@@ -163,10 +165,8 @@ class VariablesAdapter(
         }
     }
 
-    private fun pluralVariables(n: Int): String = when {
-        n % 100 in 11..14 -> "переменных"
-        n % 10 == 1 -> "переменная"
-        n % 10 in 2..4 -> "переменные"
-        else -> "переменных"
-    }
+    // Ф4-infra (3b-6c): plural forms live in `strings.xml`
+    // (`<plurals name="word_variables">`); the local `when`-based
+    // helper is deleted. `pluralWithNumber` in `EditorHelpers.kt`
+    // composes "N переменных" (Russian for "N variables") consistently.
 }

@@ -64,7 +64,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="По главам"
+            android:text="@string/dialog_story_stats_chapters_section"
             android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -81,7 +81,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Длина сцен"
+            android:text="@string/dialog_story_stats_lengths_section"
             android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"

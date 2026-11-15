@@ -66,9 +66,13 @@ class AdventureMapAdapter(
                 holder as ChapterViewHolder
                 holder.chevron.text = if (item.expanded) "▼" else "▶"
                 holder.title.text = item.title
-                val stats = StringBuilder("${item.sceneCount} ${formatScenes(item.sceneCount)}")
+                val ctx = holder.root.context
+                val stats = StringBuilder(pluralWithNumber(ctx, R.plurals.word_scenes, item.sceneCount))
                 if (item.wordCount > 0) {
-                    stats.append(" · ${formatInt(item.wordCount)} сл.")
+                    stats.append(" · ")
+                    stats.append(formatInt(item.wordCount))
+                    stats.append(" ")
+                    stats.append(ctx.getString(R.string.word_words_short))
                 }
                 holder.stats.text = stats.toString()
                 holder.root.setOnClickListener { onChapterClick(item.index) }
@@ -77,21 +81,22 @@ class AdventureMapAdapter(
             is MapItem.SceneRow -> {
                 holder as SceneViewHolder
                 val scene = item.scene
-                holder.title.text = scene.title.ifBlank { "(без названия)" }
+                val ctx = holder.root.context
+                holder.title.text = scene.title.ifBlank { ctx.getString(R.string.label_without_title) }
 
-                // Бейджи: 🏁 если конец главы, 💬 если много выборов
+                // Badges: 🏁 for chapter end, 💬 for non-empty choices
                 val badges = mutableListOf<String>()
                 if (scene.isChapterEnd) badges.add("🏁")
                 if (scene.choices.isNotEmpty()) badges.add("💬 ${scene.choices.size}")
                 holder.badges.text = badges.joinToString(" ")
 
-                // Переходы
+                // Transitions
                 holder.transitionsContainer.removeAllViews()
                 val inflater = LayoutInflater.from(holder.root.context)
 
                 if (item.transitions.isEmpty()) {
                     val tv = TextView(holder.root.context).apply {
-                        text = "(нет переходов)"
+                        text = ctx.getString(R.string.map_no_transitions)
                         setTextColor(Color.parseColor("#9E9E9E"))
                         textSize = 11f
                     }
@@ -107,9 +112,9 @@ class AdventureMapAdapter(
                         chip.text = "$labelPrefix${tr.targetTitle}"
 
                         val color = when {
-                            tr.missing -> "#F44336"    // красный
-                            tr.condition != null -> "#FF9800"  // оранжевый
-                            else -> "#4CAF50"          // зелёный
+                            tr.missing -> "#F44336"    // red
+                            tr.condition != null -> "#FF9800"  // orange
+                            else -> "#4CAF50"          // green
                         }
                         chip.setTextColor(Color.parseColor(color))
 
@@ -127,18 +132,23 @@ class AdventureMapAdapter(
 
             is MapItem.StepsGate -> {
                 holder as StepsGateViewHolder
+                val ctx = holder.root.context
                 val minutes = ((item.steps + 99) / 100).coerceAtLeast(1)
                 val timeText = when {
-                    item.steps == 0 -> "откроется сразу"
-                    minutes < 60 -> "≈ $minutes мин"
+                    item.steps == 0 -> ctx.getString(R.string.map_gate_opens_immediately)
+                    minutes < 60 -> ctx.getString(R.string.map_gate_approximate_minutes_fmt, minutes)
                     else -> {
                         val hours = minutes / 60
                         val mins = minutes % 60
-                        if (mins == 0) "≈ $hours ч" else "≈ $hours ч $mins мин"
+                        if (mins == 0) {
+                            ctx.getString(R.string.map_gate_approximate_hours_fmt, hours)
+                        } else {
+                            ctx.getString(R.string.map_gate_approximate_hours_minutes_fmt, hours, mins)
+                        }
                     }
                 }
-                val formatted = String.format(java.util.Locale.getDefault(), "%,d", item.steps).replace(',', ' ')
-                holder.text.text = "🚶 ${formatted} шагов ($timeText)"
+                val stepsText = pluralWithNumber(ctx, R.plurals.steps, item.steps)
+                holder.text.text = ctx.getString(R.string.map_gate_text_fmt, stepsText, timeText)
                 holder.text.setTextColor(
                     if (item.steps == 0) Color.parseColor("#FF9800")
                     else Color.parseColor("#FFC107")
@@ -149,15 +159,10 @@ class AdventureMapAdapter(
 
     override fun getItemCount(): Int = items.size
 
-    private fun formatInt(n: Int): String =
-        String.format(java.util.Locale.getDefault(), "%,d", n).replace(',', ' ')
-
-    private fun formatScenes(n: Int): String = when {
-        n % 100 in 11..14 -> "сцен"
-        n % 10 == 1 -> "сцена"
-        n % 10 in 2..4 -> "сцены"
-        else -> "сцен"
-    }
+    // Ф4-infra (3b-6a): `formatInt` and the scene plural are now
+    // top-level in `EditorHelpers.kt` (same package) and in
+    // `strings.xml` (`<plurals name="word_scenes">`). The local copies
+    // are deleted to keep one source of truth.
 }
 
 // ---------- Модель элементов карты ----------
@@ -180,7 +185,7 @@ sealed class MapItem {
 }
 
 data class TransitionInfo(
-    val targetSceneUid: String?,    // null, если сцена не найдена
+    val targetSceneUid: String?,    // null when the target scene was not found
     val targetTitle: String,
     val condition: String?,
     val missing: Boolean

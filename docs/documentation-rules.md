@@ -12,6 +12,11 @@ written, structured and maintained. It is expected to change rarely.
   - UI strings that appear in the app, quoted as `«Русский текст»` with an
     English gloss sourced from [`glossary.md`](./glossary.md);
   - domain terms referenced from the glossary.
+- **UI strings live in `strings.xml`.** User-facing strings in the app
+  are extracted to `app/src/main/res/values/strings.xml` (see
+  [`i18n-policy.md`](./i18n-policy.md)); documentation quotes them by
+  name or by their `«Русский текст»` value, never embeds them into
+  `.kt` or `.xml` inline.
 - **Quoting Russian-language sources.** When an English document quotes
   a Russian-language source (`checklist-tracker.md`, the original Russian
   progress logs `progress-log-1.md` / `-2.md`), the **quote is

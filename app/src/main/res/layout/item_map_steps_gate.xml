@@ -13,7 +13,7 @@
         android:id="@+id/tv_gate_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🚶 4 000 шагов"
+        android:text="@string/item_map_steps_gate_default"
         android:textSize="12sp"
         android:textColor="#FFC107"
         android:gravity="center" />

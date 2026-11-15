@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <EditText
+        android:id="@+id/et_scene_query"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/scene_picker_search_hint"
+        android:inputType="text"
+        android:autofillHints=""
+        android:textColor="#FFFFFF"
+        android:textColorHint="#AAAAAA"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/tv_scene_picker_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/scene_picker_enter_query"
+        android:textSize="12sp"
+        android:textColor="#9E9E9E"
+        android:padding="8dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tv_pick_self"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/template_next_scene_self"
+        android:textSize="13sp"
+        android:textColor="#FFC107"
+        android:padding="10dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tv_pick_create_new"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/scene_picker_create_new"
+        android:textSize="13sp"
+        android:textColor="#FFC107"
+        android:padding="10dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:layout_marginBottom="4dp" />
+
+    <ScrollView
+        android:id="@+id/scroll_results"
+        android:layout_width="match_parent"
+        android:layout_height="360dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/container_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+</LinearLayout>

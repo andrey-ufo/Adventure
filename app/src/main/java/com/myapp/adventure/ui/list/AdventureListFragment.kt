@@ -112,7 +112,7 @@ class AdventureListFragment : Fragment() {
         try {
             val prefs = requireContext().getSharedPreferences("adventure_prefs", 0)
             val folderUriString = prefs.getString("adventure_folder_uri", null) ?: run {
-                Toast.makeText(requireContext(), "Папка не выбрана", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.library_toast_folder_not_selected, Toast.LENGTH_SHORT).show()
                 adapter.notifyDataSetChanged()
                 return
             }
@@ -155,7 +155,7 @@ class AdventureListFragment : Fragment() {
             Logger.log(requireContext(), "Загружено приключений: ${adventures.size}")
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка загрузки списка: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка доступа к папке: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.library_toast_folder_access_error_fmt, e.message), Toast.LENGTH_LONG).show()
         }
     }
 

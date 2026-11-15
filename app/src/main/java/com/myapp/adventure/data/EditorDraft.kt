@@ -5,6 +5,7 @@ data class EditorDraft(
     val author: String = "",
     val description: String = "",
     val variables: List<EditorVarDecl> = emptyList(),
+    val templates: List<EditorTemplate> = emptyList(),
     val initialStateTags: List<EditorTag> = emptyList(),
     val scenes: List<EditorScene> = emptyList(),
     val savedAt: Long = System.currentTimeMillis(),

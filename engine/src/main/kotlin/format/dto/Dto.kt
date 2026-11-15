@@ -151,7 +151,12 @@ internal data class InitialStateDto(
 @Serializable
 internal data class DeathSceneDto(
     val id: String = "death_scene",
-    val text: String = "💀 Вы погибли.",
+    /**
+     * Ф4-infra (3b-6h): empty default — see `:engine/ir/DeathScene.text`
+     * KDoc. Reader falls back to `R.string.reader_default_death_text`
+     * in `AdventureReaderFragment.showDeathScreen` when this is empty.
+     */
+    val text: String = "",
     @SerialName("allow_step_back")
     val allowStepBack: Boolean = true,
     @SerialName("allow_chapter_restart")

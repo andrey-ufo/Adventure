@@ -9,7 +9,7 @@
         android:id="@+id/tv_dialog_empty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="(пусто)"
+        android:text="@string/dialog_item_list_empty"
         android:textSize="13sp"
         android:textColor="#9E9E9E"
         android:gravity="center"

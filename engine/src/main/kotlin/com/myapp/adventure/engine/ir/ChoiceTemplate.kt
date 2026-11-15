@@ -35,10 +35,7 @@ import kotlinx.serialization.Serializable
  * `Adventure.chapters` only. Templates are skipped in Ф4.1 — their
  * conditions reference parameters (`itemId`, `quantity`) that are not in
  * `Adventure.variables`, and checking them against the global scope
- * would produce false `UnknownVariable` errors. Ф4.2 will extend
- * `TypeChecker` with a `checkChoiceTemplate(template, globalVariables)`
- * that builds a combined scope (`parameters + globalVariables`) and runs
- * the same checks.
+ * would produce false `UnknownVariable` errors. Ф4.2.2 (a follow-up sub-step) will extend `TypeChecker` with a `checkChoiceTemplate(template, globalVariables)` that builds a combined scope (`parameters + globalVariables`) and runs the same checks.
  *
  * @property id unique identifier within `Adventure.choiceTemplates`.
  *   Duplicates are a `ParseError.Structure` (checked by `JsonToIr`).
@@ -50,10 +47,7 @@ import kotlinx.serialization.Serializable
  *   `itemId` to the declared type. Type-checking of templates lands in
  *   Ф4.2 (the `TypeChecker` extension needs to know the local scope;
  *   today it only knows `Adventure.variables`).
- * @property text literal display string. **No placeholder substitution
- *   in Ф4.1** — `text` is used verbatim when the template is
- *   instantiated in Ф4.2; the substitution syntax (`{itemId}` vs
- *   `%s` vs `$itemId`) is a Ф4.2 decision.
+@property text literal display string. **Ф4.2:** `{paramName}` placeholders are substituted by `applyTemplate`; the substitution syntax (`{paramName}`) was decided in Ф4.2.1 (see `docs/engine-architecture.md` §"Choice templates"). Verbatim when no placeholders are present.
  * @property visibilityCondition when to **show** the choice. `null` =
  *   always visible. Distinct from `availabilityCondition` (below); the
  *   reader (N4 / Ф4.4) shows a hidden choice **not at all**, but shows
@@ -66,10 +60,17 @@ import kotlinx.serialization.Serializable
  *   reader; Ф4.4 will split it into two at the `Choice` level too.
  * @property effects applied when the choice is picked, in list order.
  *   Same `Effect` model as `Choice.effects`.
- * @property nextScene fixed target scene. Parameterization (e.g. "go
- *   back to the scene the choice was picked in") is **out of scope for
- *   Ф4.1**; if it is needed, a `targetParamName: String?` field will be
- *   added in Ф4.2, defaulting to `null` = "use `nextScene`".
+@property nextScene target scene. Two kinds of value:
+- a normal `SceneId` — fixed target, copied as-is on instantiation;
+- [SELF] (`SceneId("@self")`) — "the scene where this template is
+applied". Resolved by `applyTemplate` from its `currentSceneId`
+argument. The canonical case is "use item" / "drink potion": the
+choice does not move the player to a different scene, it applies
+effects in place. `@` cannot appear in a real scene id (the editor
+strips it in `transliterate`), so there is no collision. A
+non-template `Choice` with `next_scene: "@self"` is an ordinary
+dangling reference (`CompileError.MissingNextScene`) — `@self` is a
+template-only marker.
  */
 @Serializable
 public data class ChoiceTemplate(
@@ -83,4 +84,22 @@ public data class ChoiceTemplate(
     public val effects: List<Effect> = emptyList(),
     @SerialName("next_scene")
     public val nextScene: SceneId,
-)
+) {
+    public companion object {
+        /**
+         * Sentinel `nextScene` value for "the scene where this template
+         * is applied".
+         *
+         * Use this **only** on a `ChoiceTemplate`. `applyTemplate`
+         * resolves it from its `currentSceneId` argument (required for
+         * templates that use `@self`; throws `IllegalArgumentException`
+         * if absent). Non-template `Choice` with `next_scene: "@self"`
+         * is a dangling reference — `@self` is a template marker, not a
+         * scene id.
+         *
+         * `@` is stripped by the editor's `transliterate`, so no real
+         * scene id can collide with `@self`.
+         */
+        public val SELF: SceneId = SceneId("@self")
+    }
+}

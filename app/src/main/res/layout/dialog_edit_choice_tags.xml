@@ -29,7 +29,7 @@
             android:id="@+id/btn_add_choice_effect"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="+ Эффект"
+            android:text="@string/dialog_edit_choice_tags_add_effect"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             style="?android:attr/borderlessButtonStyle" />

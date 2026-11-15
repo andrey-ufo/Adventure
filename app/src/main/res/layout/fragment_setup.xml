@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Добро пожаловать в Adventure!"
+        android:text="@string/setup_welcome"
         android:textSize="22sp"
         android:textStyle="bold"
         android:layout_marginBottom="16dp" />
@@ -17,7 +17,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Для начала выберите или создайте папку Adventure на устройстве."
+        android:text="@string/setup_instruction"
         android:textSize="16sp"
         android:gravity="center"
         android:layout_marginBottom="32dp" />
@@ -26,6 +26,6 @@
         android:id="@+id/btn_select_folder"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Выбрать папку Adventure" />
+        android:text="@string/setup_select_folder" />
 
 </LinearLayout>

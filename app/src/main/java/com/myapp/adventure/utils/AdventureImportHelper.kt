@@ -5,19 +5,16 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
+import com.myapp.adventure.R
 
 object AdventureImportHelper {
 
-    /**
-     * Копирует выбранный JSON-файл в папку Adventures приложения.
-     * Возвращает имя сохранённого файла или null при ошибке.
-     */
     fun importAdventure(context: Context, sourceUri: Uri): String? {
         return try {
             val prefs = context.getSharedPreferences("adventure_prefs", 0)
             val folderUriString = prefs.getString("adventure_folder_uri", null)
             if (folderUriString == null) {
-                Toast.makeText(context, "Папка не выбрана", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.import_toast_folder_not_selected, Toast.LENGTH_SHORT).show()
                 return null
             }
             val folderUri = Uri.parse(folderUriString)
@@ -46,15 +43,15 @@ object AdventureImportHelper {
                     }
                 }
                 Logger.log(context, "Приключение импортировано: $sourceName")
-                Toast.makeText(context, "Приключение импортировано: $sourceName", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.import_toast_success_fmt, sourceName), Toast.LENGTH_SHORT).show()
                 sourceName
             } else {
-                Toast.makeText(context, "Не удалось создать файл", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.import_toast_create_failed, Toast.LENGTH_SHORT).show()
                 null
             }
         } catch (e: Exception) {
             Logger.log(context, "Ошибка импорта: ${e.message}")
-            Toast.makeText(context, "Ошибка импорта: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.import_toast_error_fmt, e.message), Toast.LENGTH_LONG).show()
             null
         }
     }

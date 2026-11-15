@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.myapp.adventure.R
 import com.myapp.adventure.databinding.FragmentLogViewerBinding
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger
@@ -47,7 +48,7 @@ class LogViewerFragment : Fragment() {
 
     private fun loadLog() {
         if (_binding == null) return
-        binding.tvLogContent.text = "Загрузка…"
+        binding.tvLogContent.text = getString(R.string.logs_loading)
 
         viewLifecycleOwner.lifecycleScope.launch {
             val appContext = requireContext().applicationContext
@@ -60,27 +61,23 @@ class LogViewerFragment : Fragment() {
 
     private fun copyLogToClipboard() {
         if (currentLogText.isEmpty()) {
-            Toast.makeText(requireContext(), "Лог пуст", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.logs_empty, Toast.LENGTH_SHORT).show()
             return
         }
         val clipboard = requireContext()
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("log", currentLogText)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), "Лог скопирован в буфер обмена", Toast.LENGTH_SHORT)
+        Toast.makeText(requireContext(), R.string.logs_copied, Toast.LENGTH_SHORT)
             .show()
     }
 
     private fun confirmClearLog() {
         AlertDialog.Builder(requireContext())
-            .setTitle("Очистить лог?")
-            .setMessage(
-                "Содержимое debug_log.txt будет удалено. " +
-                        "Незаписанные строки из буфера тоже будут потеряны. " +
-                        "Это действие нельзя отменить."
-            )
-            .setPositiveButton("Очистить") { _, _ -> clearLog() }
-            .setNegativeButton("Отмена", null)
+            .setTitle(R.string.logs_clear_title)
+            .setMessage(R.string.logs_clear_message)
+            .setPositiveButton(R.string.dialog_clear) { _, _ -> clearLog() }
+            .setNegativeButton(R.string.dialog_cancel, null)
             .show()
     }
 
@@ -92,9 +89,9 @@ class LogViewerFragment : Fragment() {
                         if (_binding == null) return@launch
                         currentLogText = newLogText
                         binding.tvLogContent.text = newLogText
-                        Toast.makeText(requireContext(), "Лог очищен", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), R.string.logs_cleared, Toast.LENGTH_SHORT).show()
                     }
-                }
+                        }
 
                         override fun onDestroyView() {
                     super.onDestroyView()

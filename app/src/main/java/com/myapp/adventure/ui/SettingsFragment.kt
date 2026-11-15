@@ -16,6 +16,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
+import com.myapp.adventure.R
 import com.myapp.adventure.databinding.FragmentSettingsBinding
 import com.myapp.adventure.step.HealthConnectStepSource
 import com.myapp.adventure.step.StepSourceManager
@@ -41,7 +42,7 @@ class SettingsFragment : Fragment() {
 
             FontManager.addFont(requireContext(), uri, fileName)
             refreshFontList()
-            Toast.makeText(requireContext(), "Шрифт добавлен: $fileName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), getString(R.string.settings_font_added_fmt, fileName), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -53,11 +54,11 @@ class SettingsFragment : Fragment() {
         val ok = granted.contains(required)
         if (ok) {
             StepSourceManager.setHealthConnectEnabled(requireContext(), true)
-            Toast.makeText(requireContext(), "Health Connect включён", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.settings_hc_enabled, Toast.LENGTH_SHORT).show()
         } else {
             StepSourceManager.setHealthConnectEnabled(requireContext(), false)
             binding.cbHealthConnect.isChecked = false
-            Toast.makeText(requireContext(), "Разрешение не выдано — используется датчик телефона", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), R.string.settings_hc_permission_denied, Toast.LENGTH_LONG).show()
         }
         refreshHealthConnectStatus()
     }
@@ -86,7 +87,7 @@ class SettingsFragment : Fragment() {
             Logger.setEnabled(requireContext(), isChecked)
             Toast.makeText(
                 requireContext(),
-                if (isChecked) "Логирование включено" else "Логирование выключено",
+                if (isChecked) R.string.settings_logging_enabled else R.string.settings_logging_disabled,
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -111,7 +112,7 @@ class SettingsFragment : Fragment() {
         binding.cbHealthConnect.isChecked = StepSourceManager.isHealthConnectEnabled(ctx)
 
         if (!hcAvailable) {
-            binding.tvHealthConnectStatus.text = "Health Connect недоступен на этом устройстве"
+            binding.tvHealthConnectStatus.text = getString(R.string.settings_hc_unavailable_device)
             binding.tvHealthConnectStatus.visibility = View.VISIBLE
         } else {
             refreshHealthConnectStatus()
@@ -149,11 +150,13 @@ class SettingsFragment : Fragment() {
         val active = StepSourceManager.isHealthConnectActive(ctx)
 
         binding.tvHealthConnectStatus.visibility = View.VISIBLE
-        binding.tvHealthConnectStatus.text = when {
-            !enabled -> "Выключено — используется датчик телефона (шаги в реальном времени)"
-            active -> "Включено — шаги обновляются с задержкой (Health Connect)"
-            else -> "Health Connect недоступен — используется датчик телефона"
-        }
+        binding.tvHealthConnectStatus.text = getString(
+            when {
+                !enabled -> R.string.settings_hc_status_off
+                active -> R.string.settings_hc_status_active
+                else -> R.string.settings_hc_status_unavailable
+            }
+        )
     }
 
     override fun onResume() {
@@ -208,13 +211,13 @@ class SettingsFragment : Fragment() {
                 val oldFont = FontManager.getSelectedFont(requireContext())
                 if (fontName != oldFont) {
                     AlertDialog.Builder(requireContext())
-                        .setTitle("Смена шрифта")
-                        .setMessage("Применить шрифт \"$fontName\" ко всем экранам? Приложение будет перезапущено.")
-                        .setPositiveButton("Да") { _, _ ->
+                        .setTitle(R.string.settings_change_font_title)
+                        .setMessage(getString(R.string.settings_change_font_message_fmt, fontName))
+                        .setPositiveButton(R.string.dialog_yes) { _, _ ->
                             FontManager.setSelectedFont(requireContext(), fontName)
                             requireActivity().recreate()
                         }
-                        .setNegativeButton("Отмена") { _, _ ->
+                        .setNegativeButton(R.string.dialog_cancel) { _, _ ->
                             val oldPos = fonts.indexOf(oldFont)
                             if (oldPos >= 0) binding.spinnerFont.setSelection(oldPos)
                         }

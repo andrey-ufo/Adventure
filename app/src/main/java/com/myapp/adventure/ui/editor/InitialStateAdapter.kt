@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.myapp.adventure.R
 import com.myapp.adventure.databinding.ItemInitialStateBinding
 
 class InitialStateAdapter(
@@ -25,15 +26,20 @@ class InitialStateAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
+        val context = binding.root.context
 
         val expanded = viewModel.initialStateExpanded
         binding.initialBody.visibility = if (expanded) View.VISIBLE else View.GONE
         binding.tvInitChevron.text = if (expanded) "▼" else "▶"
 
         if (viewModel.initialStateTags.isEmpty()) {
-            binding.tvInitSummary.text = "(пусто)"
+            binding.tvInitSummary.text = context.getString(R.string.label_empty)
         } else {
-            binding.tvInitSummary.text = "${viewModel.initialStateTags.size} меток"
+            binding.tvInitSummary.text = pluralWithNumber(
+                context,
+                R.plurals.word_tags,
+                viewModel.initialStateTags.size
+            )
         }
 
         binding.initialHeader.setOnClickListener {
@@ -41,7 +47,7 @@ class InitialStateAdapter(
             notifyItemChanged(0)
         }
 
-        // Строки тегов
+        // Tag rows
         binding.containerInitTags.removeAllViews()
         for ((idx, tag) in viewModel.initialStateTags.withIndex()) {
             renderTagRow(

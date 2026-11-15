@@ -1,5 +1,7 @@
 package com.myapp.adventure.data
 
+import androidx.annotation.StringRes
+import com.myapp.adventure.R
 import java.util.UUID
 
 data class EditorScene(
@@ -111,15 +113,15 @@ data class EditorVarDecl(
  * ItemCount / ItemList). Отдельный enum нужен, чтобы `Spinner` показывал
  * человекочитаемые лейблы и чтобы UI не тянул IR-классы.
  */
-enum class VarKind(val displayName: String) {
-    BOOL("Bool (флаг)"),
-    INTEGER("Integer (любое целое)"),
-    INT_MIN("IntMin (>= min, без верха)"),
-    INT_RANGE("IntRange (min..max)"),
-    ITEM_COUNT("ItemCount (счётчик предмета)"),
-    ITEM_LIST("ItemList (список)");
+enum class VarKind(@StringRes val displayNameRes: Int) {
+    BOOL(R.string.var_kind_bool),
+    INTEGER(R.string.var_kind_integer),
+    INT_MIN(R.string.var_kind_int_min),
+    INT_RANGE(R.string.var_kind_int_range),
+    ITEM_COUNT(R.string.var_kind_item_count),
+    ITEM_LIST(R.string.var_kind_item_list);
 
-    /** Нужны ли `min`/`max` в UI для этого типа. */
+    /** Whether `min`/`max` are shown in the UI for this type. */
     val needsMin: Boolean
         get() = this == INT_MIN || this == INT_RANGE
     val needsMax: Boolean
@@ -142,9 +144,39 @@ enum class VarKind(val displayName: String) {
  */
 fun EditorVarDecl.toVarType(): com.myapp.adventure.engine.ir.types.VarType? {
     if (name.isBlank()) return null
-    // Копируем `var`-поля в локальные `val` перед `when`: smart cast
-    // на mutable property невозможен (компилятор не гарантирует, что
-    // между проверкой и использованием значение не изменилось).
+
+    /**
+     * Ф4.3.1 — choice template in the editor.
+     *
+     * Mirrors `:engine/ir/ChoiceTemplate`, but uses the editor's vocabulary:
+     * conditions are raw strings (like `EditorChoice.conditionTag`), effects
+     * are `EditorTag` (like `EditorScene.tags` / `EditorChoice.tags`).
+     * Parameters are `EditorVarDecl` (reused from `VariablesAdapter`;
+     * supports the intermediate state "min entered, max not yet").
+     *
+     * `uid` is the editor's stable id (survives rename), same role as
+     * `EditorScene.uid` / `EditorChoice.uid`. `id` is the `ChoiceTemplate.id`
+     * from the IR (used as `templateRef.templateId` when `applyTemplate`
+     * runs). May be empty on creation — the author fills it in;
+     * `buildAdventure` skips templates with empty `id` on save (validation
+     * warns separately).
+     */
+    data class EditorTemplate(
+        val uid: String = java.util.UUID.randomUUID().toString(),
+        var id: String = "",
+        var text: String = "",
+        var visibilityCondition: String = "",
+        var availabilityCondition: String = "",
+        val parameters: MutableList<EditorVarDecl> = mutableListOf(),
+        val effects: MutableList<EditorTag> = mutableListOf(),
+        var nextSceneId: String = "",
+    )
+
+    fun EditorTemplate.deepCopy(): EditorTemplate = copy(
+        parameters = parameters.map { it.copy() }.toMutableList(),
+        effects = effects.map { it.copy() }.toMutableList(),
+    )
+
     val minLocal = min
     val maxLocal = max
     return when (kind) {
@@ -162,3 +194,35 @@ fun EditorVarDecl.toVarType(): com.myapp.adventure.engine.ir.types.VarType? {
         VarKind.ITEM_LIST -> com.myapp.adventure.engine.ir.types.VarType.ItemList
     }
 }
+
+/**
+ * Ф4.3.1 — choice template in the editor.
+ *
+ * Mirrors `:engine/ir/ChoiceTemplate`, but uses the editor's vocabulary:
+ * conditions are raw strings (like `EditorChoice.conditionTag`), effects
+ * are `EditorTag` (like `EditorScene.tags` / `EditorChoice.tags`).
+ * Parameters are `EditorVarDecl` (reused from `VariablesAdapter`;
+ * supports the intermediate state "min entered, max not yet").
+ *
+ * `uid` is the editor's stable id (survives rename), same role as
+ * `EditorScene.uid` / `EditorChoice.uid`. `id` is the `ChoiceTemplate.id`
+ * from the IR (used as `templateRef.templateId` when `applyTemplate`
+ * runs). May be empty on creation — the author fills it in;
+ * `buildAdventure` skips templates with empty `id` on save (validation
+ * warns separately).
+ */
+data class EditorTemplate(
+    val uid: String = UUID.randomUUID().toString(),
+    var id: String = "",
+    var text: String = "",
+    var visibilityCondition: String = "",
+    var availabilityCondition: String = "",
+    val parameters: MutableList<EditorVarDecl> = mutableListOf(),
+    val effects: MutableList<EditorTag> = mutableListOf(),
+    var nextSceneId: String = "",
+)
+
+fun EditorTemplate.deepCopy(): EditorTemplate = copy(
+    parameters = parameters.map { it.copy() }.toMutableList(),
+    effects = effects.map { it.copy() }.toMutableList(),
+)

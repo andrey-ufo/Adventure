@@ -9,7 +9,7 @@
         android:id="@+id/et_search_query"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Введите запрос (минимум 2 символа)"
+        android:hint="@string/dialog_search_query_hint"
         android:inputType="text"
         android:autofillHints=""
         android:layout_marginBottom="8dp" />
@@ -25,7 +25,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Заголовки"
+            android:text="@string/dialog_search_filter_titles"
             android:textSize="13sp" />
 
         <CheckBox
@@ -33,7 +33,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Тексты"
+            android:text="@string/dialog_search_filter_texts"
             android:textSize="13sp" />
     </LinearLayout>
 
@@ -48,7 +48,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Выборы"
+            android:text="@string/dialog_search_filter_choices"
             android:textSize="13sp" />
 
         <CheckBox
@@ -56,7 +56,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Метки"
+            android:text="@string/dialog_search_filter_tags"
             android:textSize="13sp" />
     </LinearLayout>
 

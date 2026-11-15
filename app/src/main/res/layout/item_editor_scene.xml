@@ -19,7 +19,7 @@
             android:id="@+id/tv_chevron"
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:text="▼"
+            android:text="@string/icon_chevron_down"
             android:textSize="14sp"
             android:textColor="#FFFFFF"
             android:gravity="center"
@@ -32,7 +32,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Название сцены"
+            android:hint="@string/item_editor_scene_title_hint"
             android:textColor="#FFFFFF"
             android:textColorHint="#AAAAAA"
             android:textSize="15sp"
@@ -44,7 +44,7 @@
             android:id="@+id/btn_delete_scene"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="✕"
+            android:text="@string/icon_close"
             android:textColor="#FF4444"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="16sp"
@@ -80,7 +80,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="ID: "
+                android:text="@string/item_editor_scene_id_prefix"
                 android:textColor="#9E9E9E"
                 android:textSize="11sp"
                 android:maxLines="1"
@@ -92,7 +92,7 @@
                 android:layout_height="24dp"
                 android:src="@android:drawable/ic_menu_rotate"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Пересобрать ID из названия"
+                android:contentDescription="@string/item_editor_scene_rebuild_id_content_description"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:visibility="gone" />
@@ -103,7 +103,7 @@
                 android:layout_height="24dp"
                 android:src="@android:drawable/ic_media_play"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Предпросмотр сцены в читалке"
+                android:contentDescription="@string/item_editor_scene_preview_content_description"
                 android:scaleType="centerInside"
                 android:padding="2dp" />
         </LinearLayout>
@@ -121,7 +121,7 @@
             android:id="@+id/tv_chapter_end_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🏁 Глава"
+            android:text="@string/item_editor_scene_chapter_end_badge"
             android:textSize="11sp"
             android:textColor="#FFC107"
             android:layout_marginStart="8dp"
@@ -131,7 +131,7 @@
             android:id="@+id/tv_death_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="💀 Смерть"
+            android:text="@string/item_editor_scene_death_badge"
             android:textSize="11sp"
             android:textColor="#F44336"
             android:layout_marginStart="8dp"
@@ -150,7 +150,7 @@
             android:id="@+id/et_scene_text"
             android:layout_width="match_parent"
             android:layout_height="150dp"
-            android:hint="Текст сцены"
+            android:hint="@string/item_editor_scene_text_hint"
             android:textColor="#FFFFFF"
             android:textColorHint="#AAAAAA"
             android:gravity="top"
@@ -169,7 +169,7 @@
             android:id="@+id/btn_add_tag"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Добавить метку"
+            android:text="@string/item_editor_scene_add_tag"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="12sp" />
@@ -178,7 +178,7 @@
             android:id="@+id/tv_scene_settings_toggle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Настройки сцены"
+            android:text="@string/item_editor_scene_settings_toggle"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
             android:padding="8dp"
@@ -200,7 +200,7 @@
                 android:id="@+id/cb_chapter_end"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Сделать концом главы"
+                android:text="@string/item_editor_scene_chapter_end"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="4dp" />
 
@@ -208,7 +208,7 @@
                 android:id="@+id/cb_scene_gate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Шаговый гейт"
+                android:text="@string/item_editor_scene_scene_gate"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="4dp" />
 
@@ -237,7 +237,7 @@
                 android:id="@+id/cb_ending"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Конец игры"
+                android:text="@string/item_editor_scene_ending"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="4dp" />
 
@@ -245,7 +245,7 @@
                 android:id="@+id/cb_death_scene"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Сцена смерти"
+                android:text="@string/item_editor_scene_death_scene"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="4dp" />
 
@@ -263,7 +263,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Какие кнопки видит игрок после смерти:"
+                    android:text="@string/item_editor_scene_death_options_label"
                     android:textSize="11sp"
                     android:textColor="#9E9E9E"
                     android:layout_marginBottom="4dp" />
@@ -272,7 +272,7 @@
                     android:id="@+id/cb_death_allow_step_back"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Один шаг назад"
+                    android:text="@string/item_editor_scene_death_allow_step_back"
                     android:textColor="#FFFFFF"
                     android:textSize="13sp" />
 
@@ -280,7 +280,7 @@
                     android:id="@+id/cb_death_allow_chapter_restart"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="В начало главы"
+                    android:text="@string/item_editor_scene_death_allow_chapter_restart"
                     android:textColor="#FFFFFF"
                     android:textSize="13sp" />
 
@@ -288,7 +288,7 @@
                     android:id="@+id/cb_death_allow_adventure_restart"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Начать приключение заново"
+                    android:text="@string/item_editor_scene_death_allow_adventure_restart"
                     android:textColor="#FFFFFF"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -306,7 +306,7 @@
             android:id="@+id/btn_add_choice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Добавить вариант действия"
+            android:text="@string/item_editor_scene_add_choice"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="12sp" />

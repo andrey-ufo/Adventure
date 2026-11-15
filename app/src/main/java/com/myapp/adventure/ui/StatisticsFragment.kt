@@ -17,6 +17,7 @@ import com.myapp.adventure.databinding.FragmentStatisticsBinding
 import com.myapp.adventure.databinding.ItemStatsDayBinding
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.StepHistoryManager
+import com.myapp.adventure.utils.ruQuantityString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -207,14 +208,15 @@ class StatisticsFragment : Fragment() {
 
     private fun formatSteps(value: Long): String {
         val formattedNumber = numberFormat.format(value)
-        // Use plurals with the raw count so Android picks the right form.
-        val stepsText = resources.getQuantityString(
+        // Ф4-infra (3b-5-fix): `ruQuantityString` forces the Russian
+        // locale so a non-`ru` device still gets "шаг/шага/шагов" forms.
+        // The plural string is "N шаг/шага/шагов"; strip the leading
+        // "N" to get the suffix, then prepend the locale-grouped number.
+        val stepsText = ruQuantityString(
+            requireContext(),
             R.plurals.steps,
             value.toInt(),
-            value.toInt()
         )
-        // We only want the plural form word ("шаг"/"шага"/"шагов"), not the formatted number.
-        // The plural string starts with "%d" — strip it.
         val suffix = stepsText.replace(value.toString(), "").trim()
         return "$formattedNumber $suffix"
     }

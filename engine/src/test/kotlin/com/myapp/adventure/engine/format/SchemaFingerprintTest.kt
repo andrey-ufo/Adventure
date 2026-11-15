@@ -10,6 +10,7 @@ import com.myapp.adventure.engine.ir.InitialState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.ir.Gate
+import com.myapp.adventure.engine.ir.TemplateRef
 import com.myapp.adventure.engine.ir.types.VarDecl
 import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.format.dto.VariableDto
@@ -74,7 +75,11 @@ class SchemaFingerprintTest {
         ),
         "Chapter" to setOf("id", "title", "scenes"),
         "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending"),
-        "Choice" to setOf("id", "text", "next_scene", "condition", "effects"),
+        "Choice" to setOf(
+            "id", "text", "next_scene", "condition", "visibility_condition",
+            "effects", "template_ref",
+        ),
+        "TemplateRef" to setOf("template_id", "args"),
         "TagDefinition" to setOf("name", "display_name", "category", "visible"),
         "InitialState" to setOf("flags", "stats"),
         "DeathScene" to setOf(
@@ -176,6 +181,7 @@ class SchemaFingerprintTest {
         assertFlat("Chapter", Chapter.serializer().descriptor)
         assertFlat("Scene", Scene.serializer().descriptor)
         assertFlat("Choice", Choice.serializer().descriptor)
+        assertFlat("TemplateRef", TemplateRef.serializer().descriptor)
         assertFlat("TagDefinition", TagDefinition.serializer().descriptor)
         assertFlat("InitialState", InitialState.serializer().descriptor)
         assertFlat("DeathScene", DeathScene.serializer().descriptor)

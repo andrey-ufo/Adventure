@@ -9,7 +9,7 @@
         android:id="@+id/et_meta_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Название приключения"
+        android:hint="@string/dialog_edit_meta_title_hint"
         android:inputType="text"
         android:layout_marginBottom="8dp" />
 
@@ -17,7 +17,7 @@
         android:id="@+id/et_meta_author"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Автор"
+        android:hint="@string/dialog_edit_meta_author_hint"
         android:inputType="text"
         android:layout_marginBottom="8dp" />
 
@@ -25,7 +25,7 @@
         android:id="@+id/et_meta_description"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Описание"
+        android:hint="@string/dialog_edit_meta_description_hint"
         android:inputType="textMultiLine"
         android:minLines="2"
         android:gravity="top" />

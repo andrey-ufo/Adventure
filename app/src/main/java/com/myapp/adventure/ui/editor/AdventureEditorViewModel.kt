@@ -15,11 +15,15 @@ import com.myapp.adventure.data.PlayerState
 import com.myapp.adventure.data.VariableDto
 import com.myapp.adventure.data.VarKind
 import com.myapp.adventure.data.toVarType
+import com.myapp.adventure.R
 import com.myapp.adventure.data.RebuildResult
 import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.data.ChoiceTemplateDto
+import com.myapp.adventure.data.EditorTemplate
+import com.myapp.adventure.data.VarDeclDto
 import com.myapp.adventure.engine.ir.Adventure as IrAdventure
 import com.myapp.adventure.engine.ir.Chapter as IrChapter
 import com.myapp.adventure.engine.ir.Choice as IrChoice
@@ -56,6 +60,46 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      */
     val variables: MutableList<EditorVarDecl> = mutableListOf()
     var variablesExpanded: Boolean = false
+
+    /**
+     * Ф4.3.1: reusable choice templates. Editor-model mirrors of
+     * `Adventure.choiceTemplates` (IR / JSON). Stored in editor state so
+     * that `loadFromUri` → edit → `saveAdventure` preserves them. Before
+     * Ф4.3.1, opening a file with `choice_templates` and saving silently
+     * lost the templates — that data-loss bug is fixed by this field +
+     * the load / save round-trip.
+     */
+    val templates: MutableList<EditorTemplate> = mutableListOf()
+
+    /**
+     * Ф4.3.2a-fix1: working copy of the template currently being edited,
+     * or `null` if no dialog is open.
+     *
+     * **Why in the ViewModel.** `AlertDialog` (built via
+     * `AlertDialog.Builder`) is dismissed on configuration change
+     * (rotation, theme switch, font-scale). Its content is lost with
+     * the Activity. `ViewModel` survives config change, so storing the
+     * working copy here lets `TemplateListFragment.onViewCreated`
+     * detect "a dialog was open" and re-create it with all fields
+     * (including unsaved edits) intact.
+     *
+     * **Lifecycle.** Set by `TemplateListFragment.showEditTemplateDialog`
+     * when the dialog opens; cleared on "Сохранить" / "Отмена" /
+     * system back. **Not** cleared by config change — that is what
+     * makes the restore path work.
+     *
+     * **Why not `DialogFragment`.** `DialogFragment` is the canonical
+     * Android solution and would also work, but it would move
+     * `showEditTemplateDialog` (~200 lines) into a separate class and
+     * require `onSaveInstanceState` plumbing for `EditorTemplate` (which
+     * has no `Parcelable` / no `@Serializable`, so state saving would
+     * need a custom `Gson` adapter). `ViewModel` state is ~15 lines and
+     * covers the same case (rotation), which is the one the author
+     * actually hits in practice. Process death (low-memory kill) still
+     * loses the dialog — acceptable for pre-alpha; would be closed by
+     * `DialogFragment` later if it becomes a real problem.
+     */
+    var editingTemplate: EditorTemplate? = null
 
     private val expandedScenes = mutableSetOf<String>()
     private val expandedChoices = mutableSetOf<String>()
@@ -167,6 +211,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         author = author,
         description = description,
         variables = variables.map { it.copy() },
+        templates = templates.map { it.deepCopy() },
         initialStateTags = initialStateTags.map { it.copy() },
         scenes = scenes.map { it.deepCopy() }
     )
@@ -177,6 +222,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         description = snapshot.description
         variables.clear()
         variables.addAll(snapshot.variables.map { it.copy() })
+        templates.clear()
+        templates.addAll(snapshot.templates.map { it.deepCopy() })
         initialStateTags.clear()
         initialStateTags.addAll(snapshot.initialStateTags.map { it.copy() })
         scenes.clear()
@@ -392,8 +439,9 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun getSceneOptions(): List<Pair<String, String>> {
+        val fallback = context.getString(R.string.label_without_title)
         return scenes.map { scene ->
-            scene.title.ifEmpty { "(без названия)" } to scene.id
+            scene.title.ifEmpty { fallback } to scene.id
         }
     }
 
@@ -418,6 +466,72 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 "Удалена переменная '${removed.name.ifEmpty { "(без имени)" }}', индекс: $index",
             )
         }
+    }
+
+    // ---------- Ф4.3.1: choice templates ----------
+
+    fun addTemplate() {
+        templates.add(EditorTemplate())
+        Logger.log(context, "Добавлен шаблон, индекс: ${templates.size - 1}")
+    }
+
+    fun removeTemplate(index: Int) {
+        if (index in templates.indices) {
+            val removed = templates.removeAt(index)
+            Logger.log(
+                context,
+                "Удалён шаблон '${removed.id.ifEmpty { "(без id)" }}', индекс: $index",
+            )
+        }
+    }
+
+    /**
+     * Ф4.3.1: `ChoiceTemplateDto` (loaded from JSON) → `EditorTemplate`
+     * (UI form).
+     *
+     * Effects are converted to `EditorTag` with the default `JOURNAL`
+     * category — same as for scene / choice when loading without tag
+     * definitions (see `AdventureEditorFragment.buildTagList`). The
+     * category is restored on the next edit via `VariablesAdapter` /
+     * `renderTagRow`; on save, `serializeTags` does not depend on the
+     * category — `isStatModifier` + `value` reconstruct
+     * `set_flags` / `remove_flags` / `modify_stats`.
+     *
+     * Unknown parameter `type` → `VarKind.INTEGER` (permissive default,
+     * same as `EditorVarDecl.toVarType()`).
+     */
+    fun editorTemplateFromDto(dto: ChoiceTemplateDto): EditorTemplate {
+        val parameters = dto.parameters.orEmpty().map { p ->
+            val kind = when (p.type) {
+                "bool" -> VarKind.BOOL
+                "int" -> VarKind.INTEGER
+                "int_min" -> VarKind.INT_MIN
+                "int_range" -> VarKind.INT_RANGE
+                "item_count" -> VarKind.ITEM_COUNT
+                "item_list" -> VarKind.ITEM_LIST
+                else -> VarKind.INTEGER
+            }
+            EditorVarDecl(name = p.name, kind = kind, min = p.min, max = p.max)
+        }.toMutableList()
+        val effects = mutableListOf<EditorTag>()
+        for (flag in dto.setFlags.orEmpty()) {
+            effects.add(EditorTag(name = flag, value = 0, isStatModifier = false, category = TagCategory.JOURNAL))
+        }
+        for (flag in dto.removeFlags.orEmpty()) {
+            effects.add(EditorTag(name = "!$flag", value = 0, isStatModifier = false, category = TagCategory.JOURNAL))
+        }
+        for ((stat, value) in dto.modifyStats.orEmpty()) {
+            effects.add(EditorTag(name = stat, value = value, isStatModifier = true, category = TagCategory.JOURNAL))
+        }
+        return EditorTemplate(
+            id = dto.id,
+            text = dto.text,
+            visibilityCondition = dto.visibilityCondition ?: "",
+            availabilityCondition = dto.availabilityCondition ?: "",
+            parameters = parameters,
+            effects = effects,
+            nextSceneId = dto.nextScene,
+        )
     }
 
     /**
@@ -624,7 +738,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             // Хардкод: health всегда HEALTH
             val effectiveCategory = if (cleanName == "health") TagCategory.HEALTH else tag.category
             val effectiveDisplay = if (cleanName == "health" && tag.displayName.isBlank()) {
-                "Здоровье"
+                context.getString(R.string.editor_tag_category_health)
             } else {
                 tag.displayName.ifBlank { cleanName }
             }
@@ -683,6 +797,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             description = description,
             initialState = buildInitialState(),
             variables = buildVariablesDto(),
+            choiceTemplates = buildChoiceTemplatesDto(),
             tags = tagRegistry.values.toList(),
             deathScene = deathScene,
             chapters = chapters
@@ -855,7 +970,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             if (cleanName.isEmpty()) return
             val effectiveCategory = if (cleanName == "health") TagCategory.HEALTH else tag.category
             val effectiveDisplay = if (cleanName == "health" && tag.displayName.isBlank()) {
-                "Здоровье"
+                context.getString(R.string.editor_tag_category_health)
             } else {
                 tag.displayName.ifBlank { cleanName }
             }
@@ -921,6 +1036,54 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         )
         return adventure to parseErrors
     }
+
+    /**
+     * Ф4.3.1: editor `templates` → `List<ChoiceTemplateDto>?` for
+     * Gson-save.
+     *
+     * `null` on an empty list — Gson **omits** the field, JSON stays
+     * clean (same policy as `buildVariablesDto` / `buildInitialState`).
+     * Templates with an empty `id` are **skipped** — a
+     * `ChoiceTemplate` without an id cannot be referenced by any
+     * `Choice.templateRef`, so it is meaningless; the validator will
+     * warn separately in Ф4.3.2.
+     */
+    private fun buildChoiceTemplatesDto(): List<ChoiceTemplateDto>? {
+        if (templates.isEmpty()) return null
+        val list = mutableListOf<ChoiceTemplateDto>()
+        for (t in templates) {
+            val cleanId = t.id.trim()
+            if (cleanId.isEmpty()) continue
+            val (setFlags, removeFlags, modifyStats) = serializeTags(t.effects)
+            val params = t.parameters.mapNotNull { p ->
+                val name = p.name.trim()
+                if (name.isEmpty()) return@mapNotNull null
+                when (p.kind) {
+                    VarKind.BOOL -> VarDeclDto(name, "bool")
+                    VarKind.INTEGER -> VarDeclDto(name, "int")
+                    VarKind.INT_MIN -> VarDeclDto(name, "int_min", min = p.min)
+                    VarKind.INT_RANGE -> VarDeclDto(name, "int_range", min = p.min, max = p.max)
+                    VarKind.ITEM_COUNT -> VarDeclDto(name, "item_count")
+                    VarKind.ITEM_LIST -> VarDeclDto(name, "item_list")
+                }
+            }
+            list.add(
+                ChoiceTemplateDto(
+                    id = cleanId,
+                    parameters = params.ifEmpty { null },
+                    text = t.text,
+                    visibilityCondition = t.visibilityCondition.trim().ifEmpty { null },
+                    availabilityCondition = t.availabilityCondition.trim().ifEmpty { null },
+                    setFlags = setFlags,
+                    removeFlags = removeFlags,
+                    modifyStats = modifyStats,
+                    nextScene = t.nextSceneId,
+                )
+            )
+        }
+        return list.ifEmpty { null }
+    }
+
 
     companion object {
         private const val MAX_HISTORY = 20

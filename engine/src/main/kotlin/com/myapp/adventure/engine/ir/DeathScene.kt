@@ -33,7 +33,15 @@ import kotlinx.serialization.Serializable
 @Serializable
 public data class DeathScene(
     public val id: SceneId = SceneId("death_scene"),
-    public val text: String = "💀 Вы погибли.",
+    /**
+     * Ф4-infra (3b-6h): empty default, not `"💀 Вы погибли."`. The RU
+     * default used to live in the IR; that made the engine a hidden
+     * source of user-facing text. Now the reader falls back to
+     * `R.string.reader_default_death_text` when this is empty. See
+     * `i18n-policy.md` — data defaults in `:engine` must not carry
+     * RU text; user-facing fallbacks live in `:app` resources.
+     */
+    public val text: String = "",
     @SerialName("allow_step_back")
     public val allowStepBack: Boolean = true,
     @SerialName("allow_chapter_restart")

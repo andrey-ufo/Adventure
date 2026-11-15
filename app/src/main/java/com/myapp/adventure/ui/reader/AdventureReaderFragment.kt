@@ -227,7 +227,7 @@ class AdventureReaderFragment : Fragment() {
         val adventureJsonFromArgs = arguments?.getString("adventure_json")
         val adventureJson = adventureJsonFromFile ?: adventureJsonFromArgs
         if (adventureJson == null) {
-            Toast.makeText(requireContext(), "Ошибка: нет данных приключения", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.reader_error_no_adventure_data, Toast.LENGTH_SHORT).show()
             parentFragmentManager.popBackStack()
             return
         }
@@ -264,7 +264,7 @@ class AdventureReaderFragment : Fragment() {
                 Logger.log(requireContext(), "Parse error: $firstError")
                 Toast.makeText(
                     requireContext(),
-                    "Ошибка разбора файла: $firstError",
+                    getString(R.string.reader_error_parse_fmt, firstError),
                     Toast.LENGTH_LONG,
                 ).show()
                 parentFragmentManager.popBackStack()
@@ -282,7 +282,7 @@ class AdventureReaderFragment : Fragment() {
                 Logger.log(requireContext(), "Compile error: $firstError")
                 Toast.makeText(
                     requireContext(),
-                    "Ошибка компиляции: $firstError",
+                    getString(R.string.reader_error_compile_fmt, firstError),
                     Toast.LENGTH_LONG,
                 ).show()
                 parentFragmentManager.popBackStack()
@@ -421,16 +421,16 @@ class AdventureReaderFragment : Fragment() {
     ) {
         val maxShow = 5
         val message = buildString {
-            append("Файл содержит ${typeErrors.size} ошибок в типах переменных:\n\n")
+            append(getString(R.string.reader_type_errors_dialog_intro_fmt, typeErrors.size))
             typeErrors.take(maxShow).forEach { append("• ${it.message}\n") }
             if (typeErrors.size > maxShow) {
-                append("\n…и ещё ${typeErrors.size - maxShow}")
+                append(getString(R.string.reader_dialog_more_fmt, typeErrors.size - maxShow))
             }
         }
         AlertDialog.Builder(requireContext())
-            .setTitle("Не удалось открыть")
+            .setTitle(R.string.reader_broken_dialog_title)
             .setMessage(message)
-            .setPositiveButton("ОК") { _, _ -> parentFragmentManager.popBackStack() }
+            .setPositiveButton(R.string.dialog_ok) { _, _ -> parentFragmentManager.popBackStack() }
             .setCancelable(false)
             .show()
     }
@@ -438,16 +438,16 @@ class AdventureReaderFragment : Fragment() {
     private fun showBrokenAdventureDialog(errors: List<LintIssue>) {
         val maxShow = 5
         val message = buildString {
-            append("Файл повреждён (${errors.size} ошибок):\n\n")
+            append(getString(R.string.reader_broken_dialog_intro_fmt, errors.size))
             errors.take(maxShow).forEach { append("• ${it.message}\n") }
             if (errors.size > maxShow) {
-                append("\n…и ещё ${errors.size - maxShow}")
+                append(getString(R.string.reader_dialog_more_fmt, errors.size - maxShow))
             }
         }
         AlertDialog.Builder(requireContext())
-            .setTitle("Не удалось открыть")
+            .setTitle(R.string.reader_broken_dialog_title)
             .setMessage(message)
-            .setPositiveButton("ОК") { _, _ -> parentFragmentManager.popBackStack() }
+            .setPositiveButton(R.string.dialog_ok) { _, _ -> parentFragmentManager.popBackStack() }
             .setCancelable(false)
             .show()
     }
@@ -471,17 +471,17 @@ class AdventureReaderFragment : Fragment() {
     private fun showWarningDialog(warnings: List<LintIssue>) {
         val maxShow = 5
         val message = buildString {
-            append("В приключении ${warnings.size} предупреждений:\n\n")
+            append(getString(R.string.reader_warning_dialog_intro_fmt, warnings.size))
             warnings.take(maxShow).forEach { append("• ${it.message}\n") }
             if (warnings.size > maxShow) {
-                append("\n…и ещё ${warnings.size - maxShow}")
+                append(getString(R.string.reader_dialog_more_fmt, warnings.size - maxShow))
             }
-            append("\nПродолжить игру?")
+            append(getString(R.string.reader_warning_dialog_prompt))
         }
         AlertDialog.Builder(requireContext())
-            .setTitle("Предупреждение")
+            .setTitle(R.string.reader_warning_dialog_title)
             .setMessage(message)
-            .setPositiveButton("Продолжить игру") { _, _ ->
+            .setPositiveButton(R.string.reader_warning_dialog_continue) { _, _ ->
                 // Acknowledge: remember this exact set for this
                 // adventure. Subsequent opens of the same file will not
                 // show the dialog; the player can still reach the list
@@ -489,7 +489,7 @@ class AdventureReaderFragment : Fragment() {
                 savedWarningsFingerprint = currentWarningsFingerprint
                 saveProgress()
             }
-            .setNegativeButton("Выйти из игры") { _, _ ->
+            .setNegativeButton(R.string.reader_warning_dialog_exit) { _, _ ->
                 // Do NOT acknowledge. The player chose not to play, so
                 // they have not seen the story — they should see the
                 // warning again on the next open.
@@ -514,16 +514,16 @@ class AdventureReaderFragment : Fragment() {
     private fun showWarningInfoDialog(warnings: List<LintIssue>) {
         val maxShow = 5
         val message = buildString {
-            append("${warnings.size} предупреждений:\n\n")
+            append(getString(R.string.reader_warnings_info_intro_fmt, warnings.size))
             warnings.take(maxShow).forEach { append("• ${it.message}\n") }
             if (warnings.size > maxShow) {
-                append("\n…и ещё ${warnings.size - maxShow}")
+                append(getString(R.string.reader_dialog_more_fmt, warnings.size - maxShow))
             }
         }
         AlertDialog.Builder(requireContext())
-            .setTitle("Предупреждения")
+            .setTitle(R.string.reader_warnings_info_title)
             .setMessage(message)
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(R.string.dialog_close, null)
             .show()
     }
 
@@ -806,7 +806,7 @@ class AdventureReaderFragment : Fragment() {
             if (!previewMode) checkPermissions()
 
             if (previewMode) {
-                binding.btnMenu.text = "Назад"
+                binding.btnMenu.text = getString(R.string.reader_preview_back)
                 binding.btnMenu.setOnClickListener { parentFragmentManager.popBackStack() }
                 binding.btnDebug.visibility = View.VISIBLE
                 binding.btnDebug.setOnClickListener { showDebugPanel() }
@@ -851,7 +851,7 @@ class AdventureReaderFragment : Fragment() {
             }
         } catch (e: Exception) {
             Logger.log(requireContext(), "Error in onViewCreated: ${e.message}")
-            Toast.makeText(requireContext(), "Ошибка запуска читалки: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.reader_error_launch_fmt, e.message), Toast.LENGTH_LONG).show()
             parentFragmentManager.popBackStack()
         }
     }
@@ -888,13 +888,13 @@ class AdventureReaderFragment : Fragment() {
         val healthDef = adventure.tags.firstOrNull { it.name == "health" && it.category == TagCategory.HEALTH }
             ?: adventure.tags.firstOrNull { it.category == TagCategory.HEALTH }
         val healthValue = healthDef?.let { stats[it.name] ?: 0 } ?: 0
-        binding.btnHealth.text = "❤️ $healthValue"
+        binding.btnHealth.text = getString(R.string.reader_hud_health_fmt, healthValue)
 
         val itemCount = itemOrder.count { (stats[it] ?: 0) > 0 }
-        binding.btnInventory.text = "🎒 $itemCount"
+        binding.btnInventory.text = getString(R.string.reader_hud_inventory_fmt, itemCount)
 
         val journalCount = getJournalItems().size
-        binding.btnJournal.text = "📖 $journalCount"
+        binding.btnJournal.text = getString(R.string.reader_hud_journal_fmt, journalCount)
     }
 
     // ==================== Lists / dialogs (HUD) ====================
@@ -933,15 +933,15 @@ class AdventureReaderFragment : Fragment() {
     }
 
     private fun showHealthDialog() {
-        showListDialog("❤️ Здоровье", getHealthItems())
+        showListDialog(getString(R.string.reader_health_dialog_title), getHealthItems())
     }
 
     private fun showInventoryDialog() {
-        showListDialog("🎒 Рюкзак", getInventoryItems())
+        showListDialog(getString(R.string.reader_inventory_dialog_title), getInventoryItems())
     }
 
     private fun showJournalDialog() {
-        showListDialog("📖 Журнал", getJournalItems().map { it to null })
+        showListDialog(getString(R.string.reader_journal_dialog_title), getJournalItems().map { it to null })
     }
 
     private fun showListDialog(title: String, items: List<Pair<String, Int?>>) {
@@ -974,7 +974,7 @@ class AdventureReaderFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setTitle(title)
             .setView(dialogView)
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(R.string.dialog_close, null)
             .show()
     }
 
@@ -984,7 +984,7 @@ class AdventureReaderFragment : Fragment() {
         if (isDead) return
 
         val scene = compiled.scenesById[SceneId(currentSceneId)] ?: run {
-            showEnd("Сцена не найдена: $currentSceneId")
+            showEnd(getString(R.string.reader_end_scene_not_found_fmt, currentSceneId))
             return
         }
 
@@ -1048,7 +1048,7 @@ class AdventureReaderFragment : Fragment() {
         // Ending: explicit isEnding (Ф1.7.0). Analyzer blocks non-preview
         // files where a scene has no choices and is not marked isEnding.
         if (scene.isEnding) {
-            showEnd("🎉 Конец истории")
+            showEnd(getString(R.string.reader_end_story))
             return
         }
 
@@ -1056,7 +1056,7 @@ class AdventureReaderFragment : Fragment() {
         // preview mode the author may be mid-edit — show the preview
         // end marker so they know the scene has no exits.
         if (scene.choices.isEmpty()) {
-            showEnd("▶ Конец предпросмотра")
+            showEnd(getString(R.string.reader_end_preview_marker))
             return
         }
 
@@ -1206,7 +1206,12 @@ class AdventureReaderFragment : Fragment() {
         binding.tvStepsRequired.visibility = View.GONE
         binding.choicesContainer.removeAllViews()
 
-        val deathText = adventure.deathScene?.text ?: "💀 Вы погибли."
+        // Ф4-infra (3b-6h): fall back when `deathScene` is absent OR when
+        // its `text` is empty. The engine / `:app/data` defaults used to
+        // be `"💀 Вы погибли."`; now they are `""`, and the resource
+        // fallback is the single source of truth for the default.
+        val deathText = adventure.deathScene?.text?.takeIf { it.isNotEmpty() }
+            ?: getString(R.string.reader_default_death_text)
         binding.tvStoryText.text = deathText
 
         val allowStepBack = adventure.deathScene?.allowStepBack ?: true
@@ -1215,7 +1220,7 @@ class AdventureReaderFragment : Fragment() {
 
         if (allowStepBack && previousStepSnapshot != null) {
             val btn = Button(requireContext()).apply {
-                text = "↩ Один шаг назад"
+                text = getString(R.string.reader_death_button_step_back)
                 setOnClickListener { onStepBack() }
             }
             binding.choicesContainer.addView(btn)
@@ -1224,7 +1229,7 @@ class AdventureReaderFragment : Fragment() {
         val currentChapterIdx = compiled.chapterIndexBySceneId[SceneId(currentSceneId)] ?: 0
         if (allowChapter && chapterStartSnapshot != null && chapterStartSnapshot!!.chapterIndex == currentChapterIdx) {
             val btn = Button(requireContext()).apply {
-                text = "📖 В начало главы"
+                text = getString(R.string.reader_death_button_chapter_restart)
                 setOnClickListener { onChapterRestart() }
             }
             binding.choicesContainer.addView(btn)
@@ -1232,7 +1237,10 @@ class AdventureReaderFragment : Fragment() {
 
         if (allowAdventure) {
             val btn = Button(requireContext()).apply {
-                text = if (previewMode) "🔄 Начать предпросмотр заново" else "🏠 Начать приключение заново"
+                text = getString(
+                    if (previewMode) R.string.reader_death_button_restart_preview
+                    else R.string.reader_death_button_restart
+                )
                 setOnClickListener { onAdventureRestart() }
             }
             binding.choicesContainer.addView(btn)
@@ -1354,12 +1362,12 @@ class AdventureReaderFragment : Fragment() {
         // `forceDisabled`), re-rendering the same buttons as available.
         updateChoices(scene.choices, forceDisabled = true)
         if (lastKnownAbsolute < 0) {
-            binding.tvStepsRequired.text = "Ожидание данных шагомера…"
+            binding.tvStepsRequired.text = getString(R.string.reader_gate_waiting)
         } else {
             updateStepsProgressUi(scene)
         }
         if (com.myapp.adventure.step.StepSourceManager.isHealthConnectActive(requireContext())) {
-            binding.tvStepsRequired.append("\n(Health Connect: обновление раз в ~1 минуту)")
+            binding.tvStepsRequired.append(getString(R.string.reader_gate_health_connect_hint))
         }
         binding.tvStepsRequired.visibility = View.VISIBLE
     }
@@ -1369,7 +1377,7 @@ class AdventureReaderFragment : Fragment() {
         val total = scene.gate?.requiredSteps ?: return
         val done = (total - remainingSteps).coerceIn(0, total)
         binding.tvStepsRequired.text =
-            "Пройдено $done из $total шагов (осталось $remainingSteps)."
+            getString(R.string.reader_gate_progress_fmt, done, total, remainingSteps)
         binding.tvStepsRequired.visibility = View.VISIBLE
     }
 
@@ -1385,13 +1393,13 @@ class AdventureReaderFragment : Fragment() {
         saveProgress()
 
         if (scene.isEnding) {
-            showEnd("🎉 Конец истории")
+            showEnd(getString(R.string.reader_end_story))
             return
         }
         if (scene.choices.isEmpty()) {
             // Post-analyzer: impossible in non-preview (ERROR blocks the
             // load). In preview: show the preview-end marker.
-            showEnd("▶ Конец предпросмотра")
+            showEnd(getString(R.string.reader_end_preview_marker))
             return
         }
         updateChoices(scene.choices)
@@ -1411,7 +1419,11 @@ class AdventureReaderFragment : Fragment() {
     // ==================== End / restart ====================
 
     private fun showEnd(message: String) {
-        binding.tvStoryText.text = if (previewMode) "▶ Конец предпросмотра\n\n$message" else "Конец\n\n$message"
+        binding.tvStoryText.text = if (previewMode) {
+            getString(R.string.reader_end_text_preview, message)
+        } else {
+            getString(R.string.reader_end_text_full, message)
+        }
         binding.btnNextChapter.visibility = View.GONE
         binding.tvStepsRequired.visibility = View.GONE
 
@@ -1420,7 +1432,10 @@ class AdventureReaderFragment : Fragment() {
         container.visibility = View.VISIBLE
 
         val restartButton = Button(requireContext()).apply {
-            text = if (previewMode) "Вернуться в редактор" else "Начать заново"
+            text = getString(
+                if (previewMode) R.string.reader_end_button_restart_preview
+                else R.string.reader_end_button_restart
+            )
             setOnClickListener {
                 if (previewMode) parentFragmentManager.popBackStack()
                 else onRestartAdventure()
@@ -1461,7 +1476,7 @@ class AdventureReaderFragment : Fragment() {
         chapterStartSnapshot = null
         saveProgress()
         loadCurrentScene()
-        Toast.makeText(requireContext(), "Приключение начато заново", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), R.string.reader_toast_adventure_restarted, Toast.LENGTH_SHORT).show()
     }
 
     // ==================== Progress persistence ====================
@@ -1502,10 +1517,10 @@ class AdventureReaderFragment : Fragment() {
         } else true
 
         if (!notificationPermissionGranted) {
-            Toast.makeText(requireContext(), "Нет разрешения на уведомления.", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), R.string.reader_perm_no_notifications, Toast.LENGTH_LONG).show()
         }
         if (!activityRecognitionGranted) {
-            Toast.makeText(requireContext(), "Нет разрешения на физическую активность.", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), R.string.reader_perm_no_activity_recognition, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1518,7 +1533,7 @@ class AdventureReaderFragment : Fragment() {
         // adding/removing/reordering entries does not require touching
         // the index-based dispatch.
         val items = mutableListOf<Pair<String, () -> Unit>>()
-        items.add("В главное меню" to {
+        items.add(getString(R.string.reader_menu_main_menu) to {
             parentFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, MenuFragment())
                 .addToBackStack(null)
@@ -1531,19 +1546,19 @@ class AdventureReaderFragment : Fragment() {
         // mode either — undo is a player affordance, not an
         // authoring tool.
         if (!previewMode && !isDead && previousStepSnapshot != null) {
-            items.add("↩ Шаг назад" to {
+            items.add(getString(R.string.reader_menu_step_back) to {
                 onStepBack()
             })
         }
-        items.add("Начать приключение заново" to {
+        items.add(getString(R.string.reader_menu_restart) to {
             confirmRestartAdventure()
         })
         if (cachedPlayerWarnings.isNotEmpty()) {
-            items.add("Предупреждения (${cachedPlayerWarnings.size})" to {
+            items.add(getString(R.string.reader_menu_warnings_fmt, cachedPlayerWarnings.size) to {
                 showWarningInfoDialog(cachedPlayerWarnings)
             })
         }
-        items.add("Настройки" to {
+        items.add(getString(R.string.reader_menu_settings) to {
             parentFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, SettingsFragment())
                 .addToBackStack(null)
@@ -1551,20 +1566,20 @@ class AdventureReaderFragment : Fragment() {
         })
 
         AlertDialog.Builder(requireContext())
-            .setTitle("Меню")
+            .setTitle(R.string.reader_menu_title)
             .setItems(items.map { it.first }.toTypedArray()) { _, which ->
                 items[which].second.invoke()
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(R.string.dialog_cancel, null)
             .show()
     }
 
     private fun confirmRestartAdventure() {
         AlertDialog.Builder(requireContext())
-            .setTitle("Начать заново?")
-            .setMessage("Текущий прогресс по этому приключению будет удалён. Это действие нельзя отменить.")
-            .setPositiveButton("Начать заново") { _, _ -> onRestartAdventure() }
-            .setNegativeButton("Отмена", null)
+            .setTitle(R.string.reader_restart_dialog_title)
+            .setMessage(R.string.reader_restart_dialog_message)
+            .setPositiveButton(R.string.reader_restart_dialog_positive) { _, _ -> onRestartAdventure() }
+            .setNegativeButton(R.string.dialog_cancel, null)
             .show()
     }
 

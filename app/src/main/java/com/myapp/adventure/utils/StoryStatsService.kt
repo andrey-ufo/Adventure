@@ -7,13 +7,19 @@ import kotlin.math.roundToInt
 
 object StoryStatsService {
 
-    /** Средняя скорость чтения, слов в минуту. */
+    /** Average reading speed, words per minute. */
     private const val WORDS_PER_MINUTE = 200.0
 
-    /** Дополнительное время на обдумывание одного выбора, секунд. */
+    /** Extra deliberation time per choice, seconds. */
     private const val SECONDS_PER_CHOICE = 20
 
-    fun calculate(scenes: List<EditorScene>): StoryStats {
+    /**
+     * @param titleFallback displayed title for scenes whose `title` is
+     *   blank. The caller (a `Fragment`) passes
+     *   `getString(R.string.label_without_title)`; `:utils` stays free
+     *   of `Context` and user-facing strings.
+     */
+    fun calculate(scenes: List<EditorScene>, titleFallback: String = ""): StoryStats {
         if (scenes.isEmpty()) {
             return StoryStats(
                 totalScenes = 0,
@@ -34,7 +40,7 @@ object StoryStatsService {
         val totalWords = perSceneWords.sum()
         val totalChoices = scenes.sumOf { it.choices.size }
 
-        // Самая длинная и самая короткая сцены
+        // Longest and shortest scenes
         var longestIdx = 0
         var shortestIdx = 0
         for (i in perSceneWords.indices) {
@@ -42,7 +48,7 @@ object StoryStatsService {
             if (perSceneWords[i] < perSceneWords[shortestIdx]) shortestIdx = i
         }
 
-        // Разбивка по главам — тот же алгоритм, что в buildAdventure()
+        // Chapter grouping — same algorithm as in buildAdventure()
         val chapters = buildChapterGroups(scenes)
         val chapterStats = chapters.mapIndexed { idx, group ->
             val isLast = idx == chapters.size - 1
@@ -64,7 +70,7 @@ object StoryStatsService {
             )
         }
 
-        // Время чтения: слова + обдумывание выборов
+        // Reading time: words + deliberation on choices
         val readingSeconds = (totalWords / WORDS_PER_MINUTE * 60.0).roundToInt() +
                 totalChoices * SECONDS_PER_CHOICE
         val readingMinutes = (readingSeconds / 60.0).roundToInt()
@@ -78,9 +84,9 @@ object StoryStatsService {
             totalChapters = chapters.size,
             estimatedReadingMinutes = readingMinutes,
             avgWordsPerScene = avgWords,
-            longestSceneTitle = scenes[longestIdx].title.ifBlank { "(без названия)" },
+            longestSceneTitle = scenes[longestIdx].title.ifBlank { titleFallback },
             longestSceneWords = perSceneWords[longestIdx],
-            shortestSceneTitle = scenes[shortestIdx].title.ifBlank { "(без названия)" },
+            shortestSceneTitle = scenes[shortestIdx].title.ifBlank { titleFallback },
             shortestSceneWords = perSceneWords[shortestIdx],
             chapters = chapterStats
         )

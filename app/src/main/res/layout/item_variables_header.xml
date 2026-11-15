@@ -30,7 +30,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="📋 Переменные"
+            android:text="@string/variables_header_title"
             android:textSize="15sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -55,7 +55,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Объявления типов переменных. Если пусто — type checking работает в fallback-режиме (по tags + initial_state)."
+            android:text="@string/variables_header_description"
             android:textSize="11sp"
             android:textColor="#9E9E9E"
             android:layout_marginBottom="8dp" />
@@ -64,7 +64,7 @@
             android:id="@+id/btn_add_variable"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="+ Переменная"
+            android:text="@string/variables_header_add"
             android:textColor="#FFFFFF"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="12sp" />

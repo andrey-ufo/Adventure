@@ -22,7 +22,7 @@
             android:id="@+id/tv_choice_chevron"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:text="▼"
+            android:text="@string/icon_chevron_down"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
             android:gravity="center" />
@@ -32,7 +32,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="(без текста)"
+            android:text="@string/item_editor_choice_no_text"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
             android:maxLines="1"
@@ -53,7 +53,7 @@
             android:id="@+id/btn_choice_effects"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="⚙"
+            android:text="@string/icon_gear"
             android:textColor="#FFC107"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="14sp"
@@ -66,7 +66,7 @@
             android:id="@+id/btn_delete_choice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="✕"
+            android:text="@string/icon_close"
             android:textColor="#FF4444"
             style="?android:attr/borderlessButtonStyle"
             android:textSize="14sp"
@@ -88,7 +88,7 @@
             android:id="@+id/et_choice_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Текст варианта"
+            android:hint="@string/item_editor_choice_text_hint"
             android:textColor="#FFFFFF"
             android:textColorHint="#AAAAAA"
             android:background="@android:color/transparent"
@@ -103,7 +103,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="След. сцена:"
+                android:text="@string/item_editor_choice_next_scene_label"
                 android:textColor="#FFFFFF"
                 android:layout_gravity="center_vertical" />
 
@@ -118,7 +118,7 @@
             android:id="@+id/et_choice_condition"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Условие (метка)"
+            android:hint="@string/item_editor_choice_condition_hint"
             android:textColor="#FFFFFF"
             android:textColorHint="#AAAAAA"
             android:background="@android:color/transparent" />

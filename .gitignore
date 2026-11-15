@@ -13,3 +13,37 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# IDE inspection reports
+AndroidLint*.xml
+Annotator.xml
+ConvertLongToDuration.xml
+DestructuringDeclaration.xml
+EnumValuesSoftDeprecate.xml
+GrazieInspection.xml
+GrazieStyle.xml
+HtmlRequiredLangAttribute.xml
+HtmlUnknownAttribute.xml
+.descriptions.xml
+
+# HTML inspection report
+index.html
+script.js
+styles.css
+
+# Gradle wrapper scripts
+gradlew
+gradlew.bat
+
+# Binary assets
+*.ttf
+*.webp
+
+# CI metadata
+.github/
+
+# Build artifacts
+build/
+*/build/
+
+top-100-gamebooks.md

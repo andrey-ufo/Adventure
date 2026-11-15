@@ -3,19 +3,27 @@ package com.myapp.adventure.utils
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.SearchFieldType
 import com.myapp.adventure.data.SearchResult
+import com.myapp.adventure.R
 
 object SearchService {
 
     private const val CONTEXT_LEN = 30
     private const val MIN_QUERY_LENGTH = 2
 
+    /**
+     * @param titleFallback displayed title for scenes whose `title` is
+     *   blank. The caller (a `Fragment`, which has `Context`) passes
+     *   `getString(R.string.label_without_title)`; `:utils` stays free
+     *   of `Context` and free of user-facing strings.
+     */
     fun search(
         scenes: List<EditorScene>,
         query: String,
         searchInTitles: Boolean,
         searchInTexts: Boolean,
         searchInChoices: Boolean,
-        searchInTags: Boolean
+        searchInTags: Boolean,
+        titleFallback: String = "",
     ): List<SearchResult> {
         val trimmed = query.trim()
         if (trimmed.length < MIN_QUERY_LENGTH) return emptyList()
@@ -24,7 +32,7 @@ object SearchService {
         val results = mutableListOf<SearchResult>()
 
         for (scene in scenes) {
-            val displayTitle = scene.title.ifBlank { "(без названия)" }
+            val displayTitle = scene.title.ifBlank { titleFallback }
 
             if (searchInTitles && scene.title.isNotEmpty()) {
                 val positions = findAllPositions(scene.title, qLower)
@@ -33,7 +41,7 @@ object SearchService {
                         sceneUid = scene.uid,
                         sceneTitle = displayTitle,
                         fieldType = SearchFieldType.SCENE_TITLE,
-                        detail = "Заголовок",
+                        detailRes = R.string.search_detail_title,
                         sourceText = scene.title,
                         positions = positions,
                         matchLen = trimmed.length
@@ -48,7 +56,7 @@ object SearchService {
                         sceneUid = scene.uid,
                         sceneTitle = displayTitle,
                         fieldType = SearchFieldType.SCENE_TEXT,
-                        detail = "Текст сцены",
+                        detailRes = R.string.search_detail_text,
                         sourceText = scene.text,
                         positions = positions,
                         matchLen = trimmed.length
@@ -65,7 +73,8 @@ object SearchService {
                             sceneUid = scene.uid,
                             sceneTitle = displayTitle,
                             fieldType = SearchFieldType.CHOICE_TEXT,
-                            detail = "Выбор #${idx + 1}",
+                            detailRes = R.string.search_detail_choice_fmt,
+                            detailArg = idx + 1,
                             sourceText = choice.text,
                             positions = positions,
                             matchLen = trimmed.length
@@ -83,7 +92,7 @@ object SearchService {
                             sceneUid = scene.uid,
                             sceneTitle = displayTitle,
                             fieldType = SearchFieldType.TAG_NAME,
-                            detail = "Метка",
+                            detailRes = R.string.search_detail_tag,
                             sourceText = tag.name,
                             positions = positions,
                             matchLen = trimmed.length
@@ -111,10 +120,11 @@ object SearchService {
         sceneUid: String,
         sceneTitle: String,
         fieldType: SearchFieldType,
-        detail: String,
+        detailRes: Int,
         sourceText: String,
         positions: List<Int>,
-        matchLen: Int
+        matchLen: Int,
+        detailArg: Int? = null,
     ): SearchResult {
         val firstPos = positions.first()
 
@@ -130,7 +140,8 @@ object SearchService {
             sceneUid = sceneUid,
             sceneTitle = sceneTitle,
             fieldType = fieldType,
-            detail = detail,
+            detailRes = detailRes,
+            detailArg = detailArg,
             contextBefore = before,
             match = match,
             contextAfter = after,

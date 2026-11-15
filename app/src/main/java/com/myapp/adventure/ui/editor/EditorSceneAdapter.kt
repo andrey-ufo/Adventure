@@ -17,6 +17,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.myapp.adventure.R
+import com.myapp.adventure.utils.ruQuantityString
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
@@ -61,7 +62,7 @@ class EditorSceneAdapter(
         diff.dispatchUpdatesTo(this)
     }
 
-    /** Подсвечивает указанную сцену (жёлтая рамка). null — снять подсветку. */
+    /** Highlights the given scene (yellow border). `null` clears the highlight. */
     fun setHighlighted(uid: String?) {
         if (highlightedUid == uid) return
         val oldUid = highlightedUid
@@ -120,15 +121,12 @@ class EditorSceneAdapter(
             if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
             val target = viewModel.scenes.getOrNull(pos) ?: return@setOnClickListener
             val sceneUid = target.uid
-            val sceneName = target.title.ifBlank { "(без названия)" }
+            val sceneName = target.title.ifBlank { context.getString(R.string.label_without_title) }
 
             AlertDialog.Builder(context)
-                .setTitle("Удалить сцену?")
-                .setMessage(
-                    "Сцена «$sceneName» будет удалена без возможности отмены.\n\n" +
-                            "Выборы в других сценах, которые вели на неё, станут битыми ссылками."
-                )
-                .setPositiveButton("Удалить") { _, _ ->
+                .setTitle(R.string.editor_scene_delete_title)
+                .setMessage(context.getString(R.string.editor_scene_delete_message_fmt, sceneName))
+                .setPositiveButton(R.string.dialog_delete) { _, _ ->
                     val currentPos = viewModel.scenes.indexOfFirst { it.uid == sceneUid }
                     if (currentPos != -1) {
                         viewModel.removeScene(currentPos)
@@ -136,7 +134,7 @@ class EditorSceneAdapter(
                         submitList()
                     }
                 }
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(R.string.dialog_cancel, null)
                 .show()
         }
 
@@ -155,8 +153,8 @@ class EditorSceneAdapter(
         binding.infoRow.setOnClickListener(toggleAction)
 
         // ---------- ID, счётчик, бейдж главы ----------
-        binding.tvSceneId.text = formatSceneIdLabel(scene)
-        binding.tvChoicesCount.text = formatChoicesCount(scene.choices.size)
+        binding.tvSceneId.text = formatSceneIdLabel(context, scene)
+        binding.tvChoicesCount.text = formatChoicesCount(context, scene.choices.size)
         binding.tvChapterEndBadge.visibility = if (scene.isChapterEnd) View.VISIBLE else View.GONE
         binding.tvDeathBadge.visibility = if (scene.isDeathScene) View.VISIBLE else View.GONE
 
@@ -176,14 +174,24 @@ class EditorSceneAdapter(
                     val previousDeath = viewModel.scenes.firstOrNull { it.isDeathScene && it.uid != s.uid }
                     if (previousDeath != null) {
                         AlertDialog.Builder(context)
-                            .setTitle("Заменить сцену смерти?")
-                            .setMessage("В приключении может быть только одна сцена смерти. Заменить «${previousDeath.title.ifBlank { "(без названия)" }}» на «${s.title.ifBlank { "(без названия)" }}»?")
-                            .setPositiveButton("Заменить") { _, _ ->
+                            .setTitle(R.string.editor_scene_replace_death_title)
+                            .setMessage(
+                                context.getString(
+                                    R.string.editor_scene_replace_death_message_fmt,
+                                    previousDeath.title.ifBlank {
+                                        context.getString(R.string.label_without_title)
+                                    },
+                                    s.title.ifBlank {
+                                        context.getString(R.string.label_without_title)
+                                    }
+                                )
+                            )
+                            .setPositiveButton(R.string.dialog_replace) { _, _ ->
                                 viewModel.setDeathScene(s.uid, true)
                                 onDirty(true)
                                 submitList()
                             }
-                            .setNegativeButton("Отмена", null)
+                            .setNegativeButton(R.string.dialog_cancel, null)
                             .setOnCancelListener {
                                 binding.cbDeathScene.setOnCheckedChangeListener(null)
                                 binding.cbDeathScene.isChecked = false
@@ -275,7 +283,7 @@ class EditorSceneAdapter(
                     onDirty(true)
                     submitList()
                 } else {
-                    binding.tvSceneId.text = formatSceneIdLabel(s)
+                    binding.tvSceneId.text = formatSceneIdLabel(context, s)
                 }
             }
         }
@@ -388,7 +396,7 @@ class EditorSceneAdapter(
                             s.gateRepeatable = newRepeatable
                             binding.layoutSteps.visibility = View.VISIBLE
                             binding.tvStepsDisplay.text =
-                                formatStepsDisplay(newSteps, newRepeatable)
+                                formatStepsDisplay(context, newSteps, newRepeatable)
                             onDirty(true)
                         },
                         onCancel = {
@@ -411,7 +419,7 @@ class EditorSceneAdapter(
             if (scene.gateRequiredSteps > 0) View.VISIBLE else View.GONE
         if (scene.gateRequiredSteps > 0) {
             binding.tvStepsDisplay.text =
-                formatStepsDisplay(scene.gateRequiredSteps, scene.gateRepeatable)
+                formatStepsDisplay(context, scene.gateRequiredSteps, scene.gateRepeatable)
         }
 
         binding.layoutSteps.setOnClickListener {
@@ -426,10 +434,10 @@ class EditorSceneAdapter(
                     s.gateRequiredSteps = newSteps
                     s.gateRepeatable = newRepeatable
                     binding.tvStepsDisplay.text =
-                        formatStepsDisplay(newSteps, newRepeatable)
+                        formatStepsDisplay(context, newSteps, newRepeatable)
                     onDirty(true)
                 },
-                onCancel = { /* ничего не меняем */ }
+                onCancel = { /* nothing to change */ }
             )
         }
 
@@ -489,7 +497,9 @@ class EditorSceneAdapter(
                 if (expanded) {
                     tvSummary.text = ""
                 } else {
-                    tvSummary.text = choice.text.ifBlank { "(без текста)" }
+                    tvSummary.text = choice.text.ifBlank {
+                        context.getString(R.string.item_editor_choice_no_text)
+                    }
                 }
 
                 val badges = mutableListOf<String>()
@@ -529,12 +539,16 @@ class EditorSceneAdapter(
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
                 val currentChoice = viewModel.scenes.getOrNull(pos)?.choices?.getOrNull(choiceIdx)
-                val previewText = currentChoice?.text?.ifBlank { "(без текста)" }
+                val previewText = currentChoice?.text?.ifBlank {
+                    context.getString(R.string.item_editor_choice_no_text)
+                }
 
                 AlertDialog.Builder(context)
-                    .setTitle("Удалить вариант действия?")
-                    .setMessage("Вариант «$previewText» будет удалён без возможности отмены.")
-                    .setPositiveButton("Удалить") { _, _ ->
+                    .setTitle(R.string.editor_choice_delete_title)
+                    .setMessage(
+                        context.getString(R.string.editor_choice_delete_message_fmt, previewText)
+                    )
+                    .setPositiveButton(R.string.dialog_delete) { _, _ ->
                         val currentPos = holder.bindingAdapterPosition
                         if (currentPos != RecyclerView.NO_POSITION) {
                             viewModel.removeChoice(currentPos, choiceIdx)
@@ -542,7 +556,7 @@ class EditorSceneAdapter(
                             submitList()
                         }
                     }
-                    .setNegativeButton("Отмена", null)
+                    .setNegativeButton(R.string.dialog_cancel, null)
                     .show()
             }
 
@@ -551,7 +565,9 @@ class EditorSceneAdapter(
             etChoiceText.bindAfterTextChanged { newText ->
                 choice.text = newText
                 if (!viewModel.isChoiceExpanded(choice.uid)) {
-                    tvSummary.text = newText.ifBlank { "(без текста)" }
+                    tvSummary.text = newText.ifBlank {
+                        context.getString(R.string.item_editor_choice_no_text)
+                    }
                 }
                 onDirty(false)
             }
@@ -563,8 +579,8 @@ class EditorSceneAdapter(
 
             val options = viewModel.getSceneOptions()
             val displayList = mutableListOf(
-                "➕ Создать новую сцену…",
-                "(выберите сцену)"
+                context.getString(R.string.editor_choice_spinner_create_new),
+                context.getString(R.string.editor_choice_spinner_choose)
             )
             displayList.addAll(options.map { it.first })
 
@@ -636,17 +652,17 @@ class EditorSceneAdapter(
         val btnAddEffect = dialogView.findViewById<Button>(R.id.btn_add_choice_effect)
 
         val dialog = AlertDialog.Builder(context)
-            .setTitle("Эффекты выбора")
+            .setTitle(R.string.editor_choice_effects_title)
             .setView(dialogView)
-            .setPositiveButton("Готово") { _, _ ->
+            .setPositiveButton(R.string.dialog_done) { _, _ ->
                 onDirty(false)
                 onChanged()
             }
             .create()
 
         fun refresh() {
-            val choiceText = choice.text.ifBlank { "(без текста)" }
-            tvInfo.text = "Эффекты, применяемые при клике на «$choiceText»:"
+            val choiceText = choice.text.ifBlank { context.getString(R.string.item_editor_choice_no_text) }
+            tvInfo.text = context.getString(R.string.editor_choice_effects_info, choiceText)
 
             container.removeAllViews()
             for ((tagIdx, tag) in choice.tags.withIndex()) {
@@ -666,7 +682,7 @@ class EditorSceneAdapter(
 
             if (choice.tags.isEmpty()) {
                 val tvEmpty = TextView(context).apply {
-                    text = "(нет эффектов)"
+                    text = context.getString(R.string.editor_choice_effects_empty)
                     setTextColor(android.graphics.Color.parseColor("#9E9E9E"))
                     textSize = 12f
                 }
@@ -733,15 +749,15 @@ class EditorSceneAdapter(
         var applied = false
 
         val dialog = AlertDialog.Builder(context)
-            .setTitle("Шаговый гейт")
+            .setTitle(R.string.editor_steps_gate_title)
             .setView(dialogView)
-            .setPositiveButton("Применить", null)
-            .setNegativeButton("Отмена", null)
+            .setPositiveButton(R.string.dialog_apply, null)
+            .setNegativeButton(R.string.dialog_cancel, null)
             .create()
 
         fun applyAndClose(value: Int) {
             if (value <= 0) {
-                android.widget.Toast.makeText(context, "Значение должно быть больше 0", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, R.string.editor_toast_steps_positive, android.widget.Toast.LENGTH_SHORT).show()
                 return
             }
             applied = true
@@ -758,7 +774,7 @@ class EditorSceneAdapter(
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val value = etCustom.text.toString().toIntOrNull()
                 if (value == null || value <= 0) {
-                    android.widget.Toast.makeText(context, "Введите целое число больше 0", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, R.string.editor_toast_steps_integer_positive, android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     applyAndClose(value)
                 }
@@ -772,20 +788,26 @@ class EditorSceneAdapter(
         dialog.show()
     }
 
-    private fun formatStepsDisplay(steps: Int, repeatable: Boolean = false): String {
-        if (steps <= 0) return "Шаговый гейт не задан · нажмите, чтобы изменить"
+    private fun formatStepsDisplay(context: Context, steps: Int, repeatable: Boolean = false): String {
+        if (steps <= 0) return context.getString(R.string.editor_steps_display_unset)
         val minutes = ((steps + 99) / 100).coerceAtLeast(1)
         val timeText = when {
-            minutes < 60 -> "≈ $minutes мин"
+            minutes < 60 -> context.getString(R.string.editor_steps_time_minutes_fmt, minutes)
             else -> {
                 val hours = minutes / 60
                 val mins = minutes % 60
-                if (mins == 0) "≈ $hours ч" else "≈ $hours ч $mins мин"
+                if (mins == 0) {
+                    context.getString(R.string.editor_steps_time_hours_fmt, hours)
+                } else {
+                    context.getString(R.string.editor_steps_time_hours_minutes_fmt, hours, mins)
+                }
             }
         }
-        val formatted = String.format(java.util.Locale.getDefault(), "%,d", steps).replace(',', ' ')
-        val mode = if (repeatable) " · каждый раз" else ""
-        return "$formatted шагов ($timeText)$mode · нажмите, чтобы изменить"
+        val stepsText = pluralWithNumber(context, R.plurals.steps, steps)
+        val mode = if (repeatable) {
+            context.getString(R.string.editor_steps_display_repeatable_suffix)
+        } else ""
+        return context.getString(R.string.editor_steps_display_fmt, stepsText, timeText, mode)
     }
 
     // ---------- Диалоги ----------
@@ -800,23 +822,28 @@ class EditorSceneAdapter(
         val etTitle = dialogView.findViewById<EditText>(R.id.et_new_scene_title)
 
         AlertDialog.Builder(context)
-            .setTitle("Новая сцена")
+            .setTitle(R.string.editor_new_scene_title)
             .setView(dialogView)
-            .setPositiveButton("Создать") { _, _ ->
+            .setPositiveButton(R.string.dialog_create) { _, _ ->
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setPositiveButton
                 val currentScene = viewModel.scenes.getOrNull(pos) ?: return@setPositiveButton
                 val currentChoice = currentScene.choices.getOrNull(choiceIdx) ?: return@setPositiveButton
 
                 val userTitle = etTitle.text.toString().trim()
-                val finalTitle = userTitle.ifBlank { "Новая сцена ${viewModel.scenes.size + 1}" }
+                val finalTitle = userTitle.ifBlank {
+                    context.getString(
+                        R.string.editor_new_scene_default_title_fmt,
+                        viewModel.scenes.size + 1
+                    )
+                }
 
                 val newScene = viewModel.addSceneWithTitle(finalTitle)
                 currentChoice.nextSceneId = newScene.id
                 onDirty(true)
                 submitList()
             }
-            .setNegativeButton("Отмена") { _, _ ->
+            .setNegativeButton(R.string.dialog_cancel) { _, _ ->
                 submitList()
             }
             .show()
@@ -829,50 +856,50 @@ class EditorSceneAdapter(
         val previewId = viewModel.previewRebuiltId(scene.uid)
         if (previewId == null) {
             android.widget.Toast.makeText(
-                context, "Сначала задайте название сцены", android.widget.Toast.LENGTH_SHORT
+                context, R.string.editor_toast_title_first, android.widget.Toast.LENGTH_SHORT
             ).show()
             return
         }
 
         if (previewId == scene.id) {
             android.widget.Toast.makeText(
-                context, "ID уже соответствует названию", android.widget.Toast.LENGTH_SHORT
+                context, R.string.editor_toast_id_matches, android.widget.Toast.LENGTH_SHORT
             ).show()
             return
         }
 
         AlertDialog.Builder(context)
-            .setTitle("Пересобрать ID?")
+            .setTitle(R.string.editor_rebuild_id_title)
             .setMessage(
-                "ID сцены «${scene.title}» будет изменён:\n\n" +
-                        "Было:  ${scene.id.ifEmpty { "(пусто)" }}\n" +
-                        "Станет: $previewId\n\n" +
-                        "Все выборы в других сценах, которые ссылаются на «${scene.id}», " +
-                        "будут автоматически обновлены на новый ID."
+                context.getString(
+                    R.string.editor_rebuild_id_message_fmt,
+                    scene.title,
+                    scene.id.ifEmpty { context.getString(R.string.label_empty) },
+                    previewId
+                )
             )
-            .setPositiveButton("Пересобрать") { _, _ ->
+            .setPositiveButton(R.string.editor_rebuild_id_confirm) { _, _ ->
                 val result = viewModel.rebuildSceneId(scene.uid)
                 if (result != null) {
                     onDirty(true)
                     submitList()
 
-                    val plural = when {
-                        result.updatedReferences % 100 in 11..14 -> "ссылок"
-                        result.updatedReferences % 10 == 1 -> "ссылку"
-                        result.updatedReferences % 10 in 2..4 -> "ссылки"
-                        else -> "ссылок"
-                    }
                     val message = if (result.updatedReferences > 0) {
-                        "ID обновлён. Обновлено ${result.updatedReferences} $plural в других сценах."
+                        val refsText = ruQuantityString(
+                            context,
+                            R.plurals.word_references,
+                            result.updatedReferences
+                        )
+                        context.getString(R.string.editor_rebuild_id_result_fmt, refsText)
                     } else {
-                        "ID обновлён. Ссылок на старый ID не было."
+                        context.getString(R.string.editor_rebuild_id_result_no_refs)
                     }
                     android.widget.Toast.makeText(
                         context, message, android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(R.string.dialog_cancel, null)
             .show()
     }
 
@@ -883,16 +910,16 @@ class EditorSceneAdapter(
         binding.tvChevron.text = if (expanded) "▼" else "▶"
     }
 
-    private fun formatSceneIdLabel(scene: EditorScene): String = when {
-        scene.id.isNotEmpty() -> "ID: ${scene.id}"
-        scene.title.isNotBlank() -> "ID: (будет сгенерирован)"
-        else -> "ID: (введите название)"
+    private fun formatSceneIdLabel(context: Context, scene: EditorScene): String {
+        return when {
+            scene.id.isNotEmpty() -> context.getString(R.string.editor_scene_id_label_fmt, scene.id)
+            scene.title.isNotBlank() -> context.getString(R.string.editor_scene_id_label_will_generate)
+            else -> context.getString(R.string.editor_scene_id_label_enter_title)
+        }
     }
 
-    private fun formatChoicesCount(n: Int): String = when {
-        n == 0 -> "нет вариантов"
-        n == 1 -> "1 вариант"
-        n in 2..4 -> "$n варианта"
-        else -> "$n вариантов"
+    private fun formatChoicesCount(context: Context, n: Int): String {
+        if (n == 0) return context.getString(R.string.editor_choices_count_none)
+        return pluralWithNumber(context, R.plurals.word_choices_count, n)
     }
 }
