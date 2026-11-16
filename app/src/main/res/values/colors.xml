@@ -1,6 +1,66 @@
 <resources>
-    <!-- Colours are declared where they are used (layouts, drawables).
-         Kept as an empty file because values/themes.xml and others reference
-         @color/* in the future; keeping the file avoids a missing-folder
-         error if you later add a colour here. -->
+    <!--
+        Material 3 semantic tokens — LIGHT ("old book / traveler's journal").
+        MIRROR of BuiltInThemes.DEFAULT.light in Kotlin. Both sides must be
+        updated together when the default palette changes.
+
+        RULES FOR FUTURE THEMES (Ocean, Sepia, …):
+          1. Add prefixed tokens here AND in values-night/colors.xml:
+             <color name="ocean_primary">#...</color>
+          2. Add a style in values/themes.xml:
+             <style name="Theme.Adventure.Ocean" parent="Base.Theme.Adventure">
+                 <item name="colorPrimary">@color/ocean_primary</item>
+             </style>
+          3. Register it in ThemeManager / BuiltInThemes / ThemeRepository.
+        Do NOT hardcode colors in layouts — use ?attr/ instead.
+    -->
+
+    <!-- Primary — leather binding -->
+    <color name="md_primary">#5D4037</color>
+    <color name="md_on_primary">#FFFFFF</color>
+    <color name="md_primary_container">#E8D5C4</color>
+    <color name="md_on_primary_container">#3E2723</color>
+
+    <!-- Secondary — mid leather -->
+    <color name="md_secondary">#795548</color>
+    <color name="md_on_secondary">#FFFFFF</color>
+    <color name="md_secondary_container">#EFE0D0</color>
+    <color name="md_on_secondary_container">#2E1A0F</color>
+
+    <!-- Tertiary — faded leather -->
+    <color name="md_tertiary">#8D6E63</color>
+    <color name="md_on_tertiary">#FFFFFF</color>
+    <color name="md_tertiary_container">#F0E0D0</color>
+    <color name="md_on_tertiary_container">#2E1A0F</color>
+
+    <!-- Background / Surface — aged paper -->
+    <color name="md_background">#FAF5EA</color>
+    <color name="md_on_background">#1C1410</color>
+    <color name="md_surface">#FAF5EA</color>
+    <color name="md_on_surface">#1C1410</color>
+    <color name="md_surface_variant">#EFE5D5</color>
+    <color name="md_on_surface_variant">#5D4037</color>
+    <color name="md_inverse_surface">#33261E</color>
+    <color name="md_inverse_on_surface">#F5E6D3</color>
+    <color name="md_inverse_primary">#D7CCC8</color>
+
+    <!-- Error — red ink -->
+    <color name="md_error">#B3261E</color>
+    <color name="md_on_error">#FFFFFF</color>
+    <color name="md_error_container">#F9DEDC</color>
+    <color name="md_on_error_container">#410E0B</color>
+
+    <!-- Outline -->
+    <color name="md_outline">#A1887F</color>
+    <color name="md_outline_variant">#D7CCC8</color>
+
+    <!-- Scrim -->
+    <color name="md_scrim">#000000</color>
+
+    <!-- Status colours (WCAG AA on md_surface) -->
+    <color name="md_status_success">#2E6F3A</color>
+    <color name="md_status_warning">#8F5000</color>
+    <color name="md_status_danger">#C62828</color>
+    <color name="md_status_info">#1565C0</color>
+    <color name="md_status_neutral">#5D4037</color>
 </resources>

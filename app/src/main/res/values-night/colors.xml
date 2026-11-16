@@ -1,0 +1,56 @@
+<resources>
+    <!--
+        Material 3 semantic tokens — DARK (pure black base).
+        Same names as values/colors.xml — Android picks by configuration.
+        MIRROR of BuiltInThemes.DEFAULT.dark in Kotlin.
+    -->
+
+    <!-- Primary -->
+    <color name="md_primary">#D4B896</color>
+    <color name="md_on_primary">#3E2723</color>
+    <color name="md_primary_container">#4A3B2E</color>
+    <color name="md_on_primary_container">#F5E6D3</color>
+
+    <!-- Secondary -->
+    <color name="md_secondary">#C8B8A8</color>
+    <color name="md_on_secondary">#2E1A0F</color>
+    <color name="md_secondary_container">#3E3126</color>
+    <color name="md_on_secondary_container">#E8D5C4</color>
+
+    <!-- Tertiary -->
+    <color name="md_tertiary">#B0A090</color>
+    <color name="md_on_tertiary">#2E1A0F</color>
+    <color name="md_tertiary_container">#3A2E24</color>
+    <color name="md_on_tertiary_container">#E8D5C4</color>
+
+    <!-- Background / Surface — pure black -->
+    <color name="md_background">#000000</color>
+    <color name="md_on_background">#E8DBC8</color>
+    <color name="md_surface">#000000</color>
+    <color name="md_on_surface">#E8DBC8</color>
+    <color name="md_surface_variant">#1C1815</color>
+    <color name="md_on_surface_variant">#B0A398</color>
+    <color name="md_inverse_surface">#E8DBC8</color>
+    <color name="md_inverse_on_surface">#1C1410</color>
+    <color name="md_inverse_primary">#5D4037</color>
+
+    <!-- Error -->
+    <color name="md_error">#F2B8B5</color>
+    <color name="md_on_error">#601410</color>
+    <color name="md_error_container">#8C1D18</color>
+    <color name="md_on_error_container">#F9DEDC</color>
+
+    <!-- Outline -->
+    <color name="md_outline">#8A7D70</color>
+    <color name="md_outline_variant">#3A342E</color>
+
+    <!-- Scrim -->
+    <color name="md_scrim">#000000</color>
+
+    <!-- Status colours (WCAG AA on pure black) -->
+    <color name="md_status_success">#81C784</color>
+    <color name="md_status_warning">#FFB74D</color>
+    <color name="md_status_danger">#EF9A9A</color>
+    <color name="md_status_info">#64B5F6</color>
+    <color name="md_status_neutral">#B0A398</color>
+</resources>

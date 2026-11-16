@@ -37,10 +37,10 @@
     <!-- ============================================================ -->
     <!-- MENU (MenuFragment)                                          -->
     <!-- ============================================================ -->
-    <string name="menu_library">Библиотека приключений</string>
-    <string name="menu_statistics">Статистика</string>
-    <string name="menu_create">Создать приключение</string>
-    <string name="menu_import">Импортировать приключение</string>
+    <string name="menu_library">Библиотека</string>
+    <string name="menu_statistics">Статистика шагов</string>
+    <string name="menu_create">Редактор</string>
+    <string name="menu_import">Загрузить приключение</string>
     <string name="menu_logs">Логи игры</string>
     <string name="menu_settings">Настройки</string>
 
@@ -704,4 +704,23 @@
 
     <!-- Validation dialog: merge source missing -->
     <string name="validation_title_missing_merge_source">Источник слияния не найден</string>
+
+    <string name="settings_theme_title">Тема оформления</string>
+    <string name="settings_theme_system">Как в системе</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
+
+    <string name="setup_notifications_title">Разрешение на уведомления</string>
+    <string name="setup_notifications_explanation">Нужно, чтобы шагомер продолжал считать шаги, даже когда приложение закрыто. Без этого уведомления система может остановить фоновую службу.</string>
+    <string name="setup_notifications_button">Разрешить уведомления</string>
+    <string name="setup_activity_title">Доступ к физической активности</string>
+    <string name="setup_activity_explanation">Нужно, чтобы приложение могло считать шаги в фоне, даже когда оно закрыто. Без этого разрешения приключения с шаговыми гейтами станут непроходимы — вы не сможете открывать новые главы. Источник данных (датчик телефона или Health Connect) можно будет выбрать позже в настройках.</string>
+    <string name="setup_activity_button">Разрешить доступ к активности</string>
+    <string name="setup_skip_for_now">Можно пропустить — включите позже в настройках.</string>
+    <string name="setup_skip_button">Пропустить</string>
+    <string name="settings_permissions_title">Разрешения</string>
+    <string name="settings_enable_notifications">Включить уведомления</string>
+    <string name="settings_enable_activity">Включить доступ к активности</string>
+    <string name="settings_manage_notifications">Управлять разрешением на уведомления</string>
+    <string name="settings_manage_activity">Управлять разрешением на активность</string>
 </resources>

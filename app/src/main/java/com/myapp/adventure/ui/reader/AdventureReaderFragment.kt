@@ -39,7 +39,6 @@ import com.myapp.adventure.engine.analyze.Severity
 import com.myapp.adventure.engine.format.JsonToIr
 import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.ir.Choice
-import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.PlayerState
@@ -50,7 +49,7 @@ import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
-import com.myapp.adventure.ui.MenuFragment
+import com.myapp.adventure.ui.menu.MenuFragment
 import com.myapp.adventure.ui.SettingsFragment
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger

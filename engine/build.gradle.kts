@@ -15,10 +15,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     testLogging {
-        events("passed", "skipped", "failed")
-        // Show the full AssertionError message (expected/actual) in the
-        // console. Without this, Gradle prints only "FAILED" and the
-        // developer has to open the HTML report to see what was wrong.
+        events("skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         showStandardStreams = false
     }

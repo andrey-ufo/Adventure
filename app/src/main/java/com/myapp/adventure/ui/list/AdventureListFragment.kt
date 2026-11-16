@@ -15,7 +15,7 @@ import com.myapp.adventure.databinding.FragmentAdventureListBinding
 import com.myapp.adventure.engine.format.JsonToIr
 import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.parse.ParseResult
-import com.myapp.adventure.ui.MenuFragment
+import com.myapp.adventure.ui.menu.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
 import com.myapp.adventure.utils.AdventureImportHelper
 import com.myapp.adventure.utils.FontManager

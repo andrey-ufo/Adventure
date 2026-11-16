@@ -6,14 +6,18 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import com.myapp.adventure.R
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.myapp.adventure.MainActivity
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.StepHistoryManager
@@ -125,6 +129,18 @@ class StepCounterService : Service(), SensorEventListener {
             }
             else -> {
                 // ACTION_START, null (START_STICKY restart), or unknown action.
+                // Android 14+ requires a runtime prerequisite for the `health`
+                // foreground-service type; without it startForeground() throws
+                // SecurityException and kills the process. See:
+                // https://developer.android.com/develop/background-work/services/fgs/launch
+                if (!hasActivityRecognitionPermission()) {
+                    Logger.log(
+                        applicationContext,
+                        "ACTIVITY_RECOGNITION not granted; not starting foreground service"
+                    )
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 // startForeground is idempotent; Android 12+ requires it within 5s.
                 startForeground(StepCounterConstants.NOTIFICATION_ID, buildNotificationStatic())
                 isRunning = true
@@ -206,6 +222,19 @@ class StepCounterService : Service(), SensorEventListener {
             sensorManager.unregisterListener(this)
             isListening = false
         }
+    }
+
+    /**
+     * True if the app may legally start a `health` foreground service on this
+     * device. From Android 10 (API 29) the `ACTIVITY_RECOGNITION` runtime
+     * permission is the prerequisite; on API 34+ the system enforces it by
+     * throwing SecurityException from startForeground().
+     */
+    private fun hasActivityRecognitionPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACTIVITY_RECOGNITION
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     // ==================== Background worker ====================

@@ -19,19 +19,6 @@
         android:layout_marginBottom="8dp" />
 
     <TextView
-        android:id="@+id/tv_statistics"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/menu_statistics"
-        android:textSize="20sp"
-        android:textColor="#FFFFFF"
-        android:padding="12dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:background="?attr/selectableItemBackground"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
         android:id="@+id/tv_create"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -45,23 +32,10 @@
         android:layout_marginBottom="8dp" />
 
     <TextView
-        android:id="@+id/tv_import"
+        android:id="@+id/tv_statistics"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/menu_import"
-        android:textSize="20sp"
-        android:textColor="#FFFFFF"
-        android:padding="12dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:background="?attr/selectableItemBackground"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
-        android:id="@+id/tv_logs"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/menu_logs"
+        android:text="@string/menu_statistics"
         android:textSize="20sp"
         android:textColor="#FFFFFF"
         android:padding="12dp"
@@ -81,5 +55,18 @@
         android:clickable="true"
         android:focusable="true"
         android:background="?attr/selectableItemBackground" />
+
+    <TextView
+        android:id="@+id/tv_logs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/menu_logs"
+        android:textSize="20sp"
+        android:textColor="#FFFFFF"
+        android:padding="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground"
+        android:layout_marginBottom="8dp" />
 
 </LinearLayout>

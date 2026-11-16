@@ -7,6 +7,7 @@ import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.compose.ui.text.font.FontFamily
 import com.myapp.adventure.R
 import java.io.File
 import java.io.FileOutputStream
@@ -112,5 +113,24 @@ object FontManager {
     fun getSelectedFont(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_SELECTED_FONT, "По умолчанию") ?: "По умолчанию"
+    }
+
+    /**
+     * Returns the user-selected font as a Compose [FontFamily].
+     * - default → [FontFamily.Default] (system font, respects user's
+     *   system font settings).
+     * - bundled / custom .ttf → wrapped via [FontFamily] over the same
+     *   Typeface that the View world uses, so Compose and View screens
+     *   render identically.
+     *
+     * Font *size* scaling is applied separately in `AdventureTheme` via
+     * `LocalDensity.fontScale`; this method concerns only the typeface.
+     */
+    fun getFontFamily(context: Context): FontFamily {
+        val selected = getSelectedFont(context)
+        if (selected == "По умолчанию") return FontFamily.Default
+        val typeface = getTypeface(context, selected)
+        if (typeface == Typeface.DEFAULT) return FontFamily.Default
+        return FontFamily(typeface)
     }
 }

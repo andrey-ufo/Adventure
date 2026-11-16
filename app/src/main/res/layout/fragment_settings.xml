@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
 
     <TextView
         android:id="@+id/tv_settings_title"
@@ -15,33 +20,85 @@
         android:textColor="#FFFFFF"
         android:layout_marginBottom="24dp" />
 
-    <!-- Логирование -->
-    <CheckBox
-        android:id="@+id/cb_logging"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/settings_logging"
-        android:textColor="#FFFFFF"
-        android:layout_marginBottom="16dp" />
+    <!-- Permissions -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_permissions_title"
+            android:textAppearance="?attr/textAppearanceSubtitle1"
+            android:layout_marginTop="16dp" />
 
-    <!-- Health Connect -->
-    <CheckBox
-        android:id="@+id/cb_health_connect"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/settings_health_connect"
-        android:textColor="#FFFFFF"
-        android:layout_marginBottom="4dp" />
+        <Button
+            android:id="@+id/btn_enable_notifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_enable_notifications"
+            android:layout_marginTop="8dp" />
 
+        <Button
+            android:id="@+id/btn_enable_activity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_enable_activity"
+            android:layout_marginTop="8dp" />
+
+        <CheckBox
+            android:id="@+id/cb_health_connect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_health_connect"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_health_connect_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="12sp"
+            android:textColor="#9E9E9E"
+            android:layout_marginBottom="24dp"
+            android:visibility="gone" />
+
+    <!-- Темы -->
     <TextView
-        android:id="@+id/tv_health_connect_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="12sp"
-        android:textColor="#9E9E9E"
-        android:layout_marginBottom="24dp"
-        android:visibility="gone" />
+        android:text="@string/settings_theme_title"
+        android:textAppearance="?attr/textAppearanceSubtitle1"
+        android:layout_marginTop="16dp" />
+
+    <RadioGroup
+        android:id="@+id/rg_theme"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/rb_theme_system"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_theme_system" />
+
+        <RadioButton
+            android:id="@+id/rb_theme_light"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_theme_light" />
+
+        <RadioButton
+            android:id="@+id/rb_theme_dark"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_theme_dark" />
+    </RadioGroup>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?android:attr/listDivider"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp" />
 
     <!-- Размер шрифта -->
     <TextView
@@ -102,4 +159,14 @@
         android:padding="12dp"
         android:background="@drawable/scene_background" />
 
-</LinearLayout>
+        <!-- Логирование -->
+        <CheckBox
+            android:id="@+id/cb_logging"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_logging"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="16dp" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

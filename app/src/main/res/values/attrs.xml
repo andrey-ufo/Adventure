@@ -1,0 +1,12 @@
+<resources>
+    <!--
+        Custom semantic attrs for statuses not covered by Material 3.
+        Resolve in XML via ?attr/colorStatusSuccess etc. In Kotlin use
+        MaterialColors.getColor(view, R.attr.colorStatusSuccess, fallback).
+    -->
+    <attr name="colorStatusSuccess" format="color"/>
+    <attr name="colorStatusWarning" format="color"/>
+    <attr name="colorStatusDanger" format="color"/>
+    <attr name="colorStatusInfo" format="color"/>
+    <attr name="colorStatusNeutral" format="color"/>
+</resources>

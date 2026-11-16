@@ -1,7 +1,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.Adventure" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
-    </style>
+    <!--
+        Intentionally empty. Theme styles live only in values/themes.xml;
+        their <item> entries reference @color/md_* tokens, which are
+        redefined in values-night/colors.xml. The base style therefore
+        automatically adapts to night mode.
+
+        Add overrides here ONLY if a theme's structural mapping (which attr
+        points to which token) must differ between light and dark — that is
+        rare and should be avoided.
+    -->
 </resources>
