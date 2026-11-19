@@ -25,10 +25,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.gson.Gson
@@ -40,9 +42,11 @@ import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.TagCategory
+import com.myapp.adventure.data.SaveStatus
 import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.ValidationIssue
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.ui.theme.AdventureTheme
 import com.myapp.adventure.databinding.FragmentAdventureEditorBinding
 import com.myapp.adventure.ui.menu.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
@@ -68,8 +72,6 @@ class AdventureEditorFragment : Fragment() {
     private lateinit var variablesAdapter: VariablesAdapter
 
     private val debounceHandler = Handler(Looper.getMainLooper())
-    private var hasUnsavedChanges = false
-    private var menuExpanded = false
 
     private val saveRunnable = Runnable { saveDraftImmediate() }
 
@@ -111,78 +113,72 @@ class AdventureEditorFragment : Fragment() {
 
         binding.rvScenes.layoutManager = LinearLayoutManager(requireContext())
 
-        // Ф2.7: VariablesAdapter идёт **первым** — «сначала объяви тип,
-        // потом используй». InitialStateAdapter — вторым, сцены — третьими.
-        // Сдвиг для scroll-операций (`jumpToScene`, `btnAddScene`) теперь
-        // `+2` вместо `+1` (две header-секции сверху).
+        // Sections top-to-bottom: variables, initial state, scenes.
+        // Each of the first two is a single RecyclerView item whose content
+        // is Compose (`ComposeViewHolder`); the scenes use the real adapter.
         val concatAdapter = ConcatAdapter(variablesAdapter, initialStateAdapter, adapter)
         binding.rvScenes.adapter = concatAdapter
 
         binding.rvScenes.setItemViewCacheSize(15)
         binding.rvScenes.itemAnimator = null
 
-        binding.btnMenu.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, MenuFragment())
-                .addToBackStack(null)
-                .commit()
-        }
-        binding.btnToggleMenu.setOnClickListener { toggleMenu() }
-
-        binding.btnUndo.setOnClickListener { performUndo() }
-        binding.btnRedo.setOnClickListener { performRedo() }
-        binding.btnAddScene.setOnClickListener {
-            viewModel.addScene()
-            viewModel.commitSnapshot()
-            markDirty()
-            adapter.submitList()
-            binding.rvScenes.post {
-                if (_binding != null) {
-                    // Ф2.7: +2 — VariablesAdapter + InitialStateAdapter
-                    // занимают две header-позиции сверху; позиция новой
-                    // сцены в ConcatAdapter = viewModel.scenes.size + 2 - 1?
-                    // Нет: ConcatAdapter позиции: 0 = VariablesAdapter,
-                    // 1 = InitialStateAdapter, 2..N+2 = scenes.
-                    // Последняя сцена (index viewModel.scenes.size - 1 в
-                    // EditorSceneAdapter) → 2 + (size - 1) = size + 1.
-                    binding.rvScenes.scrollToPosition(viewModel.scenes.size + 1)
-                }
+        binding.composeToolbar.setContent {
+            AdventureTheme {
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
+                EditorToolbar(
+                    state = state,
+                    onMenuClick = {
+                        parentFragmentManager.beginTransaction()
+                            .replace(R.id.fragment_container, MenuFragment())
+                            .addToBackStack(null)
+                            .commit()
+                    },
+                    onToggleActions = { viewModel.toggleMenuExpanded() },
+                    onUndo = { performUndo() },
+                    onRedo = { performRedo() },
+                    onAddScene = {
+                        viewModel.addScene()
+                        viewModel.commitSnapshot()
+                        markDirty()
+                        adapter.submitList()
+                        binding.rvScenes.post {
+                            if (_binding != null) {
+                                // Items 0 = Variables, 1 = InitialState,
+                                // 2..N+1 = scenes. Last scene index = size + 1.
+                                binding.rvScenes.scrollToPosition(viewModel.scenes.size + 1)
+                            }
+                        }
+                    },
+                    onSave = { saveAdventure() },
+                    onLoad = { openFileLauncher.launch(arrayOf("application/json")) },
+                    onEditMeta = { openEditMetaDialog() },
+                    onValidate = { showValidationDialog() },
+                    onSearch = { showSearchDialog() },
+                    onStats = { showStatsDialog() },
+                    onTemplates = {
+                        parentFragmentManager.beginTransaction()
+                            .replace(R.id.fragment_container, TemplateListFragment())
+                            .addToBackStack(null)
+                            .commit()
+                    },
+                )
             }
-        }
-        binding.btnSave.setOnClickListener { saveAdventure() }
-        binding.btnLoad.setOnClickListener { openFileLauncher.launch(arrayOf("application/json")) }
-        binding.btnEditMeta.setOnClickListener { openEditMetaDialog() }
-        binding.btnValidate.setOnClickListener { showValidationDialog() }
-        binding.btnSearch.setOnClickListener { showSearchDialog() }
-        binding.btnStats.setOnClickListener { showStatsDialog() }
-        binding.btnMap.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, AdventureMapFragment())
-                .addToBackStack(null)
-                .commit()
-        }
-        binding.btnTemplates.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, TemplateListFragment())
-                .addToBackStack(null)
-                .commit()
         }
 
         (binding.rvScenes.layoutManager as? LinearLayoutManager)
             ?.initialPrefetchItemCount = 4
 
         adapter.submitList()
-        updateTitleField()
-        updateUndoRedoButtons()
+        viewModel.commitState()
 
         maybeRestoreDraft()
 
         if (!viewModel.isHistoryInitialized()) {
             viewModel.initHistory()
-            updateUndoRedoButtons()
         }
 
-        // Если редактор открывается после возврата из карты
+        // If the editor is reopened after visiting another screen that set a
+        // pending jump target (e.g. a future map-like view), honour it here.
         val pending = viewModel.pendingJumpToSceneUid
         if (pending != null) {
             viewModel.pendingJumpToSceneUid = null
@@ -207,28 +203,6 @@ class AdventureEditorFragment : Fragment() {
         }
     }
 
-    // ---------- Toolbar ----------
-
-    private fun toggleMenu() {
-        menuExpanded = !menuExpanded
-        binding.menuActions.visibility = if (menuExpanded) View.VISIBLE else View.GONE
-    }
-
-    private fun updateTitleField() {
-        if (_binding == null) return
-        binding.tvAdventureTitle.text = viewModel.title.ifBlank { getString(R.string.editor_title_untitled) }
-    }
-
-    private fun updateUndoRedoButtons() {
-        if (_binding == null) return
-        val undoEnabled = viewModel.canUndo() || (hasUnsavedChanges && viewModel.isHistoryInitialized())
-        val redoEnabled = viewModel.canRedo()
-        binding.btnUndo.isEnabled = undoEnabled
-        binding.btnUndo.alpha = if (undoEnabled) 1f else 0.4f
-        binding.btnRedo.isEnabled = redoEnabled
-        binding.btnRedo.alpha = if (redoEnabled) 1f else 0.4f
-    }
-
     // ---------- Редактирование названия ----------
 
     private fun openEditMetaDialog() {
@@ -249,7 +223,6 @@ class AdventureEditorFragment : Fragment() {
                 viewModel.title = etTitle.text.toString().trim()
                 viewModel.author = etAuthor.text.toString().trim()
                 viewModel.description = etDesc.text.toString().trim()
-                updateTitleField()
                 markDirty()
             }
             .setNegativeButton(R.string.dialog_cancel, null)
@@ -260,7 +233,7 @@ class AdventureEditorFragment : Fragment() {
 
     private fun performUndo() {
         debounceHandler.removeCallbacks(saveRunnable)
-        if (hasUnsavedChanges) viewModel.commitSnapshot()
+        if (viewModel.uiState.value.hasUnsavedChanges) viewModel.commitSnapshot()
         if (!viewModel.undo()) return
         saveDraftImmediate()
         refreshAfterHistoryChange()
@@ -278,18 +251,20 @@ class AdventureEditorFragment : Fragment() {
         adapter.submitList()
         initialStateAdapter.notifyDataSetChanged()
         variablesAdapter.notifyDataSetChanged()
-        updateTitleField()
-        updateUndoRedoButtons()
+        viewModel.commitState()
     }
 
     // ---------- Debounce-автосохранение ----------
 
     private fun markDirty() {
         if (_binding == null) return
-        hasUnsavedChanges = true
-        binding.tvSaveStatus.text = getString(R.string.editor_save_status_editing)
-        binding.tvSaveStatus.setTextColor(Color.parseColor("#FFC107"))
-        updateUndoRedoButtons()
+        viewModel.setHasUnsavedChanges(true)
+        viewModel.setSaveStatus(SaveStatus.EDITING)
+        // Push the current state to the Compose StateFlow. Adapters mutate
+        // EditorScene / EditorChoice / EditorTag fields in place and then
+        // call back here; Compose cannot observe in-place mutations, so
+        // every such change must funnel through a fresh deep copy.
+        viewModel.commitState()
         debounceHandler.removeCallbacks(saveRunnable)
         debounceHandler.postDelayed(saveRunnable, DEBOUNCE_MS)
     }
@@ -297,8 +272,7 @@ class AdventureEditorFragment : Fragment() {
     private fun saveDraftImmediate() {
         if (_binding == null) return
         debounceHandler.removeCallbacks(saveRunnable)
-        binding.tvSaveStatus.text = getString(R.string.editor_save_status_saving)
-        binding.tvSaveStatus.setTextColor(Color.parseColor("#9E9E9E"))
+        viewModel.setSaveStatus(SaveStatus.SAVING)
 
         viewModel.commitSnapshot()
         EditorDraftManager.saveDraft(
@@ -311,10 +285,8 @@ class AdventureEditorFragment : Fragment() {
             viewModel.initialStateTags,
             viewModel.scenes
         )
-        hasUnsavedChanges = false
-        binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved)
-        binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
-        updateUndoRedoButtons()
+        viewModel.setHasUnsavedChanges(false)
+        viewModel.setSaveStatus(SaveStatus.SAVED)
         Logger.log(requireContext(), "Черновик автосохранён, сцен: ${viewModel.scenes.size}")
     }
 
@@ -366,12 +338,10 @@ class AdventureEditorFragment : Fragment() {
                 adapter.submitList()
                 initialStateAdapter.notifyDataSetChanged()
                 variablesAdapter.notifyDataSetChanged()
-                updateTitleField()
-                updateUndoRedoButtons()
+                viewModel.commitState()
 
-                hasUnsavedChanges = false
-                binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved)
-                binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
+                viewModel.setHasUnsavedChanges(false)
+                viewModel.setSaveStatus(SaveStatus.SAVED)
                 Logger.log(requireContext(), "Черновик восстановлен, сцен: ${draft.scenes.size}")
             }
             .setNegativeButton(R.string.dialog_delete) { _, _ ->
@@ -392,7 +362,7 @@ class AdventureEditorFragment : Fragment() {
 
             debounceHandler.removeCallbacks(saveRunnable)
             EditorDraftManager.clearDraft(requireContext())
-            hasUnsavedChanges = false
+            viewModel.setHasUnsavedChanges(false)
 
             viewModel.title = adventure.title
             viewModel.author = adventure.author
@@ -425,13 +395,8 @@ class AdventureEditorFragment : Fragment() {
                     .setTitle(R.string.editor_dialog_types_missing_title)
                     .setMessage(R.string.editor_dialog_types_missing_message)
                     .setPositiveButton(R.string.dialog_declare) { _, _ ->
-                        viewModel.variablesExpanded = true
+                        viewModel.updateVariablesExpanded(true)
                         variablesAdapter.notifyDataSetChanged()
-                        binding.rvScenes.post {
-                            if (_binding != null) {
-                                binding.rvScenes.scrollToPosition(0)
-                            }
-                        }
                     }
                     .setNegativeButton(R.string.dialog_later, null)
                     .show()
@@ -579,11 +544,9 @@ class AdventureEditorFragment : Fragment() {
             adapter.submitList()
             initialStateAdapter.notifyDataSetChanged()
             variablesAdapter.notifyDataSetChanged()
-            updateTitleField()
-            updateUndoRedoButtons()
+            viewModel.commitState()
 
-            binding.tvSaveStatus.text = getString(R.string.editor_save_status_loaded)
-            binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
+            viewModel.setSaveStatus(SaveStatus.LOADED)
 
             Logger.log(requireContext(), "Приключение загружено из файла: ${uri.lastPathSegment}")
             Toast.makeText(requireContext(), R.string.editor_toast_loaded, Toast.LENGTH_SHORT).show()
@@ -733,10 +696,8 @@ class AdventureEditorFragment : Fragment() {
 
             if (saved) {
                 EditorDraftManager.clearDraft(requireContext())
-                hasUnsavedChanges = false
-                binding.tvSaveStatus.text = getString(R.string.editor_save_status_saved_to_file)
-                binding.tvSaveStatus.setTextColor(Color.parseColor("#4CAF50"))
-                updateUndoRedoButtons()
+                viewModel.setHasUnsavedChanges(false)
+                viewModel.setSaveStatus(SaveStatus.SAVED_TO_FILE)
             }
         } catch (e: Exception) {
             Logger.log(requireContext(), "Ошибка сохранения: ${e.message}")
@@ -1167,7 +1128,7 @@ class AdventureEditorFragment : Fragment() {
         binding.rvScenes.post {
             if (_binding == null) return@post
             (binding.rvScenes.layoutManager as? LinearLayoutManager)
-                // +2 — VariablesAdapter (позиция 0) + InitialStateAdapter (позиция 1)
+                // +2 — VariablesAdapter (0) + InitialStateAdapter (1)
                 ?.scrollToPositionWithOffset(pos + 2, 50)
 
             adapter.setHighlighted(uid)
@@ -1239,7 +1200,7 @@ class AdventureEditorFragment : Fragment() {
         super.onDestroyView()
         debounceHandler.removeCallbacks(saveRunnable)
 
-        if (_binding != null && hasUnsavedChanges && viewModel.scenes.isNotEmpty()) {
+        if (_binding != null && viewModel.uiState.value.hasUnsavedChanges && viewModel.scenes.isNotEmpty()) {
             EditorDraftManager.saveDraft(
                 requireContext(),
                 viewModel.title,

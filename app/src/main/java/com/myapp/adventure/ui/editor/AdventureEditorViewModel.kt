@@ -10,7 +10,9 @@ import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorSnapshot
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.EditorUiState
 import com.myapp.adventure.data.EditorVarDecl
+import com.myapp.adventure.data.SaveStatus
 import com.myapp.adventure.data.PlayerState
 import com.myapp.adventure.data.VariableDto
 import com.myapp.adventure.data.VarKind
@@ -46,6 +48,9 @@ import com.myapp.adventure.engine.parse.ConditionWriter
 import com.myapp.adventure.engine.parse.ParseError
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.utils.Logger
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class AdventureEditorViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -53,6 +58,74 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     var title: String = ""
     var author: String = ""
     var description: String = ""
+
+    // ------------------------------------------------------------------
+    // Compose state (Phase 3.1a)
+    //
+    // `uiState` is an immutable snapshot of the editor. Compose screens
+    // read it; the View-based adapters keep reading the mutable lists
+    // below. Every mutating entry point calls `commitState()` so the
+    // two stay in sync. See EditorUiState KDoc for the full rationale.
+    // ------------------------------------------------------------------
+
+    private val _uiState = MutableStateFlow(EditorUiState())
+    val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
+
+    fun commitState() {
+        // UI-only fields (saveStatus, hasUnsavedChanges, menuExpanded) are
+        // owned by the setters below — commitState must not reset them,
+        // otherwise a "Saving…" flicker would be lost on every keystroke.
+        val prev = _uiState.value
+        val rawCanUndo = canUndo()
+        val undoEnabled = rawCanUndo || (prev.hasUnsavedChanges && isHistoryInitialized())
+        val redoEnabled = canRedo()
+        _uiState.value = EditorUiState(
+            title = title,
+            author = author,
+            description = description,
+            variables = variables.map { it.copy() },
+            templates = templates.map { it.deepCopy() },
+            initialStateTags = initialStateTags.map { it.copy() },
+            scenes = scenes.map { it.deepCopy() },
+            expandedScenes = expandedScenes.toSet(),
+            expandedSceneSettings = expandedSceneSettings.toSet(),
+            expandedChoices = expandedChoices.toSet(),
+            expandedMapChapters = expandedMapChapters.toSet(),
+            isHistoryInitialized = isHistoryInitialized(),
+            pendingJumpToSceneUid = pendingJumpToSceneUid,
+            saveStatus = prev.saveStatus,
+            hasUnsavedChanges = prev.hasUnsavedChanges,
+            menuExpanded = prev.menuExpanded,
+            variablesExpanded = prev.variablesExpanded,
+            initialStateExpanded = prev.initialStateExpanded,
+            undoEnabled = undoEnabled,
+            redoEnabled = redoEnabled,
+        )
+    }
+
+    /** Updates the toolbar's save-status text; never touches list contents. */
+    fun setSaveStatus(status: SaveStatus) {
+        _uiState.value = _uiState.value.copy(saveStatus = status)
+    }
+
+    /**
+     * Updates the "has unsaved changes" flag, which feeds both the
+     * debounce-save pipeline (in the Fragment) and the toolbar's undo
+     * button (an "editing" adventure can be undone back to its saved
+     * snapshot even if `history.size == 1`).
+     */
+    fun setHasUnsavedChanges(value: Boolean) {
+        val undoEnabled = canUndo() || (value && isHistoryInitialized())
+        _uiState.value = _uiState.value.copy(
+            hasUnsavedChanges = value,
+            undoEnabled = undoEnabled,
+        )
+    }
+
+    /** Toggles the collapsible actions menu (undo/redo/save/load/…). */
+    fun toggleMenuExpanded() {
+        _uiState.value = _uiState.value.copy(menuExpanded = !_uiState.value.menuExpanded)
+    }
 
     val initialStateTags: MutableList<EditorTag> = mutableListOf()
     var initialStateExpanded: Boolean = false
@@ -120,19 +193,27 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     // ---------- Аккордеон сцен ----------
 
     fun isSceneExpanded(uid: String): Boolean = uid in expandedScenes
-    fun expandScene(uid: String) { expandedScenes.add(uid) }
+    fun expandScene(uid: String) {
+        expandedScenes.add(uid)
+        commitState()
+    }
 
     fun toggleSceneExpanded(uid: String): Boolean {
-        return if (uid in expandedScenes) {
+        val result = if (uid in expandedScenes) {
             expandedScenes.remove(uid)
             false
         } else {
             expandedScenes.add(uid)
             true
         }
+        commitState()
+        return result
     }
 
-    fun collapseAllScenes() { expandedScenes.clear() }
+    fun collapseAllScenes() {
+        expandedScenes.clear()
+        commitState()
+    }
 
     private fun pruneExpandedScenes() {
         val currentUids = scenes.map { it.uid }.toSet()
@@ -154,13 +235,15 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     fun isSceneSettingsExpanded(uid: String): Boolean = uid in expandedSceneSettings
 
     fun toggleSceneSettings(uid: String): Boolean {
-        return if (uid in expandedSceneSettings) {
+        val result = if (uid in expandedSceneSettings) {
             expandedSceneSettings.remove(uid)
             false
         } else {
             expandedSceneSettings.add(uid)
             true
         }
+        commitState()
+        return result
     }
 
     // ---------- Аккордеон выборов ----------
@@ -168,16 +251,21 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     fun isChoiceExpanded(uid: String): Boolean = uid in expandedChoices
 
     fun toggleChoiceExpanded(uid: String): Boolean {
-        return if (uid in expandedChoices) {
+        val result = if (uid in expandedChoices) {
             expandedChoices.remove(uid)
             false
         } else {
             expandedChoices.add(uid)
             true
         }
+        commitState()
+        return result
     }
 
-    fun collapseAllChoices() { expandedChoices.clear() }
+    fun collapseAllChoices() {
+        expandedChoices.clear()
+        commitState()
+    }
 
     private fun pruneExpandedChoices() {
         val currentUids = scenes.flatMap { it.choices.map { c -> c.uid } }.toSet()
@@ -191,15 +279,20 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     fun toggleMapChapterExpanded(index: Int) {
         if (index in expandedMapChapters) expandedMapChapters.remove(index)
         else expandedMapChapters.add(index)
+        commitState()
     }
 
     fun ensureFirstMapChapterExpanded(totalChapters: Int) {
         if (expandedMapChapters.isEmpty() && totalChapters > 0) {
             expandedMapChapters.add(0)
+            commitState()
         }
     }
 
-    fun collapseAllMapChapters() { expandedMapChapters.clear() }
+    fun collapseAllMapChapters() {
+        expandedMapChapters.clear()
+        commitState()
+    }
 
     // ---------- История Undo/Redo ----------
 
@@ -209,6 +302,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         history.clear()
         redoStack.clear()
         history.addLast(takeSnapshot())
+        commitState()
     }
 
     fun takeSnapshot(): EditorSnapshot = EditorSnapshot(
@@ -235,6 +329,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scenes.addAll(snapshot.scenes.map { it.deepCopy() })
         pruneExpandedScenes()
         pruneExpandedChoices()
+        commitState()
     }
 
     fun commitSnapshot() {
@@ -243,6 +338,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         history.addLast(current)
         while (history.size > MAX_HISTORY) history.removeFirst()
         redoStack.clear()
+        commitState()
     }
 
     fun undo(): Boolean {
@@ -250,6 +346,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val current = history.removeLast()
         redoStack.addLast(current)
         restoreSnapshot(history.last())
+        commitState()
         return true
     }
 
@@ -259,6 +356,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         history.addLast(next)
         while (history.size > MAX_HISTORY) history.removeFirst()
         restoreSnapshot(next)
+        commitState()
         return true
     }
 
@@ -317,9 +415,13 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scene.id = newId
         scene.idIsAuto = false
 
-        if (newId == oldId) return false
+        if (newId == oldId) {
+            commitState()
+            return false
+        }
         val updatedRefs = updateReferences(oldId, newId)
         Logger.log(context, "ID сцены '${scene.title}' заморожен: '$oldId' → '$newId', обновлено ссылок: $updatedRefs")
+        commitState()
         return true
     }
 
@@ -335,6 +437,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
         val updatedRefs = if (newId != oldId) updateReferences(oldId, newId) else 0
         Logger.log(context, "ID сцены пересобран: '$oldId' → '$newId', обновлено ссылок: $updatedRefs")
+        commitState()
         return RebuildResult(oldId, newId, updatedRefs)
     }
 
@@ -358,6 +461,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 }
             }
         }
+        commitState()
     }
 
     private fun updateReferences(oldId: String, newId: String): Int {
@@ -381,6 +485,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scenes.add(newScene)
         expandedScenes.add(newScene.uid)
         Logger.log(context, "Добавлена сцена, индекс: ${scenes.size - 1}")
+        commitState()
     }
 
     fun addSceneWithTitle(title: String): EditorScene {
@@ -395,6 +500,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scenes.add(newScene)
         expandedScenes.add(newScene.uid)
         Logger.log(context, "Добавлена сцена '${trimmed.ifEmpty { "(без названия)" }}', индекс: ${scenes.size - 1}")
+        commitState()
         return newScene
     }
 
@@ -403,6 +509,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             val removed = scenes.removeAt(index)
             expandedScenes.remove(removed.uid)
             Logger.log(context, "Удалена сцена: ${removed.title.ifEmpty { "(без названия)" }}, индекс: $index")
+            commitState()
         }
     }
 
@@ -411,6 +518,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             scenes.forEach { if (it.uid != sceneUid) it.isDeathScene = false }
         }
         scenes.find { it.uid == sceneUid }?.isDeathScene = enabled
+        commitState()
     }
 
     fun addChoice(sceneIndex: Int) {
@@ -419,6 +527,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scene.choices.add(choice)
         expandedChoices.add(choice.uid)
         Logger.log(context, "Добавлен выбор в сцену '${scene.title}' (индекс $sceneIndex)")
+        commitState()
     }
 
     fun removeChoice(sceneIndex: Int, choiceIndex: Int) {
@@ -426,6 +535,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         if (choiceIndex in scene.choices.indices) {
             scene.choices.removeAt(choiceIndex)
             Logger.log(context, "Удалён выбор из сцены '${scene.title}' (индекс сцены $sceneIndex, выбор $choiceIndex)")
+            commitState()
         }
     }
 
@@ -433,6 +543,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val scene = scenes.getOrNull(sceneIndex) ?: return
         scene.tags.add(EditorTag())
         Logger.log(context, "Добавлена метка в сцену '${scene.title}' (индекс $sceneIndex)")
+        commitState()
     }
 
     fun removeTag(sceneIndex: Int, tagIndex: Int) {
@@ -440,6 +551,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         if (tagIndex in scene.tags.indices) {
             val removedTag = scene.tags.removeAt(tagIndex)
             Logger.log(context, "Удалена метка '${removedTag.name}' из сцены '${scene.title}' (индекс сцены $sceneIndex)")
+            commitState()
         }
     }
 
@@ -454,13 +566,88 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     fun addInitialStateTag() {
         initialStateTags.add(EditorTag(category = TagCategory.JOURNAL))
+        commitState()
+    }
+
+    fun updateInitialStateExpanded(expanded: Boolean) {
+        if (initialStateExpanded == expanded) return
+        initialStateExpanded = expanded
+        _uiState.value = _uiState.value.copy(initialStateExpanded = expanded)
+    }
+
+    fun updateInitialStateTagName(index: Int, name: String) {
+        initialStateTags.getOrNull(index)?.let { if (it.name != name) it.name = name }
+    }
+
+    fun updateInitialStateTagValue(index: Int, value: Int) {
+        initialStateTags.getOrNull(index)?.let { if (it.value != value) it.value = value }
+    }
+
+    fun updateInitialStateTagDisplay(index: Int, display: String) {
+        initialStateTags.getOrNull(index)?.let { if (it.displayName != display) it.displayName = display }
+    }
+
+    fun updateInitialStateTagCategory(index: Int, category: TagCategory) {
+        val tag = initialStateTags.getOrNull(index) ?: return
+        if (tag.category == category) return
+        tag.category = category
+        // Matches `renderTagRow` semantics: switching to ITEM with a
+        // zero value sets it to 1 (an item counter without a count is
+        // meaningless).
+        if (category == TagCategory.ITEM && tag.value == 0) tag.value = 1
+    }
+
+    fun updateInitialStateTagVisible(index: Int, visible: Boolean) {
+        initialStateTags.getOrNull(index)?.let { if (it.visible != visible) it.visible = visible }
     }
 
     // ---------- Ф2.7: переменные ----------
 
+
+    fun updateVariablesExpanded(expanded: Boolean) {
+        if (variablesExpanded == expanded) return
+        variablesExpanded = expanded
+        _uiState.value = _uiState.value.copy(variablesExpanded = expanded)
+    }
+
+    fun toggleVariablesExpanded() {
+        updateVariablesExpanded(!variablesExpanded)
+    }
+
+    /**
+     * Mutates a variable's name in place. No `commitState()` — the caller
+     * (Fragment `markDirty()`) does one commit per keystroke; see
+     * Phase 3.1b KDoc for the rationale. `commitState()` would deep-copy
+     * every scene on each character.
+     */
+    fun updateVariableName(index: Int, name: String) {
+        val v = variables.getOrNull(index) ?: return
+        if (v.name == name) return
+        v.name = name
+    }
+
+    fun updateVariableKind(index: Int, kind: VarKind) {
+        val v = variables.getOrNull(index) ?: return
+        if (v.kind == kind) return
+        v.kind = kind
+    }
+
+    fun updateVariableMin(index: Int, min: Int?) {
+        val v = variables.getOrNull(index) ?: return
+        if (v.min == min) return
+        v.min = min
+    }
+
+    fun updateVariableMax(index: Int, max: Int?) {
+        val v = variables.getOrNull(index) ?: return
+        if (v.max == max) return
+        v.max = max
+    }
+
     fun addVariable() {
         variables.add(EditorVarDecl())
         Logger.log(context, "Добавлена переменная, индекс: ${variables.size - 1}")
+        commitState()
     }
 
     fun removeVariable(index: Int) {
@@ -470,6 +657,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 context,
                 "Удалена переменная '${removed.name.ifEmpty { "(без имени)" }}', индекс: $index",
             )
+            commitState()
         }
     }
 
@@ -478,6 +666,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     fun addTemplate() {
         templates.add(EditorTemplate())
         Logger.log(context, "Добавлен шаблон, индекс: ${templates.size - 1}")
+        commitState()
     }
 
     fun removeTemplate(index: Int) {
@@ -487,6 +676,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 context,
                 "Удалён шаблон '${removed.id.ifEmpty { "(без id)" }}', индекс: $index",
             )
+            commitState()
         }
     }
 
@@ -584,6 +774,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     fun removeInitialStateTag(index: Int) {
         if (index in initialStateTags.indices) {
             initialStateTags.removeAt(index)
+            commitState()
         }
     }
 
@@ -1285,6 +1476,13 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             Logger.log(context, "applyTemplateToChoice failed: ${e.message}")
             null
         }
+    }
+
+    init {
+        // Placed after all property declarations so that `variables`,
+        // `templates`, `expandedScenes`, etc. are initialized before
+        // the first snapshot is taken.
+        commitState()
     }
 
     companion object {

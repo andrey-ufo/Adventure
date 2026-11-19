@@ -38,7 +38,7 @@
     <!-- MENU (MenuFragment)                                          -->
     <!-- ============================================================ -->
     <string name="menu_library">Библиотека</string>
-    <string name="menu_statistics">Статистика шагов</string>
+    <string name="menu_statistics">Статистика</string>
     <string name="menu_create">Редактор</string>
     <string name="menu_import">Загрузить приключение</string>
     <string name="menu_logs">Логи игры</string>
@@ -723,4 +723,6 @@
     <string name="settings_enable_activity">Включить доступ к активности</string>
     <string name="settings_manage_notifications">Управлять разрешением на уведомления</string>
     <string name="settings_manage_activity">Управлять разрешением на активность</string>
+
+    <string name="library_loading">Загрузка…</string>
 </resources>
