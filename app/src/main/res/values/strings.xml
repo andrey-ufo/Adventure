@@ -62,7 +62,7 @@
     <string name="editor_validate">Проверить</string>
     <string name="editor_search">Поиск</string>
     <string name="editor_map">Карта</string>
-    <string name="editor_templates_button">📦 Шаблоны</string>
+    <string name="editor_templates_button">Шаблоны</string>
 
     <string name="editor_save_status_editing">Изменения…</string>
     <string name="editor_save_status_saving">Сохранение…</string>
@@ -199,7 +199,7 @@
     <!-- ============================================================ -->
     <!-- VARIABLES (section header + VarKind display names)           -->
     <!-- ============================================================ -->
-    <string name="variables_header_title">📋 Переменные</string>
+    <string name="variables_header_title">Переменные</string>
     <string name="variables_header_description">Объявления типов переменных. Если пусто — type checking работает в fallback-режиме (по tags + initial_state).</string>
     <string name="variables_header_add">+ Переменная</string>
     <string name="variable_name_hint">Имя переменной</string>
@@ -216,10 +216,15 @@
     <!-- ============================================================ -->
     <string name="scene_picker_title">Выбрать сцену</string>
     <string name="scene_picker_nothing_found">Ничего не найдено</string>
-    <string name="scene_picker_search_hint">Поиск по ID или названию сцены</string>
+    <string name="scene_picker_query_hint">Поиск по ID или названию сцены</string>
     <string name="scene_picker_enter_query">Введите ID или название сцены</string>
+    <string name="scene_picker_search_hint">Поиск по ID или названию</string>
     <string name="scene_picker_create_new">➕ Создать новую сцену</string>
     <string name="scene_no_id">(без id)</string>
+    <string name="scene_picker_self_row_label">@self — эта же сцена</string>
+    <string name="scene_picker_start_typing">Начните вводить ID или название</string>
+    <string name="editor_choice_next_scene_label">→ Сцена:</string>
+    <string name="item_editor_choice_next_scene_create_new">+ Создать новую</string>
 
     <!-- ============================================================ -->
     <!-- MAP (AdventureMapFragment / AdventureMapAdapter)             -->
@@ -570,7 +575,7 @@
     <string name="item_editor_tag_visible_content_description">Показывать в статистике героя</string>
 
     <!-- Item: initial state -->
-    <string name="item_initial_state_title">🎬 Начальное состояние</string>
+    <string name="item_initial_state_title">Начальное состояние</string>
     <string name="item_initial_state_description">Метки и статы, с которыми игрок входит в историю до первой сцены. Например, стартовое здоровье, инвентарь, флаги.</string>
     <string name="item_initial_state_add_tag">+ Метка</string>
 
@@ -725,4 +730,5 @@
     <string name="settings_manage_activity">Управлять разрешением на активность</string>
 
     <string name="library_loading">Загрузка…</string>
+    <string name="dialog_new_scene_id_note">ID будет сгенерирован из названия автоматически.</string>
 </resources>

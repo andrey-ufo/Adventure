@@ -78,8 +78,10 @@ fun EditorTagRow(
                 placeholder = stringResource(R.string.item_editor_tag_display_name_hint),
                 modifier = Modifier.weight(1f),
             )
-            TagCategoryDropdown(
+            BareDropdown(
                 current = tag.category,
+                items = listOf(TagCategory.HEALTH, TagCategory.ITEM, TagCategory.JOURNAL),
+                label = { stringResource(categoryLabelRes(it)) },
                 onSelected = onCategoryChanged,
                 modifier = Modifier.width(120.dp),
             )

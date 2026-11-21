@@ -172,3 +172,33 @@ fun pluralWithNumber(context: android.content.Context, pluralsResId: Int, n: Int
     val suffix = pluralText.removePrefix(n.toString()).trim()
     return "$formattedNumber $suffix"
 }
+
+/**
+ * Phase 3.1c-iii-b: "N шагов (≈ X минут) · повторяемый" display for a
+ * scene's step gate. Moved here from the deleted `EditorSceneAdapter`.
+ */
+fun formatStepsDisplay(
+    context: android.content.Context,
+    steps: Int,
+    repeatable: Boolean = false,
+): String {
+    if (steps <= 0) return context.getString(R.string.editor_steps_display_unset)
+    val minutes = ((steps + 99) / 100).coerceAtLeast(1)
+    val timeText = when {
+        minutes < 60 -> context.getString(R.string.editor_steps_time_minutes_fmt, minutes)
+        else -> {
+            val hours = minutes / 60
+            val mins = minutes % 60
+            if (mins == 0) {
+                context.getString(R.string.editor_steps_time_hours_fmt, hours)
+            } else {
+                context.getString(R.string.editor_steps_time_hours_minutes_fmt, hours, mins)
+            }
+        }
+    }
+    val stepsText = pluralWithNumber(context, R.plurals.steps, steps)
+    val mode = if (repeatable) {
+        context.getString(R.string.editor_steps_display_repeatable_suffix)
+    } else ""
+    return context.getString(R.string.editor_steps_display_fmt, stepsText, timeText, mode)
+}

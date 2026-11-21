@@ -1478,6 +1478,224 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    // ------------------------------------------------------------------
+    // Phase 3.1c-iii: per-scene update methods for Compose UI.
+    // These mutate the scene in place (deepCopy stays only in commitState,
+    // called from Fragment.markDirty → commitSnapshot path). Each method
+    // is intentionally narrow so the composable does not have to touch
+    // mutable EditorScene fields directly.
+    // ------------------------------------------------------------------
+
+    fun updateSceneTitle(uid: String, title: String) {
+        scenes.find { it.uid == uid }?.let { if (it.title != title) it.title = title }
+    }
+
+    fun updateSceneText(uid: String, text: String) {
+        scenes.find { it.uid == uid }?.let { if (it.text != text) it.text = text }
+    }
+
+    fun setSceneChapterEnd(uid: String, value: Boolean) {
+        val s = scenes.find { it.uid == uid } ?: return
+        if (s.isChapterEnd != value) {
+            s.isChapterEnd = value
+            _uiState.value = _uiState.value.copy(
+                scenes = scenes.map { it.deepCopy() },
+            )
+        }
+    }
+
+    fun setSceneEnding(uid: String, value: Boolean) {
+        val s = scenes.find { it.uid == uid } ?: return
+        if (s.isEnding != value) s.isEnding = value
+    }
+
+    fun setSceneDeathAllowStepBack(uid: String, value: Boolean) {
+        scenes.find { it.uid == uid }?.let { if (it.deathAllowStepBack != value) it.deathAllowStepBack = value }
+    }
+
+    fun setSceneDeathAllowChapterRestart(uid: String, value: Boolean) {
+        scenes.find { it.uid == uid }?.let { if (it.deathAllowChapterRestart != value) it.deathAllowChapterRestart = value }
+    }
+
+    fun setSceneDeathAllowAdventureRestart(uid: String, value: Boolean) {
+        scenes.find { it.uid == uid }?.let { if (it.deathAllowAdventureRestart != value) it.deathAllowAdventureRestart = value }
+    }
+
+    fun setSceneGate(uid: String, steps: Int, repeatable: Boolean) {
+        val s = scenes.find { it.uid == uid } ?: return
+        if (s.gateRequiredSteps == steps && s.gateRepeatable == repeatable) return
+        s.gateRequiredSteps = steps
+        s.gateRepeatable = repeatable
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    fun addSceneTag(uid: String) {
+        val s = scenes.find { it.uid == uid } ?: return
+        s.tags.add(EditorTag())
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    fun removeSceneTag(uid: String, tagIdx: Int) {
+        val s = scenes.find { it.uid == uid } ?: return
+        if (tagIdx in s.tags.indices) {
+            s.tags.removeAt(tagIdx)
+            _uiState.value = _uiState.value.copy(
+                scenes = scenes.map { it.deepCopy() },
+            )
+        }
+    }
+
+    fun updateSceneTag(
+        uid: String,
+        tagIdx: Int,
+        name: String,
+        value: Int,
+        displayName: String,
+        category: TagCategory,
+        visible: Boolean,
+    ) {
+        val tag = scenes.find { it.uid == uid }?.tags?.getOrNull(tagIdx) ?: return
+        if (tag.name != name) tag.name = name
+        if (tag.value != value) tag.value = value
+        if (tag.displayName != displayName) tag.displayName = displayName
+        if (tag.category != category) tag.category = category
+        if (tag.visible != visible) tag.visible = visible
+    }
+
+    /** Scene removal by uid — the composable knows the uid, not the index. */
+    fun removeSceneByUid(uid: String) {
+        val idx = scenes.indexOfFirst { it.uid == uid }
+        if (idx < 0) return
+        removeScene(idx)
+    }
+
+    /**
+     * Create a scene with the given title, append it, and return it. Mirrors
+     * `addSceneWithTitle` but returns `EditorScene` so Compose callers can
+     * (eventually) link it from a choice. Scene ids are frozen after
+     * insertion, same as `addSceneWithTitle`.
+     */
+    fun addSceneAndReturn(title: String): EditorScene = addSceneWithTitle(title)
+
+    /**
+     * Phase 3.1c-iii-c: request the Compose scene list to scroll to the
+     * scene with [uid] and highlight it for ~2.5s. Sets `pendingJumpToSceneUid`
+     * on the state; `EditorScenesList` observes it and calls
+     * [clearPendingJumpToScene] after the scroll completes.
+     *
+     * Expands the scene atomically with the jump request — avoids a double
+     * `commitState()` (one for expand, one for pending uid).
+     */
+    fun requestJumpToScene(uid: String) {
+        expandedScenes.add(uid)
+        pendingJumpToSceneUid = uid
+        _uiState.value = _uiState.value.copy(
+            expandedScenes = expandedScenes.toSet(),
+            pendingJumpToSceneUid = uid,
+        )
+    }
+
+    /** Called by `EditorScenesList` after the jump animation has started. */
+    fun clearPendingJumpToScene() {
+        if (pendingJumpToSceneUid == null) return
+        pendingJumpToSceneUid = null
+        _uiState.value = _uiState.value.copy(pendingJumpToSceneUid = null)
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 3.1c-iii-b-2: per-choice update methods for Compose UI.
+    // ------------------------------------------------------------------
+
+    fun updateChoiceText(sceneUid: String, choiceUid: String, text: String) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        scene.choices.find { it.uid == choiceUid }?.let { if (it.text != text) it.text = text }
+    }
+
+    fun updateChoiceCondition(sceneUid: String, choiceUid: String, condition: String) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        scene.choices.find { it.uid == choiceUid }?.let {
+            if (it.conditionTag != condition) it.conditionTag = condition
+        }
+    }
+
+    fun setChoiceNextSceneId(sceneUid: String, choiceUid: String, nextSceneId: String) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        val choice = scene.choices.find { it.uid == choiceUid } ?: return
+        if (choice.nextSceneId == nextSceneId) return
+        choice.nextSceneId = nextSceneId
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    fun addChoiceToScene(sceneUid: String): EditorChoice? {
+        val scene = scenes.find { it.uid == sceneUid } ?: return null
+        val choice = EditorChoice()
+        scene.choices.add(choice)
+        expandedChoices.add(choice.uid)
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+            expandedChoices = expandedChoices.toSet(),
+        )
+        return choice
+    }
+
+    fun removeChoiceByUid(sceneUid: String, choiceUid: String) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        val idx = scene.choices.indexOfFirst { it.uid == choiceUid }
+        if (idx < 0) return
+        scene.choices.removeAt(idx)
+        expandedChoices.remove(choiceUid)
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+            expandedChoices = expandedChoices.toSet(),
+        )
+    }
+
+    fun applyChoiceTags(sceneUid: String, choiceUid: String, newTags: List<EditorTag>) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        val choice = scene.choices.find { it.uid == choiceUid } ?: return
+        choice.tags.clear()
+        choice.tags.addAll(newTags.map { it.copy() })
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    /**
+     * Phase 3.1c-iii-b-3-ii-a: apply a template to [sceneUid] and append the
+     * resulting fully-expanded `EditorChoice`. Returns `true` on success.
+     *
+     * Mirrors the old `EditorSceneAdapter.applyTemplateAndInsert`: template
+     * lookup + condition parse + `applyTemplate` expansion all happen inside
+     * `applyTemplateToChoice`. `@self` is resolved against the scene id.
+     * On failure (`applyTemplateToChoice` returns null — deleted template,
+     * unparseable condition, or args mismatch) the scene is unchanged.
+     */
+    fun addChoiceFromTemplate(
+        sceneUid: String,
+        templateUid: String,
+        args: Map<String, String>,
+    ): Boolean {
+        val scene = scenes.find { it.uid == sceneUid } ?: return false
+        val newChoice = applyTemplateToChoice(
+            templateUid = templateUid,
+            args = args,
+            currentSceneId = scene.id,
+        ) ?: return false
+        scene.choices.add(newChoice)
+        expandedChoices.add(newChoice.uid)
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+            expandedChoices = expandedChoices.toSet(),
+        )
+        return true
+    }
+
     init {
         // Placed after all property declarations so that `variables`,
         // `templates`, `expandedScenes`, etc. are initialized before

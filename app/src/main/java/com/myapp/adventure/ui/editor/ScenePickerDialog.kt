@@ -1,190 +1,150 @@
 package com.myapp.adventure.ui.editor
 
-import android.app.AlertDialog
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import android.view.LayoutInflater
-import android.view.View
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
 import com.myapp.adventure.data.EditorScene
 
+private const val SCENE_PICKER_MAX_RESULTS = 50
+
 /**
- * Ф4.3.2a: reusable scene picker dialog.
+ * Phase 3.1c-iii-b-3-i: reusable scene picker dialog (Compose rewrite of
+ * the old View-based `ScenePickerDialog`).
  *
- * **Why not a giant `Spinner`.** With 50+ scenes a `Spinner` (used for
- * `EditorChoice.nextSceneId` in `EditorSceneAdapter`) becomes a
- * scroll-torture list with no search. This dialog replaces that pattern
- * for the template editor: search by `id` or `title` (case-insensitive,
- * debounced), a compact two-line row per scene (title bold, id mono
- * grey), and **special rows** at the top for template-only cases:
- * - `@self` — "the scene where this template is applied" (only when
- *   `allowSelf = true`, i.e. template editor, not plain choice picker);
- * - "create new scene" — opens a small dialog, calls
- *   `onCreateNew(title)`, expects the caller to create the scene and
- *   return its id via the `onPicked` callback chain.
+ * Search by `id` or `title`, case-insensitive. Empty query → hint;
+ * non-empty with no matches → "nothing found". Results capped at
+ * [SCENE_PICKER_MAX_RESULTS] to keep the dialog fast with 500+ scenes.
  *
- * **Empty query → empty result list.** A 500-scene adventure never
- * renders 500 rows. The author types two characters and sees the
- * filtered subset; special rows are always visible.
- *
- * **Reusability.** The dialog has no dependency on the editor
- * `Fragment`/`ViewModel`; caller passes scenes and callbacks. Future
- * refactor of `EditorChoice.nextSceneId` (separate batch) can reuse
- * this dialog unchanged.
+ * `allowSelf = true` adds a `@self` special row at the top (used by the
+ * template editor; the plain-choice picker passes `false`). Does not
+ * create scenes — the caller wires a "new scene" flow separately via
+ * `NewSceneDialog`.
  */
-object ScenePickerDialog {
-
-    private const val DEBOUNCE_MS = 200L
-    private const val MAX_RESULTS = 50
-
-    /**
-     * @param context used to build the dialog.
-     * @param scenes available scenes; caller passes
-     *   `viewModel.scenes` (already sorted by creation order).
-     * @param initialSceneId current value; `""` means "not picked yet",
-     *   `"@self"` shows the `@self` special row as selected (visual cue
-     *   only — the list itself does not pre-highlight).
-     * @param allowSelf whether the `@self` special row is shown. `true`
-     *   for template editor, `false` for plain-choice picker.
-     * @param onPicked called with the chosen scene id (or `"@self"`).
-     * @param onCreateNew called with the title the author typed for a
-     *   new scene. The caller is expected to create the scene
-     *   (`viewModel.addSceneWithTitle(title)`) and to call `onPicked` on
-     *   the created scene's id. The dialog closes before this call; the
-     *   caller opens any follow-up UI (e.g. re-shows the picker).
-     */
-    fun show(
-        context: Context,
-        scenes: List<EditorScene>,
-        initialSceneId: String,
-        allowSelf: Boolean,
-        onPicked: (String) -> Unit,
-        onCreateNew: (String) -> Unit,
-    ) {
-        val dialogView = LayoutInflater.from(context)
-            .inflate(R.layout.dialog_scene_picker, null)
-        val etQuery = dialogView.findViewById<EditText>(R.id.et_scene_query)
-        val tvHint = dialogView.findViewById<TextView>(R.id.tv_scene_picker_hint)
-        val tvPickSelf = dialogView.findViewById<TextView>(R.id.tv_pick_self)
-        val tvPickCreateNew = dialogView.findViewById<TextView>(R.id.tv_pick_create_new)
-        val scrollResults = dialogView.findViewById<View>(R.id.scroll_results)
-        val containerResults = dialogView.findViewById<LinearLayout>(R.id.container_results)
-
-        val dialog = AlertDialog.Builder(context)
-            .setTitle(R.string.scene_picker_title)
-            .setView(dialogView)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .create()
-
-        tvPickSelf.visibility = if (allowSelf) View.VISIBLE else View.GONE
-
-        val handler = Handler(Looper.getMainLooper())
-        var pendingSearch: Runnable? = null
-
-        fun renderResults(query: String) {
-            containerResults.removeAllViews()
-            val trimmed = query.trim()
-            if (trimmed.isEmpty()) {
-                scrollResults.visibility = View.GONE
-                tvHint.visibility = View.VISIBLE
-                return
-            }
-            val lower = trimmed.lowercase()
-            val filtered = scenes
-                .filter { scene ->
-                    scene.id.lowercase().contains(lower) ||
-                            scene.title.lowercase().contains(lower)
-                }
-                .take(MAX_RESULTS)
-            if (filtered.isEmpty()) {
-                scrollResults.visibility = View.GONE
-                tvHint.text = context.getString(R.string.scene_picker_nothing_found)
-                tvHint.visibility = View.VISIBLE
-                return
-            }
-            tvHint.visibility = View.GONE
-            scrollResults.visibility = View.VISIBLE
-            val inflater = LayoutInflater.from(context)
-            for (scene in filtered) {
-                val row = inflater.inflate(
-                    R.layout.item_scene_picker_row,
-                    containerResults,
-                    false,
-                )
-                val tvTitle = row.findViewById<TextView>(R.id.tv_row_title)
-                val tvId = row.findViewById<TextView>(R.id.tv_row_id)
-                tvTitle.text = scene.title.ifBlank { context.getString(R.string.label_without_title) }
-                tvId.text = scene.id.ifEmpty { context.getString(R.string.scene_no_id) }
-                row.setOnClickListener {
-                    onPicked(scene.id)
-                    dialog.dismiss()
-                }
-                containerResults.addView(row)
-            }
-        }
-
-        etQuery.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                pendingSearch?.let { handler.removeCallbacks(it) }
-                val q = s?.toString().orEmpty()
-                val r = Runnable { renderResults(q) }
-                pendingSearch = r
-                handler.postDelayed(r, DEBOUNCE_MS)
-            }
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
-        })
-
-        tvPickSelf.setOnClickListener {
-            onPicked("@self")
-            dialog.dismiss()
-        }
-
-        tvPickCreateNew.setOnClickListener {
-            dialog.dismiss()
-            showCreateNewSceneDialog(context, onCreateNew)
-        }
-
-        dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
-        dialog.show()
-        etQuery.requestFocus()
-
-        // Pre-fill the query with the id part of the current scene
-        // (helper: authors often refine an existing pick, not replace it).
-        if (initialSceneId.isNotEmpty() && initialSceneId != "@self") {
-            val match = scenes.firstOrNull { it.id == initialSceneId }
-            if (match != null) {
-                etQuery.setText(match.id)
-                etQuery.setSelection(etQuery.text.length)
-            }
-        }
+@Composable
+fun ScenePickerDialog(
+    scenes: List<EditorScene>,
+    initialSceneId: String,
+    allowSelf: Boolean,
+    onPicked: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember {
+        mutableStateOf(
+            if (initialSceneId.isNotEmpty() && initialSceneId != "@self") {
+                scenes.firstOrNull { it.id == initialSceneId }?.id ?: ""
+            } else ""
+        )
     }
 
-    /**
-     * Local "new scene" prompt. Not reusing
-     * `EditorSceneAdapter.showNewSceneDialog` because that one is tied to
-     * a `ViewHolder` and to `holder.bindingAdapterPosition`; here we only
-     * need the title and a callback.
-     */
-    private fun showCreateNewSceneDialog(
-        context: Context,
-        onCreateNew: (String) -> Unit,
-    ) {
-        val dialogView = LayoutInflater.from(context)
-            .inflate(R.layout.dialog_new_scene, null)
-        val etTitle = dialogView.findViewById<EditText>(R.id.et_new_scene_title)
-        AlertDialog.Builder(context)
-            .setTitle(R.string.editor_new_scene_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.dialog_create) { _, _ ->
-                val title = etTitle.text.toString().trim()
-                onCreateNew(title)
+    val trimmed = query.trim().lowercase()
+    val filtered = remember(scenes, trimmed) {
+        if (trimmed.isEmpty()) emptyList()
+        else scenes
+            .filter { it.id.lowercase().contains(trimmed) || it.title.lowercase().contains(trimmed) }
+            .take(SCENE_PICKER_MAX_RESULTS)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.scene_picker_title)) },
+        text = {
+            Column {
+                BareTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = stringResource(R.string.scene_picker_query_hint),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (allowSelf) {
+                    Text(
+                        text = stringResource(R.string.scene_picker_self_row_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPicked("@self") }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                    )
+                }
+                when {
+                    trimmed.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.scene_picker_start_typing),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                    filtered.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.scene_picker_nothing_found),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp)
+                                .padding(top = 8.dp),
+                        ) {
+                            items(filtered, key = { it.uid }) { scene ->
+                                ScenePickerRow(
+                                    scene = scene,
+                                    onClick = { onPicked(scene.id) },
+                                )
+                            }
+                        }
+                    }
+                }
             }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dialog_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ScenePickerRow(scene: EditorScene, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    ) {
+        Text(
+            text = scene.title.ifBlank { stringResource(R.string.label_without_title) },
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = scene.id.ifEmpty { stringResource(R.string.scene_no_id) },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

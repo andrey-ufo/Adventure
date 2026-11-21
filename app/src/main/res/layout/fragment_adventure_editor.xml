@@ -4,23 +4,17 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <!-- Toolbar + collapsible actions menu (Compose, see EditorToolbar.kt) -->
+    <!-- Toolbar (Compose, see EditorToolbar.kt) -->
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/compose_toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <!-- Initial state + scenes (View-based; migrate to Compose in 3.1c-ii / 3.1c-iii) -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_scenes"
+    <!-- Entire editor body: variables + initial-state + scenes (Compose) -->
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/compose_body"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="88dp"
-        android:clipToPadding="false"
-        android:overScrollMode="never" />
+        android:layout_weight="1" />
 
 </LinearLayout>
