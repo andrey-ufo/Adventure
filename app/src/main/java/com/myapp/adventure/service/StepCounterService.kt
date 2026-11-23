@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.myapp.adventure.MainActivity
 import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.step.StepSourceManager
 import com.myapp.adventure.utils.StepHistoryManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -253,17 +254,23 @@ class StepCounterService : Service(), SensorEventListener {
 
                 val delta = pendingDelta.getAndSet(0)
                 if (delta > 0) {
-                    try {
-                        StepHistoryManager.recordDelta(applicationContext, delta)
-                    } catch (e: Exception) {
-                        Logger.log(applicationContext, "recordDelta failed: ${e.message}")
+                    // When HC is the active source, its own delta tracking
+                    // already covers these steps. Recording the sensor delta
+                    // would double-count them.
+                    if (!StepSourceManager.isHealthConnectActuallyUsable(applicationContext)) {
+                        try {
+                            StepHistoryManager.recordDelta(applicationContext, delta)
+                        } catch (e: Exception) {
+                            Logger.log(applicationContext, "recordDelta failed: ${e.message}")
+                        }
                     }
                 }
 
                 if (rebootDetected.compareAndSet(true, false)) {
                     Logger.log(
                         applicationContext,
-                        "Sensor reboot detected, baseline reset to $lastRawSteps"
+                        "Sensor reboot detected, baseline reset to $lastRawSteps " +
+                                "(raw counter restarted after boot; deltas resume from this point)"
                     )
                 }
 
@@ -350,7 +357,7 @@ class StepCounterService : Service(), SensorEventListener {
         )
         return NotificationCompat.Builder(this, StepCounterConstants.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.step_service_notification_title))
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_name)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

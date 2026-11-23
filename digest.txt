@@ -62,6 +62,8 @@ Directory structure:
     │       │   │               │   │   ├── AdventureEditorFragment.kt
     │       │   │               │   │   ├── AdventureEditorViewModel.kt
     │       │   │               │   │   ├── ChoiceDialogs.kt
+    │       │   │               │   │   ├── EditMetaFragment.kt
+    │       │   │               │   │   ├── EditMetaScreen.kt
     │       │   │               │   │   ├── EditorChoiceItem.kt
     │       │   │               │   │   ├── EditorComposables.kt
     │       │   │               │   │   ├── EditorHelpers.kt
@@ -72,11 +74,17 @@ Directory structure:
     │       │   │               │   │   ├── InitialStateSection.kt
     │       │   │               │   │   ├── SceneDialogs.kt
     │       │   │               │   │   ├── ScenePickerDialog.kt
+    │       │   │               │   │   ├── SearchFragment.kt
+    │       │   │               │   │   ├── SearchScreen.kt
+    │       │   │               │   │   ├── StoryStatsFragment.kt
+    │       │   │               │   │   ├── StoryStatsScreen.kt
     │       │   │               │   │   ├── TemplateArgsDialog.kt
     │       │   │               │   │   ├── TemplateEditDialog.kt
     │       │   │               │   │   ├── TemplateListFragment.kt
     │       │   │               │   │   ├── TemplateListScreen.kt
     │       │   │               │   │   ├── TemplatePickerDialog.kt
+    │       │   │               │   │   ├── ValidationIssuesFragment.kt
+    │       │   │               │   │   ├── ValidationIssuesScreen.kt
     │       │   │               │   │   └── VariablesSection.kt
     │       │   │               │   ├── list/
     │       │   │               │   │   ├── AdventureListFragment.kt
@@ -90,7 +98,9 @@ Directory structure:
     │       │   │               │   │   ├── MenuFragment.kt
     │       │   │               │   │   └── MenuScreen.kt
     │       │   │               │   ├── reader/
-    │       │   │               │   │   └── AdventureReaderFragment.kt
+    │       │   │               │   │   ├── AdventureReaderFragment.kt
+    │       │   │               │   │   ├── AdventureReaderViewModel.kt
+    │       │   │               │   │   └── ReaderUiState.kt
     │       │   │               │   ├── settings/
     │       │   │               │   │   ├── SettingsScreen.kt
     │       │   │               │   │   └── SettingsViewModel.kt
@@ -120,8 +130,11 @@ Directory structure:
     │       │       ├── drawable/
     │       │       │   ├── ic_launcher_background.xml
     │       │       │   ├── ic_launcher_foreground.xml
+    │       │       │   ├── ic_launcher_monochrome.xml
     │       │       │   ├── scene_background.xml
     │       │       │   └── scene_background_highlighted.xml
+    │       │       ├── drawable-anydpi/
+    │       │       │   └── ic_stat_name.xml
     │       │       ├── layout/
     │       │       │   ├── activity_main.xml
     │       │       │   ├── dialog_chapter_steps.xml
@@ -169,7 +182,7 @@ Directory structure:
     │       │       │   ├── item_template_picker_row.xml
     │       │       │   ├── item_validation_issue.xml
     │       │       │   └── item_variables_header.xml
-    │       │       ├── mipmap-anydpi/
+    │       │       ├── mipmap-anydpi-v26/
     │       │       │   ├── ic_launcher.xml
     │       │       │   └── ic_launcher_round.xml
     │       │       ├── raw/
@@ -177,6 +190,7 @@ Directory structure:
     │       │       ├── values/
     │       │       │   ├── attrs.xml
     │       │       │   ├── colors.xml
+    │       │       │   ├── ic_launcher_background.xml
     │       │       │   ├── ids.xml
     │       │       │   ├── strings.xml
     │       │       │   └── themes.xml
@@ -6530,58 +6544,41 @@ FILE: app/src/main/java/com/myapp/adventure/ui/editor/AdventureEditorFragment.kt
 package com.myapp.adventure.ui.editor
 
 import android.app.AlertDialog
-import android.graphics.Color
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
-import android.text.Editable
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.TextWatcher
-import android.text.style.BackgroundColorSpan
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
-import android.widget.CompoundButton
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.gson.Gson
 import com.myapp.adventure.R
 import com.myapp.adventure.databinding.FragmentAdventureEditorBinding
 import com.myapp.adventure.data.Adventure
-import com.myapp.adventure.data.ChapterStats
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
-import com.myapp.adventure.data.IssueSeverity
 import com.myapp.adventure.data.SaveStatus
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
-import com.myapp.adventure.data.ValidationIssue
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.ui.menu.MenuFragment
 import com.myapp.adventure.ui.reader.AdventureReaderFragment
 import com.myapp.adventure.ui.theme.AdventureTheme
 import com.myapp.adventure.utils.EditorDraftManager
 import com.myapp.adventure.utils.Logger
-import com.myapp.adventure.utils.SearchService
-import com.myapp.adventure.utils.StoryStatsService
-import com.myapp.adventure.utils.StoryValidator
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
@@ -6642,10 +6639,10 @@ class AdventureEditorFragment : Fragment() {
                     },
                     onSave = { saveAdventure() },
                     onLoad = { openFileLauncher.launch(arrayOf("application/json")) },
-                    onEditMeta = { openEditMetaDialog() },
-                    onValidate = { showValidationDialog() },
-                    onSearch = { showSearchDialog() },
-                    onStats = { showStatsDialog() },
+                    onEditMeta = { openEditMetaScreen() },
+                    onValidate = { openValidationIssuesScreen() },
+                    onSearch = { openSearchScreen() },
+                    onStats = { openStoryStatsScreen() },
                     onTemplates = {
                         parentFragmentManager.beginTransaction()
                             .replace(R.id.fragment_container, TemplateListFragment())
@@ -6663,11 +6660,13 @@ class AdventureEditorFragment : Fragment() {
 
         binding.composeBody.setContent {
             AdventureTheme {
-                EditorScenesList(
-                    viewModel = viewModel,
-                    onDirty = dirtyCallback,
-                    onPreviewScene = { uid -> openPreview(uid) },
-                )
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    EditorScenesList(
+                        viewModel = viewModel,
+                        onDirty = dirtyCallback,
+                        onPreviewScene = { uid -> openPreview(uid) },
+                    )
+                }
             }
         }
 
@@ -6691,30 +6690,13 @@ class AdventureEditorFragment : Fragment() {
         }
     }
 
-    // ---------- Редактирование названия ----------
+    // ---------- Редактирование названия (отдельный экран) ----------
 
-    private fun openEditMetaDialog() {
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_edit_meta, null)
-        val etTitle = dialogView.findViewById<EditText>(R.id.et_meta_title)
-        val etAuthor = dialogView.findViewById<EditText>(R.id.et_meta_author)
-        val etDesc = dialogView.findViewById<EditText>(R.id.et_meta_description)
-
-        etTitle.setText(viewModel.title)
-        etAuthor.setText(viewModel.author)
-        etDesc.setText(viewModel.description)
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.editor_dialog_edit_meta_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.dialog_apply) { _, _ ->
-                viewModel.title = etTitle.text.toString().trim()
-                viewModel.author = etAuthor.text.toString().trim()
-                viewModel.description = etDesc.text.toString().trim()
-                markDirty()
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+    private fun openEditMetaScreen() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, EditMetaFragment())
+            .addToBackStack(null)
+            .commit()
     }
 
     // ---------- Undo / Redo ----------
@@ -7085,365 +7067,31 @@ class AdventureEditorFragment : Fragment() {
         return null
     }
 
-    // ---------- Валидатор ----------
+    // ---------- Валидатор (отдельный экран) ----------
 
-    private fun showValidationDialog() {
-        viewModel.freezeAllPendingIds()
-        val (irAdventure, conditionParseErrors) = viewModel.buildIrAdventure()
-        val issues = mutableListOf<ValidationIssue>()
-        for (err in conditionParseErrors) {
-            issues += ValidationIssue(
-                severity = IssueSeverity.ERROR,
-                sceneUid = "",
-                titleRes = R.string.validation_title_condition_parse_error,
-                description = err.message,
-            )
-        }
-        issues += StoryValidator.validate(irAdventure, viewModel.scenes)
-
-        if (viewModel.variables.isEmpty()) {
-            issues += ValidationIssue(
-                severity = IssueSeverity.WARNING,
-                sceneUid = "",
-                titleRes = R.string.validation_title_types_not_declared,
-                description = getString(R.string.validation_desc_types_not_declared),
-            )
-        }
-
-        if (issues.isEmpty()) {
-            AlertDialog.Builder(requireContext())
-                .setTitle(R.string.editor_dialog_health_title)
-                .setMessage(R.string.editor_dialog_health_no_issues_message)
-                .setPositiveButton(R.string.dialog_close, null)
-                .show()
-            return
-        }
-
-        val errorCount = issues.count { it.severity == IssueSeverity.ERROR }
-        val warningCount = issues.count { it.severity == IssueSeverity.WARNING }
-
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_validation_issues, null)
-        val tvSummary = dialogView.findViewById<TextView>(R.id.tv_summary)
-        val container = dialogView.findViewById<LinearLayout>(R.id.container_issues)
-
-        val summaryParts = mutableListOf<String>()
-        if (errorCount > 0) {
-            summaryParts.add(getString(R.string.validation_summary_errors_fmt, errorCount))
-        }
-        if (warningCount > 0) {
-            summaryParts.add(getString(R.string.validation_summary_warnings_fmt, warningCount))
-        }
-        tvSummary.text = summaryParts.joinToString(" • ")
-
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(R.string.editor_dialog_health_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.dialog_close, null)
-            .create()
-
-        val ordered = issues.filter { it.severity == IssueSeverity.ERROR } +
-                issues.filter { it.severity == IssueSeverity.WARNING }
-
-        for (issue in ordered) {
-            val rowView = LayoutInflater.from(requireContext())
-                .inflate(R.layout.item_validation_issue, container, false)
-            val icon = rowView.findViewById<TextView>(R.id.tv_severity_icon)
-            val title = rowView.findViewById<TextView>(R.id.tv_title)
-            val desc = rowView.findViewById<TextView>(R.id.tv_description)
-
-            icon.text = if (issue.severity == IssueSeverity.ERROR) "❌" else "⚠️"
-            title.text = getString(issue.titleRes)
-            desc.text = issue.description
-
-            rowView.setOnClickListener {
-                dialog.dismiss()
-                jumpToScene(issue.sceneUid)
-            }
-            container.addView(rowView)
-        }
-
-        dialog.show()
+    private fun openValidationIssuesScreen() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, ValidationIssuesFragment())
+            .addToBackStack(null)
+            .commit()
     }
 
-    // ---------- Поиск ----------
+    // ---------- Поиск (отдельный экран) ----------
 
-    private fun showSearchDialog() {
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_search, null)
-
-        val etQuery = dialogView.findViewById<EditText>(R.id.et_search_query)
-        val cbTitles = dialogView.findViewById<CheckBox>(R.id.cb_search_titles)
-        val cbTexts = dialogView.findViewById<CheckBox>(R.id.cb_search_texts)
-        val cbChoices = dialogView.findViewById<CheckBox>(R.id.cb_search_choices)
-        val cbTags = dialogView.findViewById<CheckBox>(R.id.cb_search_tags)
-        val tvSummary = dialogView.findViewById<TextView>(R.id.tv_search_summary)
-        val container = dialogView.findViewById<LinearLayout>(R.id.container_results)
-
-        cbTitles.isChecked = true
-        cbTexts.isChecked = true
-        cbChoices.isChecked = true
-        cbTags.isChecked = true
-
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(R.string.editor_dialog_search_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.dialog_close, null)
-            .create()
-
-        val searchHandler = Handler(Looper.getMainLooper())
-        var searchRunnable: Runnable? = null
-
-        fun runSearch() {
-            val query = etQuery.text.toString()
-            if (query.trim().length < 2) {
-                tvSummary.text = getString(R.string.editor_search_enter_query)
-                container.removeAllViews()
-                return
-            }
-
-            val results = SearchService.search(
-                scenes = viewModel.scenes,
-                query = query,
-                searchInTitles = cbTitles.isChecked,
-                searchInTexts = cbTexts.isChecked,
-                searchInChoices = cbChoices.isChecked,
-                searchInTags = cbTags.isChecked,
-                titleFallback = getString(R.string.label_without_title),
-            )
-
-            container.removeAllViews()
-
-            if (results.isEmpty()) {
-                tvSummary.text = getString(R.string.editor_search_nothing_found)
-                return
-            }
-
-            val scenesCount = results.map { it.sceneUid }.distinct().size
-            val totalMatches = results.sumOf { it.totalMatchesInField }
-
-            val matchesText = formatMatchesCount(totalMatches)
-            val scenesText = if (scenesCount > 1) {
-                " " + formatScenesPrepositional(scenesCount)
-            } else {
-                ""
-            }
-            tvSummary.text = getString(R.string.editor_search_matches_fmt, matchesText + scenesText)
-
-            for (result in results) {
-                val rowView = LayoutInflater.from(requireContext())
-                    .inflate(R.layout.item_search_result, container, false)
-                val tvIcon = rowView.findViewById<TextView>(R.id.tv_search_icon)
-                val tvTitleDetail = rowView.findViewById<TextView>(R.id.tv_search_title_detail)
-                val tvContext = rowView.findViewById<TextView>(R.id.tv_search_context)
-
-                tvIcon.text = result.fieldType.icon
-
-                val detailText = if (result.detailArg != null) {
-                    getString(result.detailRes, result.detailArg)
-                } else {
-                    getString(result.detailRes)
-                }
-                val titleDetailText = buildString {
-                    append(result.sceneTitle)
-                    append("  ·  ")
-                    append(detailText)
-                    if (result.totalMatchesInField > 1) {
-                        append(getString(R.string.editor_search_more_fmt, result.totalMatchesInField - 1))
-                    }
-                }
-                val spannableTitle = SpannableString(titleDetailText)
-                spannableTitle.setSpan(
-                    StyleSpan(Typeface.BOLD),
-                    0, result.sceneTitle.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                spannableTitle.setSpan(
-                    ForegroundColorSpan(Color.parseColor("#AAAAAA")),
-                    result.sceneTitle.length, titleDetailText.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                tvTitleDetail.text = spannableTitle
-
-                val contextText = "«…${result.contextBefore}${result.match}${result.contextAfter}…»"
-                val spannableCtx = SpannableString(contextText)
-                val matchStart = 2 + result.contextBefore.length
-                val matchEnd = matchStart + result.match.length
-                spannableCtx.setSpan(
-                    BackgroundColorSpan(Color.parseColor("#FFC107")),
-                    matchStart, matchEnd,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                spannableCtx.setSpan(
-                    ForegroundColorSpan(Color.parseColor("#000000")),
-                    matchStart, matchEnd,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                tvContext.text = spannableCtx
-
-                rowView.setOnClickListener {
-                    dialog.dismiss()
-                    searchHandler.removeCallbacksAndMessages(null)
-                    jumpToScene(result.sceneUid)
-                }
-                container.addView(rowView)
-            }
-        }
-
-        val watcher = object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-                searchRunnable?.let { searchHandler.removeCallbacks(it) }
-                val r = Runnable { runSearch() }
-                searchRunnable = r
-                searchHandler.postDelayed(r, 300L)
-            }
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
-        }
-        etQuery.addTextChangedListener(watcher)
-
-        val filterListener = CompoundButton.OnCheckedChangeListener { _, _ -> runSearch() }
-        cbTitles.setOnCheckedChangeListener(filterListener)
-        cbTexts.setOnCheckedChangeListener(filterListener)
-        cbChoices.setOnCheckedChangeListener(filterListener)
-        cbTags.setOnCheckedChangeListener(filterListener)
-
-        dialog.setOnDismissListener {
-            searchHandler.removeCallbacksAndMessages(null)
-        }
-
-        dialog.show()
-        etQuery.requestFocus()
-        tvSummary.text = getString(R.string.editor_search_enter_query)
+    private fun openSearchScreen() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, SearchFragment())
+            .addToBackStack(null)
+            .commit()
     }
 
-    private fun formatMatchesCount(n: Int): String =
-        resources.getQuantityString(R.plurals.word_matches, n, n)
+    // ---------- Статистика (отдельный экран) ----------
 
-    private fun formatScenesPrepositional(n: Int): String =
-        resources.getQuantityString(R.plurals.word_scenes_in, n, n)
-
-    // ---------- Статистика ----------
-
-    private fun showStatsDialog() {
-        val stats = StoryStatsService.calculate(
-            viewModel.scenes,
-            titleFallback = getString(R.string.label_without_title),
-        )
-
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_story_stats, null)
-
-        val tvScenes = dialogView.findViewById<TextView>(R.id.tv_stat_scenes)
-        val tvWords = dialogView.findViewById<TextView>(R.id.tv_stat_words)
-        val tvChoices = dialogView.findViewById<TextView>(R.id.tv_stat_choices)
-        val tvChapters = dialogView.findViewById<TextView>(R.id.tv_stat_chapters)
-        val tvReading = dialogView.findViewById<TextView>(R.id.tv_stat_reading_time)
-        val tvAvg = dialogView.findViewById<TextView>(R.id.tv_stat_avg)
-        val tvLongest = dialogView.findViewById<TextView>(R.id.tv_stat_longest)
-        val tvShortest = dialogView.findViewById<TextView>(R.id.tv_stat_shortest)
-        val containerChapters = dialogView.findViewById<LinearLayout>(R.id.container_chapters)
-
-        tvScenes.text = getString(
-            R.string.editor_stats_scenes_fmt,
-            formatInt(stats.totalScenes),
-            formatScenes(stats.totalScenes)
-        )
-        tvWords.text = getString(R.string.editor_stats_words_fmt, formatInt(stats.totalWords))
-        tvChoices.text = getString(R.string.editor_stats_choices_fmt, formatInt(stats.totalChoices))
-        tvChapters.text = getString(R.string.editor_stats_chapters_fmt, formatInt(stats.totalChapters))
-
-        tvReading.text = getString(
-            R.string.editor_stats_reading_fmt,
-            formatReadingTime(stats.estimatedReadingMinutes)
-        )
-
-        if (stats.totalScenes > 0) {
-            tvAvg.text = getString(
-                R.string.editor_stats_avg_fmt,
-                formatWords(stats.avgWordsPerScene)
-            )
-            tvLongest.text = getString(
-                R.string.editor_stats_longest_fmt,
-                stats.longestSceneTitle,
-                formatWords(stats.longestSceneWords)
-            )
-            tvShortest.text = getString(
-                R.string.editor_stats_shortest_fmt,
-                stats.shortestSceneTitle,
-                formatWords(stats.shortestSceneWords)
-            )
-        } else {
-            tvAvg.text = ""
-            tvLongest.text = ""
-            tvShortest.text = ""
-        }
-
-        containerChapters.removeAllViews()
-        for (chapter in stats.chapters) {
-            addChapterStatsRow(containerChapters, chapter)
-        }
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.editor_dialog_stats_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.dialog_close, null)
-            .show()
-    }
-
-    private fun addChapterStatsRow(
-        container: LinearLayout,
-        chapter: ChapterStats
-    ) {
-        val rowView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.item_chapter_stats, container, false)
-        val tvTitle = rowView.findViewById<TextView>(R.id.tv_chapter_title)
-        val tvDetails = rowView.findViewById<TextView>(R.id.tv_chapter_details)
-        val tvSteps = rowView.findViewById<TextView>(R.id.tv_chapter_steps)
-
-        tvTitle.text = getString(R.string.editor_chapter_title_fmt, chapter.index)
-
-        tvDetails.text = getString(
-            R.string.editor_chapter_details_fmt,
-            formatScenes(chapter.sceneCount),
-            formatWords(chapter.wordCount),
-            formatChoices(chapter.choiceCount)
-        )
-
-        if (chapter.isLast) {
-            tvSteps.text = getString(R.string.editor_chapter_last)
-            tvSteps.setTextColor(Color.parseColor("#4CAF50"))
-        } else if (chapter.requiredSteps > 0) {
-            tvSteps.text = getString(
-                R.string.editor_chapter_next_steps_fmt,
-                formatSteps(chapter.requiredSteps)
-            )
-            tvSteps.setTextColor(Color.parseColor("#FFC107"))
-        } else {
-            tvSteps.text = getString(R.string.editor_chapter_no_gate)
-            tvSteps.setTextColor(Color.parseColor("#FF9800"))
-        }
-
-        container.addView(rowView)
-    }
-
-    // ---------- Форматирование чисел и склонений ----------
-
-    private fun formatScenes(n: Int): String =
-        pluralWithNumber(requireContext(), R.plurals.word_scenes, n)
-
-    private fun formatWords(n: Int): String =
-        pluralWithNumber(requireContext(), R.plurals.word_words, n)
-
-    private fun formatChoices(n: Int): String =
-        pluralWithNumber(requireContext(), R.plurals.word_choices, n)
-
-    private fun formatSteps(n: Int): String =
-        pluralWithNumber(requireContext(), R.plurals.steps, n)
-
-    private fun formatReadingTime(minutes: Int): String {
-        if (minutes < 1) return getString(R.string.editor_stats_reading_less_than_minute)
-        return pluralWithNumber(requireContext(), R.plurals.word_minutes, minutes)
+    private fun openStoryStatsScreen() {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, StoryStatsFragment())
+            .addToBackStack(null)
+            .commit()
     }
 
     // ---------- Прыжок к сцене (упрощённо) ----------
@@ -9360,6 +9008,219 @@ fun ChoiceEffectsDialog(
             }
         },
         modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/EditMetaFragment.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import com.myapp.adventure.data.SaveStatus
+import com.myapp.adventure.ui.theme.AdventureTheme
+import com.myapp.adventure.utils.EditorDraftManager
+
+/**
+ * Phase 3.1c-iv-a: host for [EditMetaScreen]. Activity-scoped
+ * `AdventureEditorViewModel` carries the state across the navigation.
+ *
+ * Save path (on `Применить`):
+ *  1. write the three fields to the ViewModel;
+ *  2. `commitSnapshot()` — undo returns to the pre-edit state;
+ *  3. `commitState()` — pushes to `uiState` so the editor's toolbar
+ *     title / state refresh;
+ *  4. `EditorDraftManager.saveDraft(...)` — immediate persistence (no
+ *     debounce: the user is leaving the screen);
+ *  5. `popBackStack()`.
+ *
+ * Back path (on `Назад` or system back): no writes, just `popBackStack()`.
+ */
+class EditMetaFragment : Fragment() {
+
+    private lateinit var viewModel: AdventureEditorViewModel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        viewModel = ViewModelProvider(requireActivity()).get(AdventureEditorViewModel::class.java)
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setContent {
+            AdventureTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    EditMetaScreen(
+                        initialTitle = viewModel.title,
+                    initialAuthor = viewModel.author,
+                    initialDescription = viewModel.description,
+                    onSave = { title, author, description ->
+                        viewModel.title = title
+                        viewModel.author = author
+                        viewModel.description = description
+                        viewModel.commitSnapshot()
+                        viewModel.commitState()
+                        EditorDraftManager.saveDraft(
+                            requireContext(),
+                            viewModel.title,
+                            viewModel.author,
+                            viewModel.description,
+                            viewModel.variables,
+                            viewModel.templates,
+                            viewModel.initialStateTags,
+                            viewModel.scenes,
+                        )
+                        viewModel.setHasUnsavedChanges(false)
+                        viewModel.setSaveStatus(SaveStatus.SAVED)
+                        parentFragmentManager.popBackStack()
+                    },
+                        onBack = { parentFragmentManager.popBackStack() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/EditMetaScreen.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.myapp.adventure.R
+
+/**
+ * Phase 3.1c-iv-a: "Edit adventure meta" as a full screen (previously a
+ * `dialog_edit_meta.xml` dialog). Triggered from the editor toolbar
+ * ("Название"), returns via `onSave`/`onBack`.
+ *
+ * Save responsibility: [onSave] receives the edited triple; the host
+ * Fragment (`EditMetaFragment`) applies it to `viewModel`, commits a
+ * snapshot (so undo restores the pre-edit state) and persists the draft.
+ */
+@Composable
+fun EditMetaScreen(
+    initialTitle: String,
+    initialAuthor: String,
+    initialDescription: String,
+    onSave: (title: String, author: String, description: String) -> Unit,
+    onBack: () -> Unit,
+) {
+    var title by remember { mutableStateOf(initialTitle) }
+    var author by remember { mutableStateOf(initialAuthor) }
+    var description by remember { mutableStateOf(initialDescription) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.action_back))
+                }
+                Text(
+                    text = stringResource(R.string.editor_dialog_edit_meta_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
+                TextButton(
+                    onClick = {
+                        onSave(
+                            title.trim(),
+                            author.trim(),
+                            description.trim(),
+                        )
+                    },
+                ) {
+                    Text(stringResource(R.string.dialog_apply))
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
+            SectionLabel(stringResource(R.string.dialog_edit_meta_title_hint))
+            BareTextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = stringResource(R.string.dialog_edit_meta_title_hint),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            SectionLabel(stringResource(R.string.dialog_edit_meta_author_hint))
+            BareTextField(
+                value = author,
+                onValueChange = { author = it },
+                placeholder = stringResource(R.string.dialog_edit_meta_author_hint),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            SectionLabel(stringResource(R.string.dialog_edit_meta_description_hint))
+            BareTextField(
+                value = description,
+                onValueChange = { description = it },
+                placeholder = stringResource(R.string.dialog_edit_meta_description_hint),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
     )
 }
 
@@ -11691,6 +11552,680 @@ private fun ScenePickerRow(scene: EditorScene, onClick: () -> Unit) {
 
 
 ================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/SearchFragment.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import com.myapp.adventure.ui.theme.AdventureTheme
+
+/**
+ * Phase 3.1c-iv-d: host for [SearchScreen]. Snapshots `viewModel.scenes`
+ * once in [onCreate] — the editor is not mutated while the search screen
+ * is on top, so a snapshot is equivalent to live reads for this screen's
+ * lifetime.
+ *
+ * On result click: `requestJumpToScene` + `popBackStack`. The editor's
+ * `EditorScenesList` picks up `pendingJumpToSceneUid` and scrolls/highlights.
+ */
+class SearchFragment : Fragment() {
+
+    private lateinit var viewModel: AdventureEditorViewModel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        viewModel = ViewModelProvider(requireActivity()).get(AdventureEditorViewModel::class.java)
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setContent {
+            AdventureTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    SearchScreen(
+                        scenes = viewModel.scenes.toList(),
+                        onBack = { parentFragmentManager.popBackStack() },
+                        onResultClick = { uid ->
+                            viewModel.requestJumpToScene(uid)
+                            parentFragmentManager.popBackStack()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/SearchScreen.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import com.myapp.adventure.R
+import com.myapp.adventure.data.EditorScene
+import com.myapp.adventure.data.SearchResult
+import com.myapp.adventure.ui.theme.AdventureTheme
+import com.myapp.adventure.utils.SearchService
+import kotlinx.coroutines.delay
+
+private const val SEARCH_DEBOUNCE_MS = 300L
+
+/**
+ * Phase 3.1c-iv-d: "Поиск по истории" as a full screen (previously a
+ * `dialog_search.xml` dialog).
+ *
+ * Reads `scenes` once (snapshot from the host Fragment). Search runs on
+ * a 300 ms debounced query; results are recomputed via `remember` keyed
+ * on `(debouncedQuery, filters)` — no explicit handler required.
+ *
+ * Tap on a result → `onResultClick(sceneUid)`; the host Fragment calls
+ * `requestJumpToScene` + `popBackStack`, so `AdventureEditorFragment`
+ * scrolls + highlights the target scene.
+ */
+@Composable
+fun SearchScreen(
+    scenes: List<EditorScene>,
+    onBack: () -> Unit,
+    onResultClick: (sceneUid: String) -> Unit,
+) {
+    val titleFallback = stringResource(R.string.label_without_title)
+
+    var query by rememberSaveable { mutableStateOf("") }
+    var searchInTitles by rememberSaveable { mutableStateOf(true) }
+    var searchInTexts by rememberSaveable { mutableStateOf(true) }
+    var searchInChoices by rememberSaveable { mutableStateOf(true) }
+    var searchInTags by rememberSaveable { mutableStateOf(true) }
+    var debouncedQuery by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(query) {
+        delay(SEARCH_DEBOUNCE_MS)
+        debouncedQuery = query
+    }
+
+    val results = remember(
+        debouncedQuery,
+        searchInTitles, searchInTexts, searchInChoices, searchInTags,
+        scenes,
+    ) {
+        SearchService.search(
+            scenes = scenes,
+            query = debouncedQuery,
+            searchInTitles = searchInTitles,
+            searchInTexts = searchInTexts,
+            searchInChoices = searchInChoices,
+            searchInTags = searchInTags,
+            titleFallback = titleFallback,
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.action_back))
+                }
+                Text(
+                    text = stringResource(R.string.editor_dialog_search_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
+            }
+        }
+
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text(stringResource(R.string.dialog_search_query_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(modifier = Modifier.padding(top = 4.dp)) {
+                FilterCheck(
+                    label = stringResource(R.string.dialog_search_filter_titles),
+                    checked = searchInTitles,
+                    onCheckedChange = { searchInTitles = it },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterCheck(
+                    label = stringResource(R.string.dialog_search_filter_texts),
+                    checked = searchInTexts,
+                    onCheckedChange = { searchInTexts = it },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row {
+                FilterCheck(
+                    label = stringResource(R.string.dialog_search_filter_choices),
+                    checked = searchInChoices,
+                    onCheckedChange = { searchInChoices = it },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterCheck(
+                    label = stringResource(R.string.dialog_search_filter_tags),
+                    checked = searchInTags,
+                    onCheckedChange = { searchInTags = it },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            val summary = when {
+                debouncedQuery.trim().length < 2 ->
+                    stringResource(R.string.editor_search_enter_query)
+                results.isEmpty() ->
+                    stringResource(R.string.editor_search_nothing_found)
+                else -> {
+                    val totalMatches = results.sumOf { it.totalMatchesInField }
+                    val scenesCount = results.map { it.sceneUid }.distinct().size
+                    val matchesText = pluralStringResource(
+                        R.plurals.word_matches, totalMatches, totalMatches,
+                    )
+                    val scenesText = if (scenesCount > 1) {
+                        " " + pluralStringResource(
+                            R.plurals.word_scenes_in, scenesCount, scenesCount,
+                        )
+                    } else ""
+                    stringResource(R.string.editor_search_matches_fmt, matchesText + scenesText)
+                }
+            }
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+        ) {
+            items(results) { result ->
+                SearchRow(
+                    result = result,
+                    onClick = { onResultClick(result.sceneUid) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterCheck(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun SearchRow(result: SearchResult, onClick: () -> Unit) {
+    val colorScheme = MaterialTheme.colorScheme
+    val detailText = if (result.detailArg != null) {
+        stringResource(result.detailRes, result.detailArg)
+    } else {
+        stringResource(result.detailRes)
+    }
+    val moreText = if (result.totalMatchesInField > 1) {
+        stringResource(R.string.editor_search_more_fmt, result.totalMatchesInField - 1)
+    } else ""
+
+    val titleLine = buildAnnotatedString {
+        withStyle(
+            SpanStyle(
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface,
+            )
+        ) {
+            append(result.sceneTitle)
+        }
+        append("  ·  ")
+        withStyle(SpanStyle(color = colorScheme.onSurfaceVariant)) {
+            append(detailText)
+        }
+        if (moreText.isNotEmpty()) {
+            withStyle(SpanStyle(color = colorScheme.onSurfaceVariant)) {
+                append(moreText)
+            }
+        }
+    }
+
+    val highlightBg = AdventureTheme.extendedColors.statusWarning
+    val highlightFg = colorScheme.surface
+    val contextLine = buildAnnotatedString {
+        append("«…")
+        append(result.contextBefore)
+        withStyle(SpanStyle(background = highlightBg, color = highlightFg)) {
+            append(result.match)
+        }
+        append(result.contextAfter)
+        append("…»")
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+    ) {
+        Text(
+            text = result.fieldType.icon,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = titleLine,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Surface(
+                color = colorScheme.surface,
+                shape = MaterialTheme.shapes.extraSmall,
+                modifier = Modifier.padding(top = 2.dp),
+            ) {
+                Text(
+                    text = contextLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/StoryStatsFragment.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import com.myapp.adventure.R
+import com.myapp.adventure.data.StoryStats
+import com.myapp.adventure.ui.theme.AdventureTheme
+import com.myapp.adventure.utils.StoryStatsService
+
+/**
+ * Phase 3.1c-iv-c: host for [StoryStatsScreen]. Stats are computed once
+ * in [onCreate] — same source as the old `showStatsDialog`:
+ * `StoryStatsService.calculate(viewModel.scenes, titleFallback = ...)`.
+ *
+ * Read-only; no writes to the ViewModel. Recomputed on rotation / return
+ * (cheap relative to the scene count).
+ */
+class StoryStatsFragment : Fragment() {
+
+    private lateinit var viewModel: AdventureEditorViewModel
+    private lateinit var stats: StoryStats
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        viewModel = ViewModelProvider(requireActivity()).get(AdventureEditorViewModel::class.java)
+        stats = StoryStatsService.calculate(
+            viewModel.scenes,
+            titleFallback = getString(R.string.label_without_title),
+        )
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setContent {
+            AdventureTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    StoryStatsScreen(
+                        stats = stats,
+                        onBack = { parentFragmentManager.popBackStack() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/StoryStatsScreen.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.myapp.adventure.R
+import com.myapp.adventure.data.ChapterStats
+import com.myapp.adventure.data.StoryStats
+import com.myapp.adventure.ui.theme.AdventureTheme
+
+/**
+ * Phase 3.1c-iv-c: "Статистика истории" as a full screen (previously a
+ * `dialog_story_stats.xml` dialog).
+ *
+ * Read-only; no callbacks other than [onBack]. The stats are computed once
+ * by the host Fragment (`StoryStatsFragment`) and rendered here.
+ */
+@Composable
+fun StoryStatsScreen(
+    stats: StoryStats,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.action_back))
+                }
+                Text(
+                    text = stringResource(R.string.editor_dialog_stats_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+        ) {
+            // ----- Summary -----
+            item(key = "__summary__") {
+                Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_scenes_fmt,
+                            formatInt(stats.totalScenes),
+                            pluralWithNumber(context, R.plurals.word_scenes, stats.totalScenes),
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_words_fmt,
+                            formatInt(stats.totalWords),
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_choices_fmt,
+                            formatInt(stats.totalChoices),
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_chapters_fmt,
+                            formatInt(stats.totalChapters),
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    val readingText = if (stats.estimatedReadingMinutes < 1) {
+                        stringResource(R.string.editor_stats_reading_less_than_minute)
+                    } else {
+                        pluralWithNumber(
+                            context,
+                            R.plurals.word_minutes,
+                            stats.estimatedReadingMinutes,
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.editor_stats_reading_fmt, readingText),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = AdventureTheme.extendedColors.statusWarning,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+
+            // ----- Chapters section -----
+            item(key = "__chapters_header__") {
+                SectionHeader(stringResource(R.string.dialog_story_stats_chapters_section))
+            }
+            if (stats.chapters.isEmpty()) {
+                item(key = "__chapters_empty__") {
+                    Text(
+                        text = stringResource(R.string.label_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
+            } else {
+                items(stats.chapters, key = { it.index }) { chapter ->
+                    ChapterRow(chapter = chapter)
+                }
+            }
+
+            // ----- Scenes quality section -----
+            item(key = "__lengths_header__") {
+                SectionHeader(stringResource(R.string.dialog_story_stats_lengths_section))
+            }
+            if (stats.totalScenes > 0) {
+                item(key = "__avg__") {
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_avg_fmt,
+                            pluralWithNumber(context, R.plurals.word_words, stats.avgWordsPerScene),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                item(key = "__longest__") {
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_longest_fmt,
+                            stats.longestSceneTitle,
+                            pluralWithNumber(context, R.plurals.word_words, stats.longestSceneWords),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                item(key = "__shortest__") {
+                    Text(
+                        text = stringResource(
+                            R.string.editor_stats_shortest_fmt,
+                            stats.shortestSceneTitle,
+                            pluralWithNumber(context, R.plurals.word_words, stats.shortestSceneWords),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            item(key = "__bottom_pad__") {
+                Text(text = "", modifier = Modifier.padding(bottom = 24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun ChapterRow(chapter: ChapterStats) {
+    val context = LocalContext.current
+    val stepsText: String
+    val stepsColor = when {
+        chapter.isLast -> {
+            stepsText = stringResource(R.string.editor_chapter_last)
+            AdventureTheme.extendedColors.statusSuccess
+        }
+        chapter.requiredSteps > 0 -> {
+            stepsText = stringResource(
+                R.string.editor_chapter_next_steps_fmt,
+                pluralWithNumber(context, R.plurals.steps, chapter.requiredSteps),
+            )
+            AdventureTheme.extendedColors.statusWarning
+        }
+        else -> {
+            stepsText = stringResource(R.string.editor_chapter_no_gate)
+            AdventureTheme.extendedColors.statusWarning
+        }
+    }
+
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            text = stringResource(R.string.editor_chapter_title_fmt, chapter.index),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = stringResource(
+                R.string.editor_chapter_details_fmt,
+                pluralWithNumber(context, R.plurals.word_scenes, chapter.sceneCount),
+                pluralWithNumber(context, R.plurals.word_words, chapter.wordCount),
+                pluralWithNumber(context, R.plurals.word_choices, chapter.choiceCount),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(
+            text = stepsText,
+            style = MaterialTheme.typography.bodySmall,
+            color = stepsColor,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+
+================================================
 FILE: app/src/main/java/com/myapp/adventure/ui/editor/TemplateArgsDialog.kt
 ================================================
 [Binary file]
@@ -12080,6 +12615,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -12110,10 +12648,12 @@ class TemplateListFragment : Fragment() {
     ): View = ComposeView(requireContext()).apply {
         setContent {
             AdventureTheme {
-                TemplateListScreen(
-                    viewModel = viewModel,
-                    onBack = { parentFragmentManager.popBackStack() },
-                )
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    TemplateListScreen(
+                        viewModel = viewModel,
+                        onBack = { parentFragmentManager.popBackStack() },
+                    )
+                }
             }
         }
     }
@@ -12485,6 +13025,260 @@ private fun TemplatePickerRow(template: EditorTemplate, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/ValidationIssuesFragment.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import com.myapp.adventure.R
+import com.myapp.adventure.data.IssueSeverity
+import com.myapp.adventure.data.ValidationIssue
+import com.myapp.adventure.ui.theme.AdventureTheme
+import com.myapp.adventure.utils.StoryValidator
+
+/**
+ * Phase 3.1c-iv-b: host for [ValidationIssuesScreen].
+ *
+ * Validation is computed **once** in [onCreate] — the same pipeline the
+ * old `showValidationDialog` ran:
+ *   1. `freezeAllPendingIds()` (pending auto-ids become concrete before IR);
+ *   2. `buildIrAdventure()` → IR + condition parse errors;
+ *   3. `StoryValidator.validate(ir, scenes)`;
+ *   4. WARNING when `variables` is empty (fallback type checking).
+ *
+ * Errors are ordered before warnings. Tap on an issue with a non-empty
+ * `sceneUid` → `requestJumpToScene` + `popBackStack`; the editor's
+ * `EditorScenesList` picks up `pendingJumpToSceneUid` and scrolls.
+ *
+ * Recomputed on every `onCreate` (rotation, return from child). Cost is
+ * proportional to scene count; acceptable for pre-alpha (validate is
+ * cheap relative to IO).
+ */
+class ValidationIssuesFragment : Fragment() {
+
+    private lateinit var viewModel: AdventureEditorViewModel
+    private lateinit var issues: List<ValidationIssue>
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        viewModel = ViewModelProvider(requireActivity()).get(AdventureEditorViewModel::class.java)
+        issues = buildIssues()
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext()).apply {
+        setContent {
+            AdventureTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    ValidationIssuesScreen(
+                        issues = issues,
+                        onBack = { parentFragmentManager.popBackStack() },
+                        onIssueClick = { uid ->
+                            if (uid.isNotEmpty()) {
+                                viewModel.requestJumpToScene(uid)
+                            }
+                            parentFragmentManager.popBackStack()
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun buildIssues(): List<ValidationIssue> {
+        viewModel.freezeAllPendingIds()
+        val (irAdventure, conditionParseErrors) = viewModel.buildIrAdventure()
+        val all = mutableListOf<ValidationIssue>()
+        for (err in conditionParseErrors) {
+            all += ValidationIssue(
+                severity = IssueSeverity.ERROR,
+                sceneUid = "",
+                titleRes = R.string.validation_title_condition_parse_error,
+                description = err.message,
+            )
+        }
+        all += StoryValidator.validate(irAdventure, viewModel.scenes)
+        if (viewModel.variables.isEmpty()) {
+            all += ValidationIssue(
+                severity = IssueSeverity.WARNING,
+                sceneUid = "",
+                titleRes = R.string.validation_title_types_not_declared,
+                description = getString(R.string.validation_desc_types_not_declared),
+            )
+        }
+        return all.filter { it.severity == IssueSeverity.ERROR } +
+                all.filter { it.severity == IssueSeverity.WARNING }
+    }
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/editor/ValidationIssuesScreen.kt
+================================================
+package com.myapp.adventure.ui.editor
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.myapp.adventure.R
+import com.myapp.adventure.data.IssueSeverity
+import com.myapp.adventure.data.ValidationIssue
+import com.myapp.adventure.ui.theme.AdventureTheme
+
+/**
+ * Phase 3.1c-iv-b: "Здоровье истории" as a full screen (previously a
+ * `dialog_validation_issues.xml` dialog).
+ *
+ * Two visual states:
+ *  - [issues] empty → "Проблем не найдено" + Back.
+ *  - non-empty → "N ошибок • M предупреждений" + list. Tap on an issue
+ *    with a non-empty `sceneUid` → `onIssueClick(uid)`; the host
+ *    Fragment then calls `popBackStack()` and the editor's
+ *    `pendingJumpToSceneUid` handles scroll/highlight.
+ *
+ * Issue ordering (errors before warnings) is decided by the host, not
+ * this screen — the list is rendered in the order it arrives.
+ */
+@Composable
+fun ValidationIssuesScreen(
+    issues: List<ValidationIssue>,
+    onBack: () -> Unit,
+    onIssueClick: (sceneUid: String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.action_back))
+                }
+                Text(
+                    text = stringResource(R.string.editor_dialog_health_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
+            }
+        }
+
+        if (issues.isEmpty()) {
+            Text(
+                text = stringResource(R.string.editor_dialog_health_no_issues_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(24.dp),
+            )
+            return@Column
+        }
+
+        val errorCount = issues.count { it.severity == IssueSeverity.ERROR }
+        val warningCount = issues.count { it.severity == IssueSeverity.WARNING }
+        val summary = buildList {
+            if (errorCount > 0) {
+                add(stringResource(R.string.validation_summary_errors_fmt, errorCount))
+            }
+            if (warningCount > 0) {
+                add(stringResource(R.string.validation_summary_warnings_fmt, warningCount))
+            }
+        }.joinToString(" • ")
+
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+        ) {
+            items(issues) { issue ->
+                IssueRow(issue = issue, onClick = { onIssueClick(issue.sceneUid) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun IssueRow(issue: ValidationIssue, onClick: () -> Unit) {
+    val isError = issue.severity == IssueSeverity.ERROR
+    val clickable = issue.sceneUid.isNotEmpty()
+    val modifier = if (clickable) {
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp)
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp, horizontal = 4.dp)
+    }
+    Row(modifier = modifier) {
+        Text(
+            text = if (isError) "❌" else "⚠️",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        Column {
+            Text(
+                text = stringResource(issue.titleRes),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isError) MaterialTheme.colorScheme.error
+                else AdventureTheme.extendedColors.statusWarning,
+            )
+            Text(
+                text = issue.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
@@ -15368,6 +16162,831 @@ class AdventureReaderFragment : Fragment() {
             .show()
     }
 }
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/reader/AdventureReaderViewModel.kt
+================================================
+package com.myapp.adventure.ui.reader
+
+import android.app.Application
+import android.net.Uri
+import android.os.Bundle
+import androidx.lifecycle.AndroidViewModel
+import com.myapp.adventure.data.PlayerStateSnapshot
+import com.myapp.adventure.data.ProgressData
+import com.myapp.adventure.engine.ChoiceState
+import com.myapp.adventure.engine.CompileResult
+import com.myapp.adventure.engine.CompiledAdventure
+import com.myapp.adventure.engine.EffectsApplier
+import com.myapp.adventure.engine.Engine
+import com.myapp.adventure.engine.Evaluator
+import com.myapp.adventure.engine.analyze.Analyzer
+import com.myapp.adventure.engine.analyze.LintIssue
+import com.myapp.adventure.engine.analyze.LintKind
+import com.myapp.adventure.engine.analyze.Severity
+import com.myapp.adventure.engine.format.JsonToIr
+import com.myapp.adventure.engine.ir.Adventure
+import com.myapp.adventure.engine.ir.Choice
+import com.myapp.adventure.engine.ir.Effect
+import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.ir.PlayerState
+import com.myapp.adventure.engine.ir.Scene
+import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.TagCategory
+import com.myapp.adventure.engine.ir.types.TypeError
+import com.myapp.adventure.engine.parse.ParseResult
+import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.utils.ProgressManager
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Phase 3.4-a-2a: runtime transitions. Builds on 3.4-a-1 (loading).
+ *
+ * **State ownership.** Every field of [ReaderUiState] is mutated only
+ * inside this class. The Fragment is still View-based (3.4-a-3 migrates
+ * it); for now this VM is dormant — the Fragment does its own logic
+ * in parallel, unaffected.
+ *
+ * **Not yet migrated here (3.4-a-2b):** debug-panel actions (set stat,
+ * delete stat, add flag, …), warning acknowledgment
+ * (`savedWarningsFingerprint = currentWarningsFingerprint` on "Продолжить").
+ * The Fragment handles both locally until 3.4-a-3.
+ */
+class AdventureReaderViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val _state = MutableStateFlow(ReaderUiState())
+    val state: StateFlow<ReaderUiState> = _state.asStateFlow()
+
+    private val app: Application get() = getApplication()
+
+    // ==================================================================
+    // INIT (from 3.4-a-1) + loadCurrentScene at the end
+    // ==================================================================
+
+    fun init(arguments: Bundle?): ReaderInitResult {
+        val adventureJson = readAdventureJsonFromFile(arguments)
+            ?: arguments?.getString("adventure_json")
+            ?: return ReaderInitResult.NoAdventureData
+
+        val adventure: Adventure = when (val parseResult = JsonToIr.parse(adventureJson)) {
+            is ParseResult.Failure -> {
+                if (parseResult.typeErrors.isNotEmpty()) {
+                    return ReaderInitResult.TypeErrors(parseResult.typeErrors)
+                }
+                val firstError = parseResult.errors.firstOrNull()?.message ?: "unknown error"
+                return ReaderInitResult.ParseError(firstError)
+            }
+            is ParseResult.Success -> parseResult.value
+        }
+
+        val compiled: CompiledAdventure = when (val compileResult = Engine.compile(adventure)) {
+            is CompileResult.Failure -> {
+                val firstError = compileResult.errors.firstOrNull()?.message ?: "unknown error"
+                return ReaderInitResult.CompileError(firstError)
+            }
+            is CompileResult.Success -> compileResult.compiled
+        }
+
+        val previewMode = arguments?.getBoolean("preview_mode", false) ?: false
+        val previewStartSceneId = arguments?.getString("preview_scene_id") ?: ""
+        val previewStartChapterIndex = arguments?.getInt("preview_chapter_index", 0) ?: 0
+        val adventureFileUri = arguments?.getString("adventure_file_uri")?.let { Uri.parse(it) }
+
+        var cachedPlayerWarnings: List<LintIssue> = emptyList()
+        var currentWarningsFingerprint = ""
+        if (!previewMode) {
+            val allIssues = Analyzer.lint(compiled)
+            val errors = allIssues.filter { it.severity == Severity.ERROR }
+            if (errors.isNotEmpty()) {
+                return ReaderInitResult.BrokenAdventure(errors)
+            }
+            cachedPlayerWarnings = allIssues.filter {
+                it.severity == Severity.WARNING && it.kind is LintKind.DeadEnd
+            }
+            currentWarningsFingerprint = computeWarningsFingerprint(cachedPlayerWarnings)
+        }
+
+        val baseState = ReaderUiState(
+            adventure = adventure,
+            compiled = compiled,
+            previewMode = previewMode,
+            adventureFileUri = adventureFileUri,
+            previewStartSceneId = previewStartSceneId,
+            previewStartChapterIndex = previewStartChapterIndex,
+            cachedPlayerWarnings = cachedPlayerWarnings,
+            currentWarningsFingerprint = currentWarningsFingerprint,
+        )
+
+        _state.value = if (previewMode) {
+            initPreviewState(baseState)
+        } else {
+            initNormalState(baseState)
+        }
+
+        Logger.log(
+            app,
+            "ReaderViewModel initialized: preview=$previewMode, " +
+                    "scene='${_state.value.currentSceneId}', " +
+                    "warnings=${cachedPlayerWarnings.size}",
+        )
+
+        // Phase 3.4-a-2a: compute the full initial scene state (effects,
+        // death, gate, ending) so that Fragment / Compose see a fully
+        // ready ReaderUiState right after init.
+        loadCurrentScene()
+
+        return ReaderInitResult.Success
+    }
+
+    // ==================================================================
+    // Runtime transitions
+    // ==================================================================
+
+    /** User tapped a (visible) choice. Mirrors the Fragment's inline path. */
+    fun onChoicePicked(choice: Choice) {
+        val current = _state.value
+        if (current.isDead) return
+        if (current.adventure == null || current.compiled == null) return
+
+        val previous = captureSnapshot()
+
+        // Apply choice effects
+        var next = applyEffectsToState(
+            current.copy(previousStepSnapshot = previous),
+            choice.effects,
+        )
+        next = next.copy(currentSceneId = choice.nextScene.value)
+        _state.value = next
+        saveProgress()
+
+        if (checkDeathInternal(next)) {
+            _state.value = _state.value.copy(isDead = true)
+            saveProgress()
+            return
+        }
+
+        loadCurrentScene()
+    }
+
+    fun onStepBack() {
+        val snapshot = _state.value.previousStepSnapshot ?: return
+        restoreSnapshot(snapshot)
+    }
+
+    fun onChapterRestart() {
+        val snapshot = _state.value.chapterStartSnapshot ?: return
+        restoreSnapshot(snapshot)
+    }
+
+    fun onAdventureRestart() {
+        val current = _state.value
+        if (current.previewMode) {
+            // Preview: no progress persistence, reset in memory.
+            val adventure = current.adventure ?: return
+            val initial = adventure.initialState
+            _state.value = current.copy(
+                flags = initial.flags.toList(),
+                stats = initial.stats,
+                itemOrder = rebuildItemOrderList(adventure, initial.stats),
+                appliedSceneEffects = emptySet(),
+                passedGates = emptySet(),
+                currentSceneId = current.previewStartSceneId,
+                isDead = false,
+                remainingSteps = 0,
+                isGateActive = false,
+                lastKnownAbsolute = -1,
+                lastAbsoluteAtSaveFromProgress = -1,
+                previousStepSnapshot = null,
+                chapterStartSnapshot = null,
+                storyEndedMessage = null,
+            )
+            loadCurrentScene()
+        } else {
+            onRestartAdventure()
+        }
+    }
+
+    fun onRestartAdventure() {
+        val current = _state.value
+        val adventure = current.adventure ?: return
+        val compiled = current.compiled ?: return
+        val uri = current.adventureFileUri
+        if (uri != null) {
+            ProgressManager.deleteProgress(app, uri)
+        }
+        val initial = adventure.initialState
+        _state.value = current.copy(
+            flags = initial.flags.toList(),
+            stats = initial.stats,
+            itemOrder = rebuildItemOrderList(adventure, initial.stats),
+            appliedSceneEffects = emptySet(),
+            passedGates = emptySet(),
+            currentSceneId = adventure.startScene.value,
+            isDead = false,
+            remainingSteps = 0,
+            isGateActive = false,
+            lastKnownAbsolute = -1,
+            lastAbsoluteAtSaveFromProgress = -1,
+            previousStepSnapshot = null,
+            chapterStartSnapshot = null,
+            savedWarningsFingerprint = "",
+            storyEndedMessage = null,
+        )
+        saveProgress()
+        loadCurrentScene()
+        // Fragment shows the "adventure restarted" toast (R.string.reader_toast_adventure_restarted).
+        // In 3.4-a-3 this becomes a ReaderEffect.
+    }
+
+    // ==================================================================
+    // Steps / gate
+    // ==================================================================
+
+    /** Called by the Fragment's BroadcastReceiver on each sensor update. */
+    fun onStepsUpdate(absoluteSteps: Int) {
+        val state = _state.value
+        if (!state.isGateActive) return
+        val scene = state.compiled?.scenesById?.get(SceneId(state.currentSceneId)) ?: return
+        val gate = scene.gate ?: return
+
+        val newRemaining: Int
+        val newLastKnown: Int
+        if (state.lastKnownAbsolute < 0) {
+            // First event since fragment opened. Catch up from saved baseline.
+            if (state.lastAbsoluteAtSaveFromProgress >= 0) {
+                val delta = (absoluteSteps - state.lastAbsoluteAtSaveFromProgress).coerceAtLeast(0)
+                newRemaining = (state.remainingSteps - delta).coerceAtLeast(0)
+            } else {
+                newRemaining = state.remainingSteps
+            }
+            newLastKnown = absoluteSteps
+        } else {
+            val delta = (absoluteSteps - state.lastKnownAbsolute).coerceAtLeast(0)
+            newRemaining = (state.remainingSteps - delta).coerceAtLeast(0)
+            newLastKnown = absoluteSteps
+        }
+
+        val updated = state.copy(
+            remainingSteps = newRemaining,
+            lastKnownAbsolute = newLastKnown,
+        )
+        _state.value = updated
+
+        if (newRemaining <= 0) {
+            onGatePassedInternal(updated, scene)
+        }
+    }
+
+    /** Called from onViewCreated / onResume to catch up if sensor already alive. */
+    fun tryCatchUpGate() {
+        val state = _state.value
+        if (!state.isGateActive || state.previewMode) return
+        if (state.lastKnownAbsolute >= 0) return
+
+        val scene = state.compiled?.scenesById?.get(SceneId(state.currentSceneId))
+        val gate = scene?.gate
+        if (scene == null || gate == null) {
+            _state.value = state.copy(
+                isGateActive = false, remainingSteps = 0,
+                lastKnownAbsolute = -1, lastAbsoluteAtSaveFromProgress = -1,
+            )
+            return
+        }
+        if (!gate.repeatable && scene.id.value in state.passedGates) {
+            _state.value = state.copy(
+                isGateActive = false, remainingSteps = 0,
+                lastKnownAbsolute = -1, lastAbsoluteAtSaveFromProgress = -1,
+            )
+            return
+        }
+
+        val abs = com.myapp.adventure.service.StepCounterService.absoluteSteps
+        val hasFirst = com.myapp.adventure.service.StepCounterService.hasFirstEvent
+        if (hasFirst && state.lastAbsoluteAtSaveFromProgress >= 0) {
+            val delta = (abs - state.lastAbsoluteAtSaveFromProgress).coerceAtLeast(0)
+            val newRemaining = (state.remainingSteps - delta).coerceAtLeast(0)
+            _state.value = state.copy(
+                remainingSteps = newRemaining,
+                lastKnownAbsolute = abs,
+            )
+        }
+    }
+
+    /** Debug-only: set remaining steps manually. */
+    fun setDebugRemainingSteps(remaining: Int) {
+        val state = _state.value
+        val scene = state.compiled?.scenesById?.get(SceneId(state.currentSceneId)) ?: return
+        if (scene.gate == null) return
+        val newRemaining = remaining.coerceAtLeast(0)
+        _state.value = state.copy(remainingSteps = newRemaining)
+        if (newRemaining <= 0) {
+            onGatePassedInternal(_state.value, scene)
+        }
+    }
+
+    // ==================================================================
+    // HUD
+    // ==================================================================
+
+    fun getHealthValue(): Int {
+        val state = _state.value
+        val adventure = state.adventure ?: return 0
+        val healthDef = adventure.tags.firstOrNull { it.name == "health" && it.category == TagCategory.HEALTH }
+            ?: adventure.tags.firstOrNull { it.category == TagCategory.HEALTH }
+        return healthDef?.let { state.stats[it.name] ?: 0 } ?: 0
+    }
+
+    fun getInventoryCount(): Int =
+        _state.value.itemOrder.count { (_state.value.stats[it] ?: 0) > 0 }
+
+    fun getJournalCount(): Int = getJournalItems().size
+
+    fun getHealthItems(): List<Pair<String, Int>> {
+        val state = _state.value
+        val adventure = state.adventure ?: return emptyList()
+        return adventure.tags
+            .filter { it.category == TagCategory.HEALTH }
+            .map { def ->
+                val display = def.displayName.ifBlank { def.name }
+                display to (state.stats[def.name] ?: 0)
+            }
+    }
+
+    fun getInventoryItems(): List<Pair<String, Int>> {
+        val state = _state.value
+        return state.itemOrder.asReversed()
+            .filter { (state.stats[it] ?: 0) > 0 }
+            .map { name -> getDisplayName(name) to (state.stats[name] ?: 0) }
+    }
+
+    fun getJournalItems(): List<String> {
+        val state = _state.value
+        val adventure = state.adventure ?: return emptyList()
+        val result = mutableListOf<String>()
+        for (name in state.flags.asReversed()) {
+            if (isVisible(name) && getCategory(name) == TagCategory.JOURNAL) {
+                result.add(getDisplayName(name))
+            }
+        }
+        adventure.tags
+            .filter { it.category == TagCategory.JOURNAL && it.visible }
+            .forEach { def ->
+                if (!state.flags.contains(def.name) && (state.stats[def.name] ?: 0) != 0) {
+                    val display = def.displayName.ifBlank { def.name }
+                    result.add("$display: ${state.stats[def.name]}")
+                }
+            }
+        return result
+    }
+
+    /** Returns (choice, display state) for the current scene, hidden ones omitted. */
+    fun getChoiceStates(): List<Pair<Choice, ChoiceState>> {
+        val state = _state.value
+        val scene = currentScene() ?: return emptyList()
+        val playerState = PlayerState(flags = state.flags.toSet(), stats = state.stats)
+        return scene.choices.map { choice ->
+            choice to Evaluator.choiceState(choice, playerState)
+        }.filter { it.second !is ChoiceState.Hidden }
+    }
+
+    fun currentScene(): Scene? {
+        val state = _state.value
+        return state.compiled?.scenesById?.get(SceneId(state.currentSceneId))
+    }
+
+    // ==================================================================
+    // Progress persistence
+    // ==================================================================
+
+    fun saveProgress() {
+        val state = _state.value
+        if (state.previewMode) return
+        val uri = state.adventureFileUri ?: return
+        val compiled = state.compiled ?: return
+
+        val abs = if (com.myapp.adventure.service.StepCounterService.hasFirstEvent)
+            com.myapp.adventure.service.StepCounterService.absoluteSteps else -1
+
+        val progress = ProgressData(
+            adventureFileName = "",
+            currentChapterIndex = compiled.chapterIndexBySceneId[SceneId(state.currentSceneId)] ?: 0,
+            currentSceneId = state.currentSceneId,
+            flags = state.flags,
+            stats = state.stats,
+            appliedSceneEffects = state.appliedSceneEffects,
+            itemOrder = state.itemOrder,
+            previousStepSnapshot = state.previousStepSnapshot,
+            chapterStartSnapshot = state.chapterStartSnapshot,
+            remainingSteps = state.remainingSteps,
+            isGateActive = state.isGateActive,
+            lastAbsoluteAtSave = abs,
+            warningsFingerprint = state.savedWarningsFingerprint,
+            passedGates = state.passedGates.toList(),
+        )
+        ProgressManager.saveProgress(app, uri, progress)
+    }
+
+    /** Called from Fragment.onStop; flushes the in-memory cache to disk. */
+    suspend fun flushProgress() {
+        ProgressManager.flush(app)
+    }
+
+    // ==================================================================
+    // Scene transitions (private)
+    // ==================================================================
+
+    private fun loadCurrentScene() {
+        val state = _state.value
+        if (state.isDead) return
+        val compiled = state.compiled ?: return
+        val adventure = state.adventure ?: return
+
+        val scene = compiled.scenesById[SceneId(state.currentSceneId)] ?: run {
+            _state.value = state.copy(
+                storyEndedMessage = "scene not found: ${state.currentSceneId}",
+            )
+            return
+        }
+
+        var next = state
+
+        if (scene.id.value !in next.appliedSceneEffects) {
+            next = applyEffectsToState(next, scene.effects)
+            next = next.copy(appliedSceneEffects = next.appliedSceneEffects + scene.id.value)
+            Logger.log(app, "Scene '${scene.id.value}' loaded for the first time")
+        }
+
+        if (checkDeathInternal(next)) {
+            next = next.copy(isDead = true)
+            _state.value = next
+            saveProgress()
+            return
+        }
+
+        next = captureChapterStartIfNeeded(next)
+
+        val gate = scene.gate
+        if (gate != null && scene.id.value !in next.passedGates) {
+            if (next.previewMode) {
+                next = next.copy(
+                    isGateActive = true,
+                    remainingSteps = gate.requiredSteps,
+                    lastKnownAbsolute = -1,
+                )
+                _state.value = next
+                return
+            }
+            next = when {
+                !next.isGateActive -> startSceneGate(next, scene)
+                next.remainingSteps <= 0 -> onGatePassedInternal(next, scene)
+                next.remainingSteps > gate.requiredSteps -> startSceneGate(next, scene)
+                else -> next.copy(isGateActive = true)
+            }
+            _state.value = next
+            saveProgress()
+            return
+        }
+
+        if (scene.isEnding) {
+            _state.value = next.copy(storyEndedMessage = "Конец")
+            return
+        }
+
+        if (scene.choices.isEmpty()) {
+            _state.value = next.copy(storyEndedMessage = "Конец (preview)")
+            return
+        }
+
+        _state.value = next
+    }
+
+    private fun applyEffectsToState(base: ReaderUiState, effects: List<Effect>): ReaderUiState {
+        if (effects.isEmpty()) return base
+        val adventure = base.adventure ?: return base
+        val playerState = PlayerState(flags = base.flags.toSet(), stats = base.stats)
+        val newPlayerState = EffectsApplier.apply(playerState, effects)
+
+        // Sync item order for ITEM stats touched by effects
+        var itemOrder = base.itemOrder
+        for (effect in effects) {
+            val name = when (effect) {
+                is Effect.ModifyStat -> effect.name
+                is Effect.Set -> effect.name
+                else -> null
+            } ?: continue
+            if (getCategory(name) == TagCategory.ITEM) {
+                val newValue = newPlayerState.stats[name] ?: 0
+                itemOrder = if (newValue > 0 && !itemOrder.contains(name)) {
+                    itemOrder + name
+                } else if (newValue <= 0) {
+                    itemOrder - name
+                } else itemOrder
+            }
+        }
+
+        return base.copy(
+            flags = newPlayerState.flags.toList(),
+            stats = newPlayerState.stats,
+            itemOrder = itemOrder,
+        )
+    }
+
+    private fun checkDeathInternal(state: ReaderUiState): Boolean {
+        val adventure = state.adventure ?: return false
+        val playerState = PlayerState(flags = state.flags.toSet(), stats = state.stats)
+        val outcome = Engine.evaluateInvariants(adventure, playerState)
+        return outcome == Outcome.Death
+    }
+
+    private fun startSceneGate(state: ReaderUiState, scene: Scene): ReaderUiState {
+        val gate = scene.gate ?: return state
+        val abs = if (com.myapp.adventure.service.StepCounterService.hasFirstEvent)
+            com.myapp.adventure.service.StepCounterService.absoluteSteps else -1
+        return state.copy(
+            isGateActive = true,
+            remainingSteps = gate.requiredSteps,
+            lastKnownAbsolute = abs,
+            lastAbsoluteAtSaveFromProgress = -1,
+        )
+    }
+
+    private fun onGatePassedInternal(state: ReaderUiState, scene: Scene): ReaderUiState {
+        val newPassed = if (scene.gate?.repeatable != true) {
+            state.passedGates + scene.id.value
+        } else state.passedGates
+
+        val next = state.copy(
+            passedGates = newPassed,
+            isGateActive = false,
+            remainingSteps = 0,
+            storyEndedMessage = when {
+                scene.isEnding -> "Конец"
+                scene.choices.isEmpty() -> "Конец (preview)"
+                else -> null
+            },
+        )
+        saveProgress()
+        return next
+    }
+
+    // ==================================================================
+    // Snapshots
+    // ==================================================================
+
+    private fun captureSnapshot(): PlayerStateSnapshot {
+        val state = _state.value
+        val compiled = state.compiled
+        val chapterIndex = compiled?.chapterIndexBySceneId?.get(SceneId(state.currentSceneId)) ?: 0
+        return PlayerStateSnapshot(
+            sceneId = state.currentSceneId,
+            chapterIndex = chapterIndex,
+            flags = state.flags,
+            stats = state.stats,
+            itemOrder = state.itemOrder,
+            appliedSceneEffects = state.appliedSceneEffects,
+        )
+    }
+
+    private fun restoreSnapshot(snapshot: PlayerStateSnapshot) {
+        val current = _state.value
+        _state.value = current.copy(
+            previousStepSnapshot = null,
+            isGateActive = false,
+            remainingSteps = 0,
+            lastKnownAbsolute = -1,
+            lastAbsoluteAtSaveFromProgress = -1,
+            currentSceneId = snapshot.sceneId,
+            flags = snapshot.flags,
+            stats = snapshot.stats,
+            itemOrder = snapshot.itemOrder,
+            appliedSceneEffects = snapshot.appliedSceneEffects,
+            isDead = false,
+            storyEndedMessage = null,
+        )
+        saveProgress()
+        loadCurrentScene()
+    }
+
+    private fun captureChapterStartIfNeeded(state: ReaderUiState): ReaderUiState {
+        val compiled = state.compiled ?: return state
+        val chapterIndex = compiled.chapterIndexBySceneId[SceneId(state.currentSceneId)] ?: return state
+        val chapter = compiled.adventure.chapters.getOrNull(chapterIndex) ?: return state
+        val firstSceneId = chapter.scenes.firstOrNull()?.id?.value ?: return state
+        if (state.currentSceneId != firstSceneId) return state
+        if (state.chapterStartSnapshot != null &&
+            state.chapterStartSnapshot.chapterIndex == chapterIndex
+        ) return state
+        val health = state.stats["health"]
+        if (health == null || health > 0) {
+            return state.copy(chapterStartSnapshot = captureSnapshot())
+        }
+        return state
+    }
+
+    // ==================================================================
+    // Helpers
+    // ==================================================================
+
+    private fun getCategory(name: String): TagCategory {
+        if (name == "health") return TagCategory.HEALTH
+        return _state.value.adventure?.tags?.firstOrNull { it.name == name }?.category
+            ?: TagCategory.JOURNAL
+    }
+
+    private fun getDisplayName(name: String): String {
+        val def = _state.value.adventure?.tags?.firstOrNull { it.name == name }
+        return def?.displayName?.ifBlank { name } ?: name
+    }
+
+    private fun isVisible(name: String): Boolean {
+        return _state.value.adventure?.tags?.firstOrNull { it.name == name }?.visible ?: false
+    }
+
+    private fun rebuildItemOrderList(adventure: Adventure, stats: Map<String, Int>): List<String> {
+        return adventure.tags
+            .filter { it.category == TagCategory.ITEM }
+            .map { it.name }
+            .filter { (stats[it] ?: 0) > 0 }
+    }
+
+    // ==================================================================
+    // Loading / init helpers (from 3.4-a-1)
+    // ==================================================================
+
+    private fun initPreviewState(base: ReaderUiState): ReaderUiState {
+        val adventure = requireNotNull(base.adventure)
+        val initial = adventure.initialState
+        return base.copy(
+            currentSceneId = base.previewStartSceneId,
+            flags = initial.flags.toList(),
+            stats = initial.stats,
+            itemOrder = rebuildItemOrderList(adventure, initial.stats),
+            appliedSceneEffects = emptySet(),
+            passedGates = emptySet(),
+            isDead = false,
+            remainingSteps = 0,
+            isGateActive = false,
+            lastKnownAbsolute = -1,
+            lastAbsoluteAtSaveFromProgress = -1,
+            previousStepSnapshot = null,
+            chapterStartSnapshot = null,
+            savedWarningsFingerprint = "",
+            storyEndedMessage = null,
+        )
+    }
+
+    private fun initNormalState(base: ReaderUiState): ReaderUiState {
+        val adventure = requireNotNull(base.adventure)
+        val saved = base.adventureFileUri?.let {
+            ProgressManager.loadProgress(app, it)
+        }
+
+        if (saved != null) {
+            val itemOrder = if (saved.itemOrder.isNotEmpty()) {
+                saved.itemOrder.filter { (saved.stats[it] ?: 0) > 0 }
+            } else {
+                rebuildItemOrderList(adventure, saved.stats)
+            }
+            return base.copy(
+                currentSceneId = saved.currentSceneId,
+                flags = saved.flags,
+                stats = saved.stats,
+                itemOrder = itemOrder,
+                appliedSceneEffects = saved.appliedSceneEffects,
+                passedGates = saved.passedGates.toSet(),
+                isDead = false,
+                remainingSteps = saved.remainingSteps,
+                isGateActive = saved.isGateActive,
+                lastKnownAbsolute = -1,
+                lastAbsoluteAtSaveFromProgress = saved.lastAbsoluteAtSave,
+                previousStepSnapshot = saved.previousStepSnapshot,
+                chapterStartSnapshot = saved.chapterStartSnapshot,
+                savedWarningsFingerprint = saved.warningsFingerprint,
+                storyEndedMessage = null,
+            )
+        }
+
+        val initial = adventure.initialState
+        return base.copy(
+            currentSceneId = adventure.startScene.value,
+            flags = initial.flags.toList(),
+            stats = initial.stats,
+            itemOrder = rebuildItemOrderList(adventure, initial.stats),
+            appliedSceneEffects = emptySet(),
+            passedGates = emptySet(),
+            isDead = false,
+            remainingSteps = 0,
+            isGateActive = false,
+            lastKnownAbsolute = -1,
+            lastAbsoluteAtSaveFromProgress = -1,
+            previousStepSnapshot = null,
+            chapterStartSnapshot = null,
+            savedWarningsFingerprint = "",
+            storyEndedMessage = null,
+        )
+    }
+
+    private fun readAdventureJsonFromFile(arguments: Bundle?): String? {
+        val uriString = arguments?.getString("adventure_file_uri") ?: return null
+        return try {
+            val uri = Uri.parse(uriString)
+            app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        } catch (e: Exception) {
+            Logger.log(app, "Failed to read adventure file: ${e.message}")
+            null
+        }
+    }
+
+    private fun computeWarningsFingerprint(warnings: List<LintIssue>): String {
+        if (warnings.isEmpty()) return ""
+        return warnings
+            .sortedWith(compareBy({ it.sceneId?.value ?: "" }, { it.message }))
+            .joinToString("|") { "${it.sceneId?.value ?: ""}:${it.message}" }
+    }
+}
+
+sealed interface ReaderInitResult {
+    data object Success : ReaderInitResult
+    data object NoAdventureData : ReaderInitResult
+    data class ParseError(val message: String) : ReaderInitResult
+    data class TypeErrors(val errors: List<TypeError>) : ReaderInitResult
+    data class CompileError(val message: String) : ReaderInitResult
+    data class BrokenAdventure(val errors: List<LintIssue>) : ReaderInitResult
+}
+
+
+================================================
+FILE: app/src/main/java/com/myapp/adventure/ui/reader/ReaderUiState.kt
+================================================
+package com.myapp.adventure.ui.reader
+
+import android.net.Uri
+import com.myapp.adventure.data.PlayerStateSnapshot
+import com.myapp.adventure.engine.CompiledAdventure
+import com.myapp.adventure.engine.analyze.LintIssue
+import com.myapp.adventure.engine.ir.Adventure
+
+/**
+ * Phase 3.4-a-1: immutable snapshot of the reader's runtime state.
+ *
+ * **Immutable.** Every mutation creates a new instance via `copy(...)`
+ * and is published through `AdventureReaderViewModel.state`. The
+ * Fragment reads `vm.state.value` for rendering; the future Compose
+ * screen collects it via `collectAsStateWithLifecycle`.
+ *
+ * **Nullable `adventure` / `compiled`.** Before `vm.init(...)` runs,
+ * there is no parsed file. After `init` returns `Success`, both are
+ * non-null and stay non-null for the rest of the ViewModel's lifetime.
+ * All methods that mutate state check `adventure != null` (or are
+ * called only after `Success` — the Fragment contract).
+ *
+ * **String scene ids, not `SceneId`.** Matches the current Fragment:
+ * `.value` at IR boundaries, `SceneId(x)` when indexing
+ * `compiled.scenesById`. A full `SceneId` migration is deferred to
+ * Phase 5; the type is already correct where it matters.
+ */
+data class ReaderUiState(
+    val adventure: Adventure? = null,
+    val compiled: CompiledAdventure? = null,
+    val previewMode: Boolean = false,
+    val adventureFileUri: Uri? = null,
+    val previewStartSceneId: String = "",
+    val previewStartChapterIndex: Int = 0,
+
+    val currentSceneId: String = "",
+
+    val flags: List<String> = emptyList(),
+    val stats: Map<String, Int> = emptyMap(),
+    val itemOrder: List<String> = emptyList(),
+    val appliedSceneEffects: Set<String> = emptySet(),
+    val passedGates: Set<String> = emptySet(),
+
+    val isDead: Boolean = false,
+    /**
+     * Non-null when the story has reached an end (isEnding scene,
+     * no-choices scene, or missing scene). Rendering shows this as the
+     * "Конец" body + restart button. Cleared on `onRestartAdventure`.
+     */
+    val storyEndedMessage: String? = null,
+
+    // ----- Steps gate -----
+    val remainingSteps: Int = 0,
+    val isGateActive: Boolean = false,
+    val lastKnownAbsolute: Int = -1,
+    val lastAbsoluteAtSaveFromProgress: Int = -1,
+
+    // ----- Snapshots -----
+    val previousStepSnapshot: PlayerStateSnapshot? = null,
+    val chapterStartSnapshot: PlayerStateSnapshot? = null,
+
+    // ----- Warnings -----
+    val cachedPlayerWarnings: List<LintIssue> = emptyList(),
+    val currentWarningsFingerprint: String = "",
+    val savedWarningsFingerprint: String = "",
+)
 
 
 ================================================
@@ -19019,36 +20638,73 @@ FILE: app/src/main/res/drawable/ic_launcher_background.xml
 ================================================
 FILE: app/src/main/res/drawable/ic_launcher_foreground.xml
 ================================================
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:endX="85.84757"
-                android:endY="92.4963"
-                android:startX="42.9492"
-                android:startY="49.59793"
-                android:type="linear">
-                <item
-                    android:color="#44000000"
-                    android:offset="0.0" />
-                <item
-                    android:color="#00000000"
-                    android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#171611">
+  <group android:scaleX="0.464"
+      android:scaleY="0.464"
+      android:translateX="6.432"
+      android:translateY="6.432">
     <path
-        android:fillColor="#FFFFFF"
-        android:fillType="nonZero"
-        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
-        android:strokeWidth="1"
-        android:strokeColor="#00000000" />
+        android:fillColor="@android:color/white"
+        android:pathData="M13.5,5.5c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2s-2,0.9 -2,2S12.4,5.5 13.5,5.5zM17.5,10.78c-1.23,-0.37 -2.22,-1.17 -2.8,-2.18l-1,-1.6c-0.41,-0.65 -1.11,-1 -1.84,-1c-0.78,0 -1.59,0.5 -1.78,1.44S7,23 7,23h2.1l1.8,-8l2.1,2v6h2v-7.5l-2.1,-2l0.6,-3c1,1.15 2.41,2.01 4,2.34V23H19V9h-1.5L17.5,10.78zM7.43,13.13l-2.12,-0.41c-0.54,-0.11 -0.9,-0.63 -0.79,-1.17l0.76,-3.93c0.21,-1.08 1.26,-1.79 2.34,-1.58l1.16,0.23L7.43,13.13z"/>
+  </group>
 </vector>
+
+
+
+================================================
+FILE: app/src/main/res/drawable/ic_launcher_monochrome.xml
+================================================
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#000000">
+  <group android:scaleX="0.464"
+      android:scaleY="0.464"
+      android:translateX="6.432"
+      android:translateY="6.432">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M13.5,5.5c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2s-2,0.9 -2,2S12.4,5.5 13.5,5.5zM17.5,10.78c-1.23,-0.37 -2.22,-1.17 -2.8,-2.18l-1,-1.6c-0.41,-0.65 -1.11,-1 -1.84,-1c-0.78,0 -1.59,0.5 -1.78,1.44S7,23 7,23h2.1l1.8,-8l2.1,2v6h2v-7.5l-2.1,-2l0.6,-3c1,1.15 2.41,2.01 4,2.34V23H19V9h-1.5L17.5,10.78zM7.43,13.13l-2.12,-0.41c-0.54,-0.11 -0.9,-0.63 -0.79,-1.17l0.76,-3.93c0.21,-1.08 1.26,-1.79 2.34,-1.58l1.16,0.23L7.43,13.13z"/>
+  </group>
+</vector>
+
 
 
 ================================================
@@ -19087,6 +20743,42 @@ FILE: app/src/main/res/drawable/scene_background_highlighted.xml
         android:top="8dp"
         android:bottom="8dp" />
 </shape>
+
+
+================================================
+FILE: app/src/main/res/drawable-anydpi/ic_stat_name.xml
+================================================
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+  <group android:scaleX="0.47916666"
+      android:scaleY="0.47916666"
+      android:translateX="6.25"
+      android:translateY="6.25">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M13.5,5.5c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2s-2,0.9 -2,2S12.4,5.5 13.5,5.5zM17.5,10.78c-1.23,-0.37 -2.22,-1.17 -2.8,-2.18l-1,-1.6c-0.41,-0.65 -1.11,-1 -1.84,-1c-0.78,0 -1.59,0.5 -1.78,1.44S7,23 7,23h2.1l1.8,-8l2.1,2v6h2v-7.5l-2.1,-2l0.6,-3c1,1.15 2.41,2.01 4,2.34V23H19V9h-1.5L17.5,10.78zM7.43,13.13l-2.12,-0.41c-0.54,-0.11 -0.9,-0.63 -0.79,-1.17l0.76,-3.93c0.21,-1.08 1.26,-1.79 2.34,-1.58l1.16,0.23L7.43,13.13z"/>
+  </group>
+</vector>
+
 
 
 ================================================
@@ -22312,24 +24004,54 @@ FILE: app/src/main/res/layout/item_variables_header.xml
 
 
 ================================================
-FILE: app/src/main/res/mipmap-anydpi/ic_launcher.xml
+FILE: app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 ================================================
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>
 </adaptive-icon>
 
 
 ================================================
-FILE: app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+FILE: app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 ================================================
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>
 </adaptive-icon>
 
 
@@ -22615,6 +24337,15 @@ FILE: app/src/main/res/values/colors.xml
     <color name="md_status_danger">#C62828</color>
     <color name="md_status_info">#1565C0</color>
     <color name="md_status_neutral">#5D4037</color>
+</resources>
+
+
+================================================
+FILE: app/src/main/res/values/ic_launcher_background.xml
+================================================
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>
 
 

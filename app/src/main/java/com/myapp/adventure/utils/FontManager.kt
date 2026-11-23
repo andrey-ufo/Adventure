@@ -42,7 +42,7 @@ object FontManager {
     }
 
     fun getAvailableFonts(context: Context): List<String> {
-        val fonts = mutableListOf("По умолчанию", "Bad Script", "Caveat")
+        val fonts = mutableListOf("По умолчанию", "Bad Script", "Caveat", "AmazHand_First", "EuroScript", "MarckScript")
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         fonts.addAll(prefs.getStringSet(KEY_CUSTOM_FONTS, emptySet()) ?: emptySet())
         return fonts
@@ -66,6 +66,10 @@ object FontManager {
         "По умолчанию" -> Typeface.DEFAULT
         "Bad Script" -> Typeface.createFromAsset(context.assets, "fonts/BadScript-Regular.ttf")
         "Caveat" -> Typeface.createFromAsset(context.assets, "fonts/Caveat-Regular.ttf")
+        "AmazHand_First" -> Typeface.createFromAsset(context.assets, "fonts/AmazHand_First.ttf")
+        "EuroScript" -> Typeface.createFromAsset(context.assets, "fonts/EuroScript.ttf")
+        "MarckScript" -> Typeface.createFromAsset(context.assets, "fonts/MarckScript-Regular.ttf")
+
         else -> {
             val fontFile = File(context.filesDir, "$FONTS_DIR/$fontName")
             if (fontFile.exists()) Typeface.createFromFile(fontFile) else Typeface.DEFAULT

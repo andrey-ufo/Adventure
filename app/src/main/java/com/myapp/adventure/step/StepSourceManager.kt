@@ -14,12 +14,14 @@ import kotlinx.coroutines.launch
 /**
  * Chooses the active step source and polls it periodically.
  *
- * - If user preference is "health_connect" AND HC is available AND permission granted
- *   → polls HealthConnectStepSource.
- * - Otherwise → SensorStepSource (passive; StepCounterService already writes deltas).
+ * Rules:
+ *  - HC enabled + installed + permission granted → HC is the active source.
+ *    Sensor deltas are suppressed by StepCounterService to avoid double-count.
+ *  - Otherwise → sensor is the active source (StepCounterService writes deltas
+ *    directly). The poll loop is a no-op in this mode.
  *
- * Polling interval is 60 seconds. Health Connect may lag, so the gate in
- * AdventureReaderFragment updates with a delay when HC is active. This is documented in UI.
+ * [isHealthConnectActuallyUsable] is the single point of truth used by both
+ * this class and [com.myapp.adventure.service.StepCounterService].
  */
 object StepSourceManager {
 
@@ -34,6 +36,17 @@ object StepSourceManager {
     private val sensorSource = SensorStepSource()
     private val healthConnectSource = HealthConnectStepSource()
 
+    /**
+     * Last observed "HC actually usable" state (enabled + available + permission).
+     * Starts false; updated on each pollOnce. Sensor suppresses its own deltas
+     * while this is true.
+     */
+    @Volatile
+    private var hcUsable: Boolean = false
+
+    /** For "state changed" logging only; suppresses per-poll noise. */
+    private var lastHcState: String = "unknown"
+
     // ----- User preference -----
 
     fun isHealthConnectEnabled(context: Context): Boolean {
@@ -45,25 +58,28 @@ object StepSourceManager {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_USE_HEALTH_CONNECT, enabled).apply()
         Logger.log(context, "$TAG: Health Connect enabled=$enabled")
+        hcUsable = false
         restartPolling(context.applicationContext)
     }
 
     /**
-     * True if the user enabled HC AND HC is currently usable (installed + permission granted).
-     * UI uses this to decide whether to show "updating every N minutes" hint.
+     * True iff HC is enabled by the user, available on the device, and its
+     * read permission was confirmed granted on a recent poll.
+     *
+     * This is what StepCounterService checks before recording its own deltas.
      */
-    fun isHealthConnectActive(context: Context): Boolean {
+    fun isHealthConnectActuallyUsable(context: Context): Boolean {
         if (!isHealthConnectEnabled(context)) return false
         if (!healthConnectSource.isAvailable(context)) return false
-        // Permission check is suspend; we use a lightweight synchronous heuristic here.
-        // The actual check happens on each poll; if permission is missing, getDelta returns 0
-        // and the source falls back to sensor on the next poll.
-        return true
+        return hcUsable
     }
+
+    /** Kept for SettingsScreen; identical to [isHealthConnectActuallyUsable]. */
+    fun isHealthConnectActive(context: Context): Boolean =
+        isHealthConnectActuallyUsable(context)
 
     // ----- Lifecycle -----
 
-    /** Call from SetupFragment / MainActivity once per process. */
     fun start(context: Context) {
         restartPolling(context.applicationContext)
     }
@@ -71,6 +87,7 @@ object StepSourceManager {
     fun stop() {
         pollJob?.cancel()
         pollJob = null
+        hcUsable = false
     }
 
     private fun restartPolling(appContext: Context) {
@@ -88,21 +105,26 @@ object StepSourceManager {
     }
 
     private suspend fun pollOnce(appContext: Context) {
-        val useHc = isHealthConnectEnabled(appContext) &&
-                healthConnectSource.isAvailable(appContext) &&
-                healthConnectSource.hasReadPermission(appContext)
+        val enabled = isHealthConnectEnabled(appContext)
+        val available = enabled && healthConnectSource.isAvailable(appContext)
+        val permitted = available && healthConnectSource.hasReadPermission(appContext)
 
-        if (!useHc) {
-            // Sensor source writes deltas directly via StepCounterService.
-            // Nothing to push here.
-            return
+        val newState = when {
+            !enabled -> "disabled"
+            !available -> "unavailable"
+            !permitted -> "permission_missing"
+            else -> "active"
         }
+        if (newState != lastHcState) {
+            Logger.log(appContext, "$TAG: HC state=$newState")
+            lastHcState = newState
+        }
+        hcUsable = (newState == "active")
+        if (!hcUsable) return
 
         val delta = healthConnectSource.getDelta(appContext)
         if (delta > 0) {
-            // Use applyBucketMax through a public wrapper (see StepHistoryManager patch below).
             StepHistoryManager.applyHealthConnectDelta(appContext, delta)
-            Logger.log(appContext, "$TAG: HC delta=$delta applied")
         }
     }
 }
