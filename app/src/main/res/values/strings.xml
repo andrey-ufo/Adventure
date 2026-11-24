@@ -35,33 +35,30 @@
     <string name="app_name">Adventure</string>
 
     <!-- ============================================================ -->
-    <!-- MENU (MenuFragment)                                          -->
+    <!-- MENU (MenuScreen)                                            -->
     <!-- ============================================================ -->
     <string name="menu_library">Библиотека</string>
     <string name="menu_statistics">Статистика</string>
     <string name="menu_create">Редактор</string>
-    <string name="menu_import">Загрузить приключение</string>
     <string name="menu_logs">Логи игры</string>
     <string name="menu_settings">Настройки</string>
 
     <!-- ============================================================ -->
-    <!-- LIBRARY (AdventureListFragment)                              -->
+    <!-- LIBRARY (AdventureListScreen)                                -->
     <!-- ============================================================ -->
     <string name="library_title">Мои приключения</string>
     <string name="library_toast_folder_not_selected">Папка не выбрана</string>
     <string name="library_toast_folder_access_error_fmt">Ошибка доступа к папке: %1$s</string>
 
     <!-- ============================================================ -->
-    <!-- EDITOR (AdventureEditorFragment toolbar + save status)       -->
+    <!-- EDITOR (EditorRoute toolbar + save status)                   -->
     <!-- ============================================================ -->
     <string name="editor_title_untitled">Без названия</string>
-    <string name="editor_menu_toggle_content_description">Свернуть/развернуть меню</string>
     <string name="editor_add_scene">+ Сцена</string>
     <string name="editor_load">Загрузить</string>
     <string name="editor_edit_meta">Название</string>
     <string name="editor_validate">Проверить</string>
     <string name="editor_search">Поиск</string>
-    <string name="editor_map">Карта</string>
     <string name="editor_templates_button">Шаблоны</string>
 
     <string name="editor_save_status_editing">Изменения…</string>
@@ -77,12 +74,10 @@
     <string name="editor_toast_folder_not_selected">Папка не выбрана</string>
     <string name="editor_toast_updated">Приключение обновлено: %1$s</string>
     <string name="editor_toast_saved">Приключение сохранено: %1$s</string>
-    <string name="editor_toast_create_failed">Не удалось создать файл</string>
     <string name="editor_toast_save_error">Ошибка сохранения: %1$s</string>
     <string name="editor_toast_title_first">Сначала задайте название сцены</string>
     <string name="editor_toast_id_generate_failed">Не удалось сгенерировать ID сцены</string>
     <string name="editor_toast_scene_not_found">Сцена не найдена в собранной истории</string>
-    <string name="editor_toast_steps_positive">Значение должно быть больше 0</string>
     <string name="editor_toast_steps_integer_positive">Введите целое число больше 0</string>
     <string name="editor_toast_id_matches">ID уже соответствует названию</string>
 
@@ -112,9 +107,6 @@
     <string name="editor_rebuild_id_title">Пересобрать ID?</string>
     <string name="editor_rebuild_id_confirm">Пересобрать</string>
     <string name="editor_rebuild_id_message_fmt">ID сцены «%1$s» будет изменён:\n\nБыло:  %2$s\nСтанет: %3$s\n\nВсе выборы в других сценах, которые ссылаются на «%1$s», будут автоматически обновлены на новый ID.</string>
-    <string name="editor_rebuild_id_result_fmt">ID обновлён. Обновлено %1$s в других сценах.</string>
-    <string name="editor_rebuild_id_result_no_refs">ID обновлён. Ссылок на старый ID не было.</string>
-
     <!-- Editor: scene id + steps display -->
     <string name="editor_scene_id_label_fmt">ID: %1$s</string>
     <string name="editor_scene_id_label_will_generate">ID: (будет сгенерирован)</string>
@@ -127,8 +119,6 @@
     <string name="editor_steps_time_hours_minutes_fmt">≈ %1$d ч %2$d мин</string>
 
     <!-- Editor: choice spinner + choice count -->
-    <string name="editor_choice_spinner_create_new">➕ Создать новую сцену…</string>
-    <string name="editor_choice_spinner_choose">(выберите сцену)</string>
     <string name="editor_choices_count_none">нет вариантов</string>
 
     <!-- Editor: new scene default title -->
@@ -138,10 +128,6 @@
     <string name="editor_tag_category_health">Здоровье</string>
     <string name="editor_tag_category_item">Предмет</string>
     <string name="editor_tag_category_journal">Журнал</string>
-    <string name="editor_tag_value_hint_health">Изменение</string>
-    <string name="editor_tag_value_hint_item">Количество</string>
-    <string name="editor_tag_value_hint_journal">Знач.</string>
-
     <!-- Editor: search dialog -->
     <string name="editor_search_enter_query">Введите минимум 2 символа</string>
     <string name="editor_search_nothing_found">Ничего не найдено</string>
@@ -167,7 +153,7 @@
     <string name="editor_chapter_no_gate">⚠️ До следующей главы: 0 шагов (откроется сразу)</string>
 
     <!-- ============================================================ -->
-    <!-- TEMPLATES (TemplateListFragment + edit dialog)               -->
+    <!-- TEMPLATES (TemplateListScreen + edit dialog)                 -->
     <!-- ============================================================ -->
     <string name="template_list_title">Шаблоны выбора</string>
     <string name="template_add">+ Шаблон</string>
@@ -217,37 +203,16 @@
     <string name="scene_picker_title">Выбрать сцену</string>
     <string name="scene_picker_nothing_found">Ничего не найдено</string>
     <string name="scene_picker_query_hint">Поиск по ID или названию сцены</string>
-    <string name="scene_picker_enter_query">Введите ID или название сцены</string>
-    <string name="scene_picker_search_hint">Поиск по ID или названию</string>
-    <string name="scene_picker_create_new">➕ Создать новую сцену</string>
     <string name="scene_no_id">(без id)</string>
     <string name="scene_picker_self_row_label">@self — эта же сцена</string>
     <string name="scene_picker_start_typing">Начните вводить ID или название</string>
-    <string name="editor_choice_next_scene_label">→ Сцена:</string>
-    <string name="item_editor_choice_next_scene_create_new">+ Создать новую</string>
-
     <!-- ============================================================ -->
     <!-- MAP (AdventureMapFragment / AdventureMapAdapter)             -->
     <!-- ============================================================ -->
-    <string name="map_title">Карта приключения</string>
-    <string name="map_expand_all">Все</string>
-    <string name="map_no_transitions">(нет переходов)</string>
-    <string name="map_choice_target_unset">(не задан)</string>
-    <string name="map_gate_opens_immediately">откроется сразу</string>
-    <string name="map_gate_approximate_minutes_fmt">≈ %1$d мин</string>
-    <string name="map_gate_approximate_hours_fmt">≈ %1$d ч</string>
-    <string name="map_gate_approximate_hours_minutes_fmt">≈ %1$d ч %2$d мин</string>
-    <string name="map_gate_text_fmt">🚶 %1$s (%2$s)</string>
-
     <!-- ============================================================ -->
-    <!-- READER (AdventureReaderFragment)                             -->
+    <!-- READER (ReaderRoute)                                         -->
     <!-- ============================================================ -->
     <!-- HUD: layout defaults; overwritten at runtime -->
-    <string name="reader_hud_health_default">❤️ 0</string>
-    <string name="reader_hud_inventory_default">🎒 0</string>
-    <string name="reader_hud_journal_default">📖 0</string>
-    <string name="reader_next_chapter">Продолжить</string>
-
     <!-- HUD: runtime format -->
     <string name="reader_hud_health_fmt">❤️ %1$d</string>
     <string name="reader_hud_inventory_fmt">🎒 %1$d</string>
@@ -280,12 +245,7 @@
     <string name="reader_error_parse_fmt">Ошибка разбора файла: %1$s</string>
     <string name="reader_error_compile_fmt">Ошибка компиляции: %1$s</string>
     <string name="reader_error_launch_fmt">Ошибка запуска читалки: %1$s</string>
-    <string name="reader_toast_adventure_restarted">Приключение начато заново</string>
-
     <!-- End screen -->
-    <string name="reader_end_story">🎉 Конец истории</string>
-    <string name="reader_end_preview_marker">▶ Конец предпросмотра</string>
-    <string name="reader_end_scene_not_found_fmt">Сцена не найдена: %1$s</string>
     <string name="reader_end_text_full">Конец\n\n%1$s</string>
     <string name="reader_end_text_preview">▶ Конец предпросмотра\n\n%1$s</string>
     <string name="reader_end_button_restart_preview">Вернуться в редактор</string>
@@ -310,10 +270,6 @@
     <string name="reader_warning_dialog_continue">Продолжить игру</string>
     <string name="reader_warning_dialog_exit">Выйти из игры</string>
 
-    <!-- Warning info (read-only list) -->
-    <string name="reader_warnings_info_title">Предупреждения</string>
-    <string name="reader_warnings_info_intro_fmt">%1$d предупреждений:\n\n</string>
-
     <!-- Broken / type-error dialogs -->
     <string name="reader_broken_dialog_title">Не удалось открыть</string>
     <string name="reader_broken_dialog_intro_fmt">Файл повреждён (%1$d ошибок):\n\n</string>
@@ -326,7 +282,7 @@
     <string name="reader_preview_back">Назад</string>
 
     <!-- ============================================================ -->
-    <!-- STATISTICS (StatisticsFragment, Ф2.7 baseline)               -->
+    <!-- STATISTICS (StatisticsScreen, Ф2.7 baseline)                 -->
     <!-- ============================================================ -->
     <string name="stats_title">Статистика шагов</string>
     <string name="stats_menu">Меню</string>
@@ -350,6 +306,8 @@
     <string name="settings_logging">Включить запись лога в файл</string>
     <string name="settings_health_connect">Синхронизация с Health Connect</string>
     <string name="settings_font_size_label">Размер шрифта интерфейса:</string>
+    <string name="settings_font_size_px_fmt">%1$d px</string>
+    <string name="settings_font_size_reset">Сбросить размер шрифта до 16 px</string>
     <string name="settings_font_label">Шрифт интерфейса:</string>
     <string name="settings_add_font">Добавить</string>
     <string name="settings_font_sample">Образец текста</string>
@@ -376,9 +334,6 @@
     <string name="setup_toast_folder_selected">Папка выбрана!</string>
     <string name="setup_toast_choose_folder">Нужно выбрать папку для продолжения</string>
     <string name="setup_toast_error_fmt">Ошибка: %1$s</string>
-    <string name="setup_toast_notifications_rationale">Разрешение на уведомления нужно, чтобы шагомер работал в фоне.</string>
-    <string name="setup_toast_activity_rationale">Доступ к физической активности нужен для подсчёта шагов.</string>
-
     <!-- ============================================================ -->
     <!-- LOG VIEWER                                                   -->
     <!-- ============================================================ -->
@@ -461,11 +416,9 @@
     <string name="dialog_save">Сохранить</string>
     <string name="dialog_cancel">Отмена</string>
     <string name="dialog_delete">Удалить</string>
-    <string name="dialog_close">Закрыть</string>
     <string name="dialog_apply">Применить</string>
     <string name="dialog_ok">ОК</string>
     <string name="dialog_yes">Да</string>
-    <string name="dialog_no">Нет</string>
     <string name="dialog_clear">Очистить</string>
     <string name="dialog_restore">Восстановить</string>
     <string name="dialog_create">Создать</string>
@@ -495,12 +448,7 @@
     <string name="dialog_edit_choice_tags_add_effect">+ Эффект</string>
 
     <!-- Shared: item list dialog -->
-    <string name="dialog_item_list_empty">(пусто)</string>
-
     <!-- Shared: new scene dialog -->
-    <string name="dialog_new_scene_title_hint">Название новой сцены</string>
-    <string name="dialog_new_scene_id_auto_hint">ID будет сгенерирован из названия автоматически.</string>
-
     <!-- Shared: search dialog -->
     <string name="dialog_search_query_hint">Введите запрос (минимум 2 символа)</string>
     <string name="dialog_search_filter_titles">Заголовки</string>
@@ -524,13 +472,6 @@
     <!-- ============================================================ -->
     <!-- SHARED: icon glyphs                                          -->
     <!-- ============================================================ -->
-    <string name="icon_chevron_down">▼</string>
-    <string name="icon_chevron_right">▶</string>
-    <string name="icon_close">✕</string>
-    <string name="icon_search">📝</string>
-    <string name="icon_warning">⚠️</string>
-    <string name="icon_gear">⚙</string>
-    <string name="icon_eye">👁</string>
     <string name="icon_plus">➕</string>
 
     <!-- ============================================================ -->
@@ -538,15 +479,10 @@
     <!-- ============================================================ -->
     <string name="label_without_title">(без названия)</string>
     <string name="label_empty">(пусто)</string>
-    <string name="word_words_short">сл.</string>
-
     <!-- ============================================================ -->
     <!-- ITEM: editor scene card                                      -->
     <!-- ============================================================ -->
     <string name="item_editor_scene_title_hint">Название сцены</string>
-    <string name="item_editor_scene_id_prefix">ID: </string>
-    <string name="item_editor_scene_rebuild_id_content_description">Пересобрать ID из названия</string>
-    <string name="item_editor_scene_preview_content_description">Предпросмотр сцены в читалке</string>
     <string name="item_editor_scene_chapter_end_badge">🏁 Глава</string>
     <string name="item_editor_scene_death_badge">💀 Смерть</string>
     <string name="item_editor_scene_text_hint">Текст сцены</string>
@@ -572,28 +508,19 @@
     <string name="item_editor_tag_name_hint">Имя метки (технич.)</string>
     <string name="item_editor_tag_value_hint">Знач.</string>
     <string name="item_editor_tag_display_name_hint">Видимое название</string>
-    <string name="item_editor_tag_visible_content_description">Показывать в статистике героя</string>
-
     <!-- Item: initial state -->
     <string name="item_initial_state_title">Начальное состояние</string>
     <string name="item_initial_state_description">Метки и статы, с которыми игрок входит в историю до первой сцены. Например, стартовое здоровье, инвентарь, флаги.</string>
     <string name="item_initial_state_add_tag">+ Метка</string>
 
     <!-- Item: empty hints -->
-    <string name="item_empty_hint_text">Пока нет сцен.\nНажмите «+ Сцена» в меню вверху.</string>
     <string name="item_empty_template_hint_text">Пока нет шаблонов.\nНажмите «+ Шаблон» в меню вверху.</string>
 
     <!-- Item: load adventure row -->
     <string name="item_load_adventure_title">Загрузить приключение</string>
 
     <!-- Item: map rows -->
-    <string name="item_map_chapter_header_default_title">Глава 1</string>
-    <string name="item_map_scene_row_default_title">Сцена</string>
-    <string name="item_map_steps_gate_default">🚶 4 000 шагов</string>
-
     <!-- Item: template row -->
-    <string name="item_template_delete_button">✕</string>
-
     <!-- ============================================================ -->
     <!-- PLURALS                                                      -->
     <!-- ============================================================ -->
@@ -675,19 +602,6 @@
     </plurals>
 
     <!-- Editor choice count + rebuild references -->
-    <plurals name="word_choices_count">
-        <item quantity="one">%d вариант</item>
-        <item quantity="few">%d варианта</item>
-        <item quantity="many">%d вариантов</item>
-        <item quantity="other">%d вариантов</item>
-    </plurals>
-    <plurals name="word_references">
-        <item quantity="one">%d ссылку</item>
-        <item quantity="few">%d ссылки</item>
-        <item quantity="many">%d ссылок</item>
-        <item quantity="other">%d ссылок</item>
-    </plurals>
-
     <!-- Editor: apply template to scene -->
     <string name="editor_add_from_template">📦 Из шаблона</string>
     <string name="editor_template_no_templates_toast">Сначала создайте шаблон в «📦 Шаблоны»</string>
@@ -700,7 +614,6 @@
     <string name="editor_template_args_hint_bool">Имя флага, например has_sword</string>
     <string name="editor_template_args_hint_integer">Имя переменной или число</string>
     <string name="editor_template_args_hint_default">Имя переменной</string>
-    <string name="editor_template_args_missing">Заполните все параметры</string>
     <string name="editor_template_apply_failed">Не удалось применить шаблон</string>
     <string name="editor_toast_template_applied">Шаблон применён</string>
 

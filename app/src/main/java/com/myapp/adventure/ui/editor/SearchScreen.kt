@@ -46,12 +46,12 @@ private const val SEARCH_DEBOUNCE_MS = 300L
  * Phase 3.1c-iv-d: "Поиск по истории" as a full screen (previously a
  * `dialog_search.xml` dialog).
  *
- * Reads `scenes` once (snapshot from the host Fragment). Search runs on
+ * Reads `scenes` once (snapshot from the editor route). Search runs on
  * a 300 ms debounced query; results are recomputed via `remember` keyed
  * on `(debouncedQuery, filters)` — no explicit handler required.
  *
- * Tap on a result → `onResultClick(sceneUid)`; the host Fragment calls
- * `requestJumpToScene` + `popBackStack`, so `AdventureEditorFragment`
+ * Tap on a result → `onResultClick(sceneUid)`; `SearchRoute` calls
+ * `requestJumpToScene` + navigate back, so the editor route
  * scrolls + highlights the target scene.
  */
 @Composable

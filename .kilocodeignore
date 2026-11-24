@@ -1,0 +1,55 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# IDE inspection reports
+AndroidLint*.xml
+Annotator.xml
+ConvertLongToDuration.xml
+DestructuringDeclaration.xml
+EnumValuesSoftDeprecate.xml
+GrazieInspection.xml
+GrazieStyle.xml
+HtmlRequiredLangAttribute.xml
+HtmlUnknownAttribute.xml
+.descriptions.xml
+
+# HTML inspection report
+index.html
+script.js
+styles.css
+
+# Gradle wrapper scripts
+gradlew
+gradlew.bat
+
+# Binary assets
+*.ttf
+*.webp
+
+# CI metadata
+.github/
+
+# Build artifacts
+build/
+*/build/
+
+progress-log-1.md
+progress-log-2.md
+progress-log-3.md
+gamebook-mechanics.md
+gamebooks-classification.md
+top-file-formats.md
+top-100-gamebooks.md

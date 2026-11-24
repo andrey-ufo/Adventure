@@ -198,7 +198,7 @@ fun EditorVarDecl.toVarType(): com.myapp.adventure.engine.ir.types.VarType? {
      * Mirrors `:engine/ir/ChoiceTemplate`, but uses the editor's vocabulary:
      * conditions are raw strings (like `EditorChoice.conditionTag`), effects
      * are `EditorTag` (like `EditorScene.tags` / `EditorChoice.tags`).
-     * Parameters are `EditorVarDecl` (reused from `VariablesAdapter`;
+     * Parameters are `EditorVarDecl` (shared with the variables section;
      * supports the intermediate state "min entered, max not yet").
      *
      * `uid` is the editor's stable id (survives rename), same role as
@@ -248,7 +248,7 @@ fun EditorVarDecl.toVarType(): com.myapp.adventure.engine.ir.types.VarType? {
  * Mirrors `:engine/ir/ChoiceTemplate`, but uses the editor's vocabulary:
  * conditions are raw strings (like `EditorChoice.conditionTag`), effects
  * are `EditorTag` (like `EditorScene.tags` / `EditorChoice.tags`).
- * Parameters are `EditorVarDecl` (reused from `VariablesAdapter`;
+ * Parameters are `EditorVarDecl` (shared with the variables section;
  * supports the intermediate state "min entered, max not yet").
  *
  * `uid` is the editor's stable id (survives rename), same role as

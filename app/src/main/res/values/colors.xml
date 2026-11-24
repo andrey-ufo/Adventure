@@ -55,8 +55,6 @@
     <color name="md_outline_variant">#D7CCC8</color>
 
     <!-- Scrim -->
-    <color name="md_scrim">#000000</color>
-
     <!-- Status colours (WCAG AA on md_surface) -->
     <color name="md_status_success">#2E6F3A</color>
     <color name="md_status_warning">#8F5000</color>

@@ -71,9 +71,6 @@
         <item name="colorStatusDanger">@color/md_status_danger</item>
         <item name="colorStatusInfo">@color/md_status_info</item>
         <item name="colorStatusNeutral">@color/md_status_neutral</item>
-
-        <!-- Dividers for View widgets (used on transitional screens) -->
-        <item name="android:listDivider">@color/md_outline_variant</item>
     </style>
 
     <style name="Theme.Adventure" parent="Base.Theme.Adventure" />

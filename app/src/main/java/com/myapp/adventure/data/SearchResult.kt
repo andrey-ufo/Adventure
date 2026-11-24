@@ -16,7 +16,7 @@ enum class SearchFieldType(val icon: String) {
  * `SearchService` in Russian. That made `SearchService` (an `object`
  * without `Context`) a hidden source of user-facing strings and a hidden
  * blocker for `values-en/`. Now [detailRes] is a `@StringRes Int` and
- * the caller (`AdventureEditorFragment.showSearchDialog`) resolves it
+ * the caller (`SearchRoute`) resolves it
  * with `getString(...)`.
  *
  * **Parametrized details.** One detail line is parametrized:

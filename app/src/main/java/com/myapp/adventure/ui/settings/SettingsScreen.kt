@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -24,14 +25,17 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,6 +58,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.myapp.adventure.R
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.ThemeManager
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -187,13 +194,10 @@ fun SettingsScreen(
 
         // ----- Font size -----
         SectionHeader(stringResource(R.string.settings_font_size_label))
-        FontManager.FONT_SCALES.forEach { (label, scale) ->
-            RadioRow(
-                label = label,
-                selected = state.fontScale == scale,
-                onClick = { viewModel.setFontScale(scale) },
-            )
-        }
+        FontSizeRow(
+            sizePx = state.fontSizePx,
+            onSizeChange = { viewModel.setFontSizePx(it) },
+        )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -283,6 +287,48 @@ private fun SectionHeader(text: String) {
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(top = 8.dp),
     )
+}
+
+@Composable
+private fun FontSizeRow(
+    sizePx: Int,
+    onSizeChange: (Int) -> Unit,
+) {
+    val resetDescription = stringResource(R.string.settings_font_size_reset)
+    // Пока пользователь ведёт палец, меняем только число: если масштабировать
+    // текст сразу, вся разметка пересчитывается и ползунок «убегает» из-под пальца.
+    var pendingSizePx by remember(sizePx) { mutableFloatStateOf(sizePx.toFloat()) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(onClick = { onSizeChange(FontManager.DEFAULT_FONT_SIZE_PX) }) {
+            Text(
+                text = "↺",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { contentDescription = resetDescription },
+            )
+        }
+        Text(
+            text = stringResource(
+                R.string.settings_font_size_px_fmt,
+                pendingSizePx.roundToInt(),
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.widthIn(min = 56.dp),
+        )
+        Slider(
+            value = pendingSizePx,
+            onValueChange = { pendingSizePx = it },
+            onValueChangeFinished = { onSizeChange(pendingSizePx.roundToInt()) },
+            valueRange = FontManager.MIN_FONT_SIZE_PX.toFloat()..
+                    FontManager.MAX_FONT_SIZE_PX.toFloat(),
+            steps = FontManager.MAX_FONT_SIZE_PX - FontManager.MIN_FONT_SIZE_PX - 1,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 @Composable

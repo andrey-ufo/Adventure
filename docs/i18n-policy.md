@@ -11,7 +11,7 @@ in [`documentation-rules.md §1`](./documentation-rules.md#1-language).
 |---|---|---|
 | User-facing UI (labels, buttons, toasts, dialog titles, error messages) | `app/src/main/res/values/strings.xml` | RU (source key). EN added in Ф7.3. |
 | Log/debug strings (`Logger.log(...)`) | inline in `.kt` | RU (temporary; Ф7.3 may move them). |
-| Debug panel labels (`dialog_debug_*.xml`, `showDebugPanel`) | inline in `.xml` / `.kt` | RU (temporary; debug-only, not user-facing). |
+| Debug panel labels (`DebugPanelScreen.kt`) | inline in `.kt` | RU (temporary; debug-only, not user-facing). |
 | Adventure content (scene text, choice text, tag display names) | `test_adventure.json` / user files | Per-author; **not** translated by the app. |
 | Developer-facing strings (exception messages, code comments, KDoc) | `.kt` inline | EN (per `CONTRIBUTING.md`). |
 
@@ -85,7 +85,12 @@ not the app's UI.
   `@string/…`. Also `action_*` shared button prefix introduced.
 - **Ф4-infra (batch 2b):** `dialog_*.xml` and `item_*.xml` layouts →
   `@string/…`, except debug-panel layouts (`dialog_debug_*`,
-  `item_debug_*`) which are deliberately left inline.
+  `item_debug_*`) which were deliberately left inline. Those layouts were
+  deleted in Phase 3.4-e; the debug panel is now `DebugPanelScreen.kt`
+  with inline RU labels.
+- **Phase 5 (UI migration cleanup):** all remaining `res/layout/*.xml`
+  files were deleted — the app is Compose-only, so the layout-related
+  notes above are historical.
 - **Ф4-infra (batch 3):** all user-facing `setText(...)` /
   `Toast.makeText(...)` / `AlertDialog` titles and buttons in Kotlin →
   `getString(R.string.…)`, except `Logger.log` and debug-panel labels.

@@ -5,11 +5,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
-import com.myapp.adventure.ui.setup.SetupFragment
+import com.myapp.adventure.ui.AppNavHost
+import com.myapp.adventure.ui.theme.AdventureTheme
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ThemeManager
 import kotlinx.coroutines.runBlocking
@@ -24,7 +29,6 @@ class MainActivity : AppCompatActivity() {
         ThemeManager.apply(this)
 
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
         val prefs = getSharedPreferences("adventure_prefs", MODE_PRIVATE)
         val savedUri = prefs.getString("adventure_folder_uri", null)
@@ -38,10 +42,12 @@ class MainActivity : AppCompatActivity() {
             ensureStepCounterServiceRunning()
         }
 
-        if (savedInstanceState == null) {
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, SetupFragment())
-                .commit()
+        setContent {
+            AdventureTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    AppNavHost()
+                }
+            }
         }
     }
 

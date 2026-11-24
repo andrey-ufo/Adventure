@@ -58,8 +58,8 @@ fun ruResources(context: Context): Resources {
  *
  * **Does NOT format the number itself** — callers that want a
  * locale-grouped number ("4 882" / "4,882") format the number separately
- * (see `AdventureEditorFragment.formatInt` and
- * `StatisticsFragment.numberFormat`) and prepend it to the plural suffix.
+ * (see `formatInt` in `EditorHelpers` and `formatSteps` in
+ * `StatisticsScreen`) and prepend it to the plural suffix.
  * This separation lets each caller use its own number formatter while
  * sharing the plural logic.
  */

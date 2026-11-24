@@ -34,9 +34,9 @@ import com.myapp.adventure.data.EditorVarDecl
 import com.myapp.adventure.data.VarKind
 
 /**
- * Phase 3.1c-i: variables accordion. Rendered inside a `ComposeViewHolder`
- * that is one item of the editor's `RecyclerView`; the RecyclerView scrolls
- * the section (no local scroll here).
+ * Phase 3.1c-i: variables accordion. Rendered as an item in the editor's
+ * `LazyColumn` (`EditorScenesList`); the list scrolls the section (no local
+ * scroll here).
  *
  * Layout: one compact row per variable — name (weight 1) · kind · [min] ·
  * [max] · ✕. No text-field decorations: fields use `BasicTextField` with a

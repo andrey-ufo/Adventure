@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.data.theme.AppThemeConfig
 import com.myapp.adventure.data.theme.BuiltInThemes
 import com.myapp.adventure.utils.FontManager
@@ -56,12 +58,16 @@ fun AdventureTheme(
     val fontFamily = remember { FontManager.getFontFamily(context) }
     val typography = remember(fontFamily) { Typography().withFontFamily(fontFamily) }
 
-    // Scale SP values by the user's chosen font scale, like the View world does.
+    // Scale SP values by the user's chosen font size, like the View world does.
     // DP values remain unaffected because LocalDensity.density is unchanged.
+    // Subscribing to the flow gives an instant preview while the slider moves,
+    // without recreating the Activity.
     val baseDensity = LocalDensity.current
-    val userFontScale = remember(config.typography.baseScale) {
-        FontManager.getFontScale(context) * config.typography.baseScale
-    }
+    val initialFontSizePx = remember { FontManager.getFontSizePx(context) }
+    val observedFontSizePx by FontManager.fontSizePx.collectAsStateWithLifecycle()
+    val fontSizePx = observedFontSizePx ?: initialFontSizePx
+    val userFontScale = fontSizePx / FontManager.DEFAULT_FONT_SIZE_PX.toFloat() *
+            config.typography.baseScale
     val scaledDensity = remember(baseDensity, userFontScale) {
         Density(baseDensity.density, baseDensity.fontScale * userFontScale)
     }

@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,7 +36,6 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
-import java.util.Locale
 
 /** First rank threshold (visual only; reward logic is future work). */
 private const val FIRST_RANK_THRESHOLD = 100_000L
@@ -211,7 +211,7 @@ private fun DayRow(bucket: StepBucket) {
     } catch (_: Exception) {
         return
     }
-    val locale = Locale.getDefault()
+    val locale = LocalLocale.current.platformLocale
     val today = LocalDate.now()
     val isToday = date == today
 
@@ -276,9 +276,10 @@ private fun Card(content: @Composable () -> Unit) {
 @Composable
 private fun formatSteps(value: Long): String {
     val context = LocalContext.current
-    return remember(value) {
+    val locale = LocalLocale.current.platformLocale
+    return remember(value, locale) {
         val formattedNumber = NumberFormat
-            .getIntegerInstance(Locale.getDefault())
+            .getIntegerInstance(locale)
             .format(value)
         // ruQuantityString forces the Russian plural forms even on non-ru
         // devices; the string is "N шаг/шага/шагов" — strip the leading "N".

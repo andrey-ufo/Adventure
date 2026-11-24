@@ -19,8 +19,8 @@ object EditorDraftManager {
     /**
      * Ф2.7: [variables] добавлен **без default** — все call-sites
      * обязаны явно передать список, чтобы переменные не терялись в
-     * черновике молча. Обновление `AdventureEditorFragment` —
-     * в шаге 2 Ф2.7.
+     * черновике молча. Обновление call-sites — при изменении набора полей
+     * черновика.
      */
     fun saveDraft(
         context: Context,

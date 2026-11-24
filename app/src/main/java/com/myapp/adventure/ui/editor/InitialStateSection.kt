@@ -21,8 +21,9 @@ import com.myapp.adventure.data.EditorUiState
 import com.myapp.adventure.data.TagCategory
 
 /**
- * Phase 3.1c-ii: initial-state accordion. Mirrors `item_initial_state.xml`.
- * Rendered inside a `ComposeViewHolder` (one RecyclerView item).
+ * Phase 3.1c-ii: initial-state accordion. Previously mirrored
+ * `item_initial_state.xml`; now rendered as an item in the editor's
+ * `LazyColumn` (`EditorScenesList`).
  */
 @Composable
 fun InitialStateSection(

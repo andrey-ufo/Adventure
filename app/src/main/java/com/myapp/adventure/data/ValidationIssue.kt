@@ -9,7 +9,7 @@ enum class IssueSeverity { ERROR, WARNING }
  *
  * **Ф4-infra (3b-6e-1):** [title] was a plain `String` — Russian titles
  * were produced by `StoryValidator.titleFor(...)` (in `:utils`, no
- * `Context`) and by `AdventureEditorFragment.showValidationDialog`
+ * `Context`) and by `ValidationIssuesRoute`
  * inline. Now [titleRes] is a `@StringRes Int`; both producers return
  * / assign resource IDs, and the dialog resolves them with
  * `getString(...)`. Same separation as `SearchResult.detailRes`.

@@ -34,17 +34,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Phase 3.4-a-2a: runtime transitions. Builds on 3.4-a-1 (loading).
+ * Adventure reader state holder (Phase 3.4 complete).
  *
  * **State ownership.** Every field of [ReaderUiState] is mutated only
- * inside this class. The Fragment is still View-based (3.4-a-3 migrates
- * it); for now this VM is dormant — the Fragment does its own logic
- * in parallel, unaffected.
+ * inside this class: loading, choices, step back, gates, death, restart,
+ * snapshots, progress, warning acknowledgment and debug actions.
+ * [AdventureReaderScreen] and its overlays are pure renderers; they route
+ * events back into this VM.
  *
- * **Not yet migrated here (3.4-a-2b):** debug-panel actions (set stat,
- * delete stat, add flag, …), warning acknowledgment
- * (`savedWarningsFingerprint = currentWarningsFingerprint` on "Продолжить").
- * The Fragment handles both locally until 3.4-a-3.
+ * **NavBackStackEntry-scoped (Phase 4-c).** `AppNavHost` creates it with
+ * `viewModel()` inside the reader destination, so popping the reader
+ * disposes it and a fresh open re-runs [init] with the new arguments. This
+ * preserves the old Fragment-scoped behaviour (state must not leak between
+ * reader sessions).
+ *
+ * **Host logic lives in [ReaderRoute].** Init, step receiver, progress
+ * save/flush, permissions, startup warning and blocking error dialogs are
+ * owned by the route.
  */
 class AdventureReaderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -125,8 +131,8 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         )
 
         // Phase 3.4-a-2a: compute the full initial scene state (effects,
-        // death, gate, ending) so that Fragment / Compose see a fully
-        // ready ReaderUiState right after init.
+        // death, gate, ending) so readers see a fully ready
+        // ReaderUiState right after init.
         loadCurrentScene()
 
         return ReaderInitResult.Success
@@ -136,7 +142,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
     // Runtime transitions
     // ==================================================================
 
-    /** User tapped a (visible) choice. Mirrors the Fragment's inline path. */
+    /** User tapped a (visible) choice. Mirrors the old inline path. */
     fun onChoicePicked(choice: Choice) {
         val current = _state.value
         if (current.isDead) return
@@ -228,15 +234,13 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         )
         saveProgress()
         loadCurrentScene()
-        // Fragment shows the "adventure restarted" toast (R.string.reader_toast_adventure_restarted).
-        // In 3.4-a-3 this becomes a ReaderEffect.
     }
 
     // ==================================================================
     // Steps / gate
     // ==================================================================
 
-    /** Called by the Fragment's BroadcastReceiver on each sensor update. */
+    /** Called by `ReaderRoute`'s BroadcastReceiver on each sensor update. */
     fun onStepsUpdate(absoluteSteps: Int) {
         val state = _state.value
         if (!state.isGateActive) return
@@ -316,6 +320,152 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         if (newRemaining <= 0) {
             onGatePassedInternal(_state.value, scene)
         }
+    }
+
+    // ==================================================================
+    // Warnings
+    // ==================================================================
+
+    /**
+     * True when the startup warning dialog must be shown. `ReaderRoute`
+     * shows the Compose dialog, then calls either [acknowledgeWarnings]
+     * ("Продолжить игру") or pops the reader ("Выйти из игры", no
+     * acknowledge).
+     */
+    fun shouldShowWarningDialog(): Boolean {
+        val state = _state.value
+        return !state.previewMode &&
+                state.cachedPlayerWarnings.isNotEmpty() &&
+                state.currentWarningsFingerprint != state.savedWarningsFingerprint
+    }
+
+    /**
+     * Player tapped "Продолжить игру" in the warning dialog: persist the
+     * acknowledgment (fingerprint) so subsequent opens of the same file
+     * skip the dialog. No-op in preview mode (no progress is persisted).
+     */
+    fun acknowledgeWarnings() {
+        val state = _state.value
+        if (state.previewMode) return
+        if (state.currentWarningsFingerprint == state.savedWarningsFingerprint) return
+        _state.value = state.copy(savedWarningsFingerprint = state.currentWarningsFingerprint)
+        saveProgress()
+    }
+
+    /** Read-only view of the cached warning list (used by [WarningInfoScreen]). */
+    fun getCachedWarnings(): List<LintIssue> = _state.value.cachedPlayerWarnings
+
+    // ==================================================================
+    // Overlay navigation coordination
+    // ==================================================================
+
+    private var closeOverlayOnNextResume = false
+
+    /**
+     * The reader menu navigates to Menu/Settings. The menu overlay must stay
+     * visible during the exit transition — clearing it first would briefly
+     * flash the reader scene. The screen sets this flag before navigating
+     * and closes the overlay when the reader is shown again.
+     *
+     * Lives in the entry-scoped VM so it survives navigation away and does
+     * not fire on rotation (where the overlay should be preserved).
+     */
+    fun requestOverlayCloseOnNextResume() {
+        closeOverlayOnNextResume = true
+    }
+
+    /** One-shot: true only on the composition that returns to the reader. */
+    fun consumeOverlayCloseOnNextResume(): Boolean {
+        val pending = closeOverlayOnNextResume
+        closeOverlayOnNextResume = false
+        return pending
+    }
+
+    // ==================================================================
+    // Debug panel actions (preview mode only)
+    //
+    // All actions mutate stats/flags/itemOrder and then re-run
+    // `loadCurrentScene()` so that death checks, gates and endings
+    // re-evaluate against the new state — mirrors the old debug panel
+    // behaviour. `saveProgress()` is a no-op in preview mode, so these
+    // do not persist (as before).
+    // ==================================================================
+
+    /** Sets `stats[name]` to [value]. Syncs [itemOrder] for ITEM stats. */
+    fun debugSetStat(name: String, value: Int) {
+        val state = _state.value
+        val newStats = state.stats + (name to value)
+        val newItemOrder = if (getCategory(name) == TagCategory.ITEM) {
+            when {
+                value > 0 && !state.itemOrder.contains(name) -> state.itemOrder + name
+                value <= 0 -> state.itemOrder - name
+                else -> state.itemOrder
+            }
+        } else state.itemOrder
+        _state.value = state.copy(
+            stats = newStats,
+            itemOrder = newItemOrder,
+            isDead = false,
+            storyEndedMessage = null,
+        )
+        loadCurrentScene()
+    }
+
+    /** Alias for [debugSetStat]; the old "add stat" dialog did the same. */
+    fun debugAddStat(name: String, value: Int) = debugSetStat(name, value)
+
+    /** Removes `stats[name]` and its `itemOrder` entry. */
+    fun debugDeleteStat(name: String) {
+        val state = _state.value
+        _state.value = state.copy(
+            stats = state.stats - name,
+            itemOrder = state.itemOrder - name,
+            isDead = false,
+            storyEndedMessage = null,
+        )
+        loadCurrentScene()
+    }
+
+    /** Adds [name] to flags if absent. */
+    fun debugAddFlag(name: String) {
+        val state = _state.value
+        if (state.flags.contains(name)) return
+        _state.value = state.copy(flags = state.flags + name)
+        loadCurrentScene()
+    }
+
+    /** Removes [name] from flags (no-op if absent). */
+    fun debugDeleteFlag(name: String) {
+        val state = _state.value
+        if (!state.flags.contains(name)) return
+        _state.value = state.copy(flags = state.flags - name)
+        loadCurrentScene()
+    }
+
+    /** Resets flags/stats/itemOrder to `adventure.initialState`. */
+    fun debugResetState() {
+        val current = _state.value
+        val adventure = current.adventure ?: return
+        val initial = adventure.initialState
+        _state.value = current.copy(
+            flags = initial.flags.toList(),
+            stats = initial.stats,
+            itemOrder = rebuildItemOrderList(adventure, initial.stats),
+            isDead = false,
+            storyEndedMessage = null,
+        )
+        loadCurrentScene()
+    }
+
+    /**
+     * Debug: mark the current scene's gate as passed immediately
+     * ("Открыть главу сейчас"). Returns early if the scene has no gate.
+     */
+    fun debugPassGate() {
+        val state = _state.value
+        val scene = state.compiled?.scenesById?.get(SceneId(state.currentSceneId)) ?: return
+        if (scene.gate == null) return
+        _state.value = onGatePassedInternal(state, scene)
     }
 
     // ==================================================================
@@ -420,7 +570,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         ProgressManager.saveProgress(app, uri, progress)
     }
 
-    /** Called from Fragment.onStop; flushes the in-memory cache to disk. */
+    /** Called from `ReaderRoute`'s ON_STOP observer; flushes to disk. */
     suspend fun flushProgress() {
         ProgressManager.flush(app)
     }

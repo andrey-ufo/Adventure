@@ -84,9 +84,8 @@ object StoryValidator {
      *
      * @param adventure the IR built by the editor (via
      *   `AdventureEditorViewModel.buildAdventure()`). Should be built
-     *   **after** `freezeAllPendingIds()` — see `showValidationDialog`
-     *   in `AdventureEditorFragment` — so that pending scene IDs
-     *   are stable.
+     *   **after** `freezeAllPendingIds()` — see `ValidationIssuesRoute`
+     *   — so that pending scene IDs are stable.
      * @param scenes the editor scenes, used only to map
      *   `SceneId.value` → `EditorScene.uid` for UI navigation.
      * @return issues in the order they were found. Type errors first,

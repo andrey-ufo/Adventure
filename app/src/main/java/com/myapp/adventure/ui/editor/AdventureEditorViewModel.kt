@@ -63,9 +63,9 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     // Compose state (Phase 3.1a)
     //
     // `uiState` is an immutable snapshot of the editor. Compose screens
-    // read it; the View-based adapters keep reading the mutable lists
-    // below. Every mutating entry point calls `commitState()` so the
-    // two stay in sync. See EditorUiState KDoc for the full rationale.
+    // read it; the mutable lists below remain the source that
+    // `commitState()` publishes. Every mutating entry point calls
+    // `commitState()` so the two stay in sync. See EditorUiState KDoc.
     // ------------------------------------------------------------------
 
     private val _uiState = MutableStateFlow(EditorUiState())
@@ -110,7 +110,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     /**
      * Updates the "has unsaved changes" flag, which feeds both the
-     * debounce-save pipeline (in the Fragment) and the toolbar's undo
+     * debounce-save pipeline (in `EditorRoute`) and the toolbar's undo
      * button (an "editing" adventure can be undone back to its saved
      * snapshot even if `history.size == 1`).
      */
@@ -132,7 +132,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     /**
      * Ф2.7: объявления переменных. Источник истины для UI
-     * ([VariablesAdapter]) и для IR/JSON-сборки
+     * ([VariablesSection]) и для IR/JSON-сборки
      * ([buildIrAdventure] / [buildAdventure]).
      * Пока пусто — TypeChecker работает в fallback-режиме.
      */
@@ -157,25 +157,20 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * `AlertDialog.Builder`) is dismissed on configuration change
      * (rotation, theme switch, font-scale). Its content is lost with
      * the Activity. `ViewModel` survives config change, so storing the
-     * working copy here lets `TemplateListFragment.onViewCreated`
-     * detect "a dialog was open" and re-create it with all fields
-     * (including unsaved edits) intact.
+     * working copy here lets `TemplateListScreen` detect "a dialog was
+     * open" and re-create it with all fields (including unsaved edits)
+     * intact.
      *
-     * **Lifecycle.** Set by `TemplateListFragment.showEditTemplateDialog`
-     * when the dialog opens; cleared on "Сохранить" / "Отмена" /
+     * **Lifecycle.** Set by `TemplateListScreen` when the dialog opens;
+     * cleared on "Сохранить" / "Отмена" /
      * system back. **Not** cleared by config change — that is what
      * makes the restore path work.
      *
-     * **Why not `DialogFragment`.** `DialogFragment` is the canonical
-     * Android solution and would also work, but it would move
-     * `showEditTemplateDialog` (~200 lines) into a separate class and
-     * require `onSaveInstanceState` plumbing for `EditorTemplate` (which
-     * has no `Parcelable` / no `@Serializable`, so state saving would
-     * need a custom `Gson` adapter). `ViewModel` state is ~15 lines and
-     * covers the same case (rotation), which is the one the author
-     * actually hits in practice. Process death (low-memory kill) still
-     * loses the dialog — acceptable for pre-alpha; would be closed by
-     * `DialogFragment` later if it becomes a real problem.
+     * **Why ViewModel state.** The template editor is a Compose dialog;
+     * keeping its working copy in the Activity-scoped VM lets it survive
+     * rotation and be re-created by `TemplateListScreen` with all fields
+     * intact. Process death (low-memory kill) still loses the dialog —
+     * acceptable for pre-alpha.
      */
     var editingTemplate: EditorTemplate? = null
 
@@ -591,7 +586,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val tag = initialStateTags.getOrNull(index) ?: return
         if (tag.category == category) return
         tag.category = category
-        // Matches `renderTagRow` semantics: switching to ITEM with a
+        // Matches the tag-row behavior: switching to ITEM with a
         // zero value sets it to 1 (an item counter without a count is
         // meaningless).
         if (category == TagCategory.ITEM && tag.value == 0) tag.value = 1
@@ -616,7 +611,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     /**
      * Mutates a variable's name in place. No `commitState()` — the caller
-     * (Fragment `markDirty()`) does one commit per keystroke; see
+     * (`EditorRoute`'s dirty callback) does one commit per keystroke; see
      * Phase 3.1b KDoc for the rationale. `commitState()` would deep-copy
      * every scene on each character.
      */
@@ -686,9 +681,9 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      *
      * Effects are converted to `EditorTag` with the default `JOURNAL`
      * category — same as for scene / choice when loading without tag
-     * definitions (see `AdventureEditorFragment.buildTagList`). The
-     * category is restored on the next edit via `VariablesAdapter` /
-     * `renderTagRow`; on save, `serializeTags` does not depend on the
+     * definitions (see the editor load path in `EditorRouteSupport`). The
+     * category is restored on the next edit via `EditorTagRow`; on save,
+     * `serializeTags` does not depend on the
      * category — `isStatModifier` + `value` reconstruct
      * `set_flags` / `remove_flags` / `modify_stats`.
      *
@@ -1385,7 +1380,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * same canonical form the editor uses for hand-written conditions).
      * `irChoice.effects` → `EditorTag`s with default `JOURNAL`
      * category; the category is restored on the next edit through
-     * `renderTagRow` (the tag registry in `Adventure` may know the
+     * the tag-row behavior (the tag registry in `Adventure` may know the
      * true category; the editor does not).
      */
     private fun irChoiceToEditorChoice(
@@ -1481,7 +1476,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     // ------------------------------------------------------------------
     // Phase 3.1c-iii: per-scene update methods for Compose UI.
     // These mutate the scene in place (deepCopy stays only in commitState,
-    // called from Fragment.markDirty → commitSnapshot path). Each method
+    // called from the editor dirty → commitSnapshot path). Each method
     // is intentionally narrow so the composable does not have to touch
     // mutable EditorScene fields directly.
     // ------------------------------------------------------------------
@@ -1670,7 +1665,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * Phase 3.1c-iii-b-3-ii-a: apply a template to [sceneUid] and append the
      * resulting fully-expanded `EditorChoice`. Returns `true` on success.
      *
-     * Mirrors the old `EditorSceneAdapter.applyTemplateAndInsert`: template
+     * Mirrors the old adapter path: template
      * lookup + condition parse + `applyTemplate` expansion all happen inside
      * `applyTemplateToChoice`. `@self` is resolved against the scene id.
      * On failure (`applyTemplateToChoice` returns null — deleted template,

@@ -30,8 +30,8 @@ import com.myapp.adventure.R
  * ("Название"), returns via `onSave`/`onBack`.
  *
  * Save responsibility: [onSave] receives the edited triple; the host
- * Fragment (`EditMetaFragment`) applies it to `viewModel`, commits a
- * snapshot (so undo restores the pre-edit state) and persists the draft.
+ * route (`EditMetaRoute`) applies it to `viewModel`, commits a snapshot
+ * (so undo restores the pre-edit state) and persists the draft.
  */
 @Composable
 fun EditMetaScreen(

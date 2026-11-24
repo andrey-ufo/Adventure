@@ -43,11 +43,7 @@
     <!-- Outline -->
     <color name="md_outline">#8A7D70</color>
     <color name="md_outline_variant">#3A342E</color>
-
-    <!-- Scrim -->
-    <color name="md_scrim">#000000</color>
-
-    <!-- Status colours (WCAG AA on pure black) -->
+<!-- Status colours (WCAG AA on pure black) -->
     <color name="md_status_success">#81C784</color>
     <color name="md_status_warning">#FFB74D</color>
     <color name="md_status_danger">#EF9A9A</color>

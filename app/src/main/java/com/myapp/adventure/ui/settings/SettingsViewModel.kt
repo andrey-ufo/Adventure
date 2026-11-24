@@ -39,7 +39,7 @@ data class SettingsUiState(
     val themeMode: ThemeManager.Mode = ThemeManager.Mode.SYSTEM,
     val selectedFont: String = "",
     val availableFonts: List<String> = emptyList(),
-    val fontScale: Float = 1.0f,
+    val fontSizePx: Int = FontManager.DEFAULT_FONT_SIZE_PX,
     val loggingEnabled: Boolean = false,
     val healthConnectAvailable: Boolean = false,
     val healthConnectEnabled: Boolean = false,
@@ -82,7 +82,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 themeMode = ThemeManager.getMode(ctx),
                 selectedFont = FontManager.getSelectedFont(ctx),
                 availableFonts = FontManager.getAvailableFonts(ctx),
-                fontScale = FontManager.getFontScale(ctx),
+                fontSizePx = FontManager.getFontSizePx(ctx),
                 loggingEnabled = app.getSharedPreferences("adventure_prefs", 0)
                     .getBoolean("logging_enabled", false),
                 healthConnectAvailable = hcAvailable,
@@ -122,14 +122,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ----- Font scale -----
+    // ----- Font size -----
 
-    fun setFontScale(scale: Float) {
+    fun setFontSizePx(sizePx: Int) {
         val app = getApplication<Application>()
-        if (scale != FontManager.getFontScale(app)) {
-            FontManager.setFontScale(app, scale)
-            _uiState.update { it.copy(fontScale = scale) }
-            viewModelScope.launch { _events.send(SettingsEvent.RecreateActivity) }
+        val clamped = sizePx.coerceIn(
+            FontManager.MIN_FONT_SIZE_PX,
+            FontManager.MAX_FONT_SIZE_PX,
+        )
+        if (clamped != FontManager.getFontSizePx(app)) {
+            FontManager.setFontSizePx(app, clamped)
+            _uiState.update { it.copy(fontSizePx = clamped) }
         }
     }
 

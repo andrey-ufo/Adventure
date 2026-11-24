@@ -22,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
@@ -55,7 +54,6 @@ fun TemplateEditDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
     var localId by remember(working.uid) { mutableStateOf(working.id) }
     var localText by remember(working.uid) { mutableStateOf(working.text) }
     var localVisibility by remember(working.uid) { mutableStateOf(working.visibilityCondition) }
@@ -261,15 +259,14 @@ fun TemplateEditDialog(
             onDismiss = { showPicker = false },
         )
     }
+    val defaultNewSceneTitle = stringResource(
+        R.string.editor_new_scene_default_title_fmt,
+        viewModel.scenes.size + 1,
+    )
     if (showNewScene) {
         NewSceneDialog(
             onCreate = { title ->
-                val finalTitle = title.ifBlank {
-                    context.getString(
-                        R.string.editor_new_scene_default_title_fmt,
-                        viewModel.scenes.size + 1,
-                    )
-                }
+                val finalTitle = title.ifBlank { defaultNewSceneTitle }
                 val newScene = viewModel.addSceneWithTitle(finalTitle)
                 localNextSceneId = newScene.id
                 showNewScene = false

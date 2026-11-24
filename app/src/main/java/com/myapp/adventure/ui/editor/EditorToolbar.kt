@@ -32,9 +32,8 @@ import com.myapp.adventure.ui.theme.AdventureTheme
  * expandable actions row (undo/redo/add/save/load/meta/validate/search/
  * stats/templates). Reacts to [state] — no View bindings involved.
  *
- * The fragment hosts this via a `ComposeView`. `safeDrawingPadding` is not
- * applied here: the hosting `LinearLayout` already receives top-inset
- * padding through `applyWindowInsetsToRoot`.
+ * Hosted by [EditorRoute], which applies `safeDrawingPadding` to the route
+ * root; this composable adds no insets of its own.
  */
 @Composable
 fun EditorToolbar(

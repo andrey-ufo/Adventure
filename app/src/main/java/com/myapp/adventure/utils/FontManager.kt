@@ -3,12 +3,11 @@ package com.myapp.adventure.utils
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
-import android.util.TypedValue
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.compose.ui.text.font.FontFamily
-import com.myapp.adventure.R
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.roundToInt
 import java.io.File
 import java.io.FileOutputStream
 
@@ -17,32 +16,61 @@ object FontManager {
     private const val PREFS_NAME = "font_prefs"
     private const val KEY_SELECTED_FONT = "selected_font"
     private const val KEY_CUSTOM_FONTS = "custom_fonts"
-    private const val KEY_FONT_SCALE = "font_scale"
+    private const val KEY_FONT_SIZE_PX = "font_size_px"
+    private const val KEY_LEGACY_FONT_SCALE = "font_scale"
     private const val FONTS_DIR = "fonts"
+    private const val DEFAULT_FONT = "Bad Script"
 
-    /** Доступные масштабы: отображаемое имя → множитель. */
-    val FONT_SCALES: List<Pair<String, Float>> = listOf(
-        "Мелкий"   to 0.85f,
-        "Обычный"  to 1.0f,
-        "Крупный"  to 1.15f,
-        "Очень крупный" to 1.3f
-    )
+    /** Базовый размер текста: 10–30 SP, по умолчанию 16 (как раньше «Обычный»). */
+    const val DEFAULT_FONT_SIZE_PX = 16
+    const val MIN_FONT_SIZE_PX = 10
+    const val MAX_FONT_SIZE_PX = 30
 
-    fun getFontScale(context: Context): Float {
-        val scale = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getFloat(KEY_FONT_SCALE, 1.0f)
-        return FONT_SCALES.firstOrNull { it.second == scale }?.second
-            ?: FONT_SCALES.minByOrNull { kotlin.math.abs(it.second - scale) }!!.second
+    /**
+     * Текущий размер, выбранный ползунком. `null`, пока значение не задано
+     * в этой сессии — тогда читаем из prefs. Поток позволяет обновлять
+     * масштаб во всех открытых Compose-экранах без перезапуска активити.
+     */
+    private val _fontSizePx = MutableStateFlow<Int?>(null)
+    val fontSizePx: StateFlow<Int?> = _fontSizePx.asStateFlow()
+
+    fun getFontSizePx(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val stored = prefs.getInt(KEY_FONT_SIZE_PX, -1)
+        if (stored in MIN_FONT_SIZE_PX..MAX_FONT_SIZE_PX) return stored
+        return migrateLegacyScale(context, prefs) ?: DEFAULT_FONT_SIZE_PX
     }
 
-    fun setFontScale(context: Context, scale: Float) {
+    fun setFontSizePx(context: Context, sizePx: Int) {
+        val clamped = sizePx.coerceIn(MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX)
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putFloat(KEY_FONT_SCALE, scale).apply()
-        Logger.log(context, "Масштаб шрифта: $scale")
+            .edit().putInt(KEY_FONT_SIZE_PX, clamped).apply()
+        _fontSizePx.value = clamped
+        Logger.log(context, "Размер шрифта: $clamped px")
+    }
+
+    /** Множитель для совместимости с масштабированием текста в View-дереве. */
+    fun getFontScale(context: Context): Float =
+        getFontSizePx(context) / DEFAULT_FONT_SIZE_PX.toFloat()
+
+    private fun migrateLegacyScale(
+        context: Context,
+        prefs: android.content.SharedPreferences,
+    ): Int? {
+        if (!prefs.contains(KEY_LEGACY_FONT_SCALE)) return null
+        val scale = prefs.getFloat(KEY_LEGACY_FONT_SCALE, 1.0f)
+        val migrated = (scale * DEFAULT_FONT_SIZE_PX).roundToInt()
+            .coerceIn(MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX)
+        prefs.edit()
+            .putInt(KEY_FONT_SIZE_PX, migrated)
+            .remove(KEY_LEGACY_FONT_SCALE)
+            .apply()
+        Logger.log(context, "Миграция размера шрифта: $scale → $migrated px")
+        return migrated
     }
 
     fun getAvailableFonts(context: Context): List<String> {
-        val fonts = mutableListOf("По умолчанию", "Bad Script", "Caveat", "AmazHand_First", "EuroScript", "MarckScript")
+        val fonts = mutableListOf(DEFAULT_FONT, "Caveat", "AmazHand_First", "EuroScript", "MarckScript")
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         fonts.addAll(prefs.getStringSet(KEY_CUSTOM_FONTS, emptySet()) ?: emptySet())
         return fonts
@@ -63,8 +91,7 @@ object FontManager {
     }
 
     fun getTypeface(context: Context, fontName: String): Typeface = when (fontName) {
-        "По умолчанию" -> Typeface.DEFAULT
-        "Bad Script" -> Typeface.createFromAsset(context.assets, "fonts/BadScript-Regular.ttf")
+        "По умолчанию", DEFAULT_FONT -> Typeface.createFromAsset(context.assets, "fonts/BadScript-Regular.ttf")
         "Caveat" -> Typeface.createFromAsset(context.assets, "fonts/Caveat-Regular.ttf")
         "AmazHand_First" -> Typeface.createFromAsset(context.assets, "fonts/AmazHand_First.ttf")
         "EuroScript" -> Typeface.createFromAsset(context.assets, "fonts/EuroScript.ttf")
@@ -76,38 +103,6 @@ object FontManager {
         }
     }
 
-    /** Применяет шрифт и текущий масштаб ко всему дереву View. */
-    fun applyFontToViewTree(view: View, fontName: String, context: Context) {
-        val scale = getFontScale(context)
-        applyRecursive(view, fontName, scale, context)
-    }
-
-    private fun applyRecursive(view: View, fontName: String, scale: Float, context: Context) {
-        if (view is TextView) {
-            view.typeface = getTypeface(context, fontName)
-            applyScaleToTextView(view, scale)
-        } else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                applyRecursive(view.getChildAt(i), fontName, scale, context)
-            }
-        }
-    }
-
-    /**
-     * Масштабирует размер текста относительно исходного, сохранённого в теге.
-     * Текст задаётся в SP, поэтому соблюдаются системные настройки доступности.
-     */
-    private fun applyScaleToTextView(tv: TextView, scale: Float) {
-        // Исходный размер храним в SP, а не в PX, чтобы не зависеть от плотности экрана
-        val originalSp = (tv.getTag(R.id.original_text_size) as? Float)
-            ?: tv.textSize.let { px ->
-                val sp = px / tv.resources.displayMetrics.scaledDensity
-                tv.setTag(R.id.original_text_size, sp)
-                sp
-            }
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, originalSp * scale)
-    }
-
     fun setSelectedFont(context: Context, fontName: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_SELECTED_FONT, fontName).apply()
@@ -115,8 +110,11 @@ object FontManager {
     }
 
     fun getSelectedFont(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SELECTED_FONT, "По умолчанию") ?: "По умолчанию"
+        val stored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_SELECTED_FONT, DEFAULT_FONT)
+        // "По умолчанию" раньше означал системный шрифт; теперь шрифт по умолчанию — Bad Script.
+        if (stored == null || stored == "По умолчанию") return DEFAULT_FONT
+        return stored
     }
 
     /**
@@ -124,15 +122,13 @@ object FontManager {
      * - default → [FontFamily.Default] (system font, respects user's
      *   system font settings).
      * - bundled / custom .ttf → wrapped via [FontFamily] over the same
-     *   Typeface that the View world uses, so Compose and View screens
-     *   render identically.
+     *   Typeface that [getTypeface] resolves.
      *
      * Font *size* scaling is applied separately in `AdventureTheme` via
      * `LocalDensity.fontScale`; this method concerns only the typeface.
      */
     fun getFontFamily(context: Context): FontFamily {
         val selected = getSelectedFont(context)
-        if (selected == "По умолчанию") return FontFamily.Default
         val typeface = getTypeface(context, selected)
         if (typeface == Typeface.DEFAULT) return FontFamily.Default
         return FontFamily(typeface)

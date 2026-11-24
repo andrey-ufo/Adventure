@@ -31,9 +31,9 @@ import com.myapp.adventure.ui.theme.AdventureTheme
  * Two visual states:
  *  - [issues] empty → "Проблем не найдено" + Back.
  *  - non-empty → "N ошибок • M предупреждений" + list. Tap on an issue
- *    with a non-empty `sceneUid` → `onIssueClick(uid)`; the host
- *    Fragment then calls `popBackStack()` and the editor's
- *    `pendingJumpToSceneUid` handles scroll/highlight.
+ *    with a non-empty `sceneUid` → `onIssueClick(uid)`; `ValidationIssuesRoute`
+ *    then pops back and the editor's `pendingJumpToSceneUid` handles
+ *    scroll/highlight.
  *
  * Issue ordering (errors before warnings) is decided by the host, not
  * this screen — the list is rendered in the order it arrives.

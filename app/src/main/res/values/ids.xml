@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <item name="choices_container" type="id"/>
-    <item name="tag_watcher" type="id"/>
-    <item name="original_text_size" type="id"/>
-</resources>

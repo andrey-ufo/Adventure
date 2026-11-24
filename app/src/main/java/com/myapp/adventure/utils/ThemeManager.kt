@@ -16,12 +16,12 @@ import kotlinx.coroutines.runBlocking
 /**
  * Thin facade over [ThemeRepository], kept for two reasons:
  *
- *  1. It exposes a stable, View-friendly API (`getMode`, `setMode`, `apply`)
- *     used by `MainActivity`, `SettingsFragment`, and future screens — none
- *     of them need to know about DataStore, coroutines, or serialization.
- *  2. It maps a theme id to a `styleRes` for View-based screens. Compose
- *     screens will instead read the full `AppThemeConfig` via
- *     `getColorScheme` (added in a later step).
+ *  1. It exposes a stable API (`getMode`, `setMode`, `apply`) used by
+ *     `MainActivity` and `SettingsScreen`; callers do not touch DataStore,
+ *     coroutines, or serialization.
+ *  2. It maps a theme id to the Activity's `styleRes` and applies
+ *     `AppCompatDelegate` night mode. Compose screens read the full
+ *     `AppThemeConfig` through `AdventureTheme`.
  *
  * Lifecycle:
  *  - `initialize(context)` — call once per process, from `MainActivity.onCreate`
@@ -136,7 +136,7 @@ object ThemeManager {
     }
 
     // ------------------------------------------------------------------
-    // Enum helpers (used by SettingsFragment)
+    // Enum helpers (used by SettingsScreen)
     // ------------------------------------------------------------------
 
     fun getMode(context: Context): Mode = Mode.fromNightMode(getNightMode(context))

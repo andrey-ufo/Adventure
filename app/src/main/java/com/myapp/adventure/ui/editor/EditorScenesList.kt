@@ -35,8 +35,8 @@ fun EditorScenesList(
     var pendingDeleteScene by remember { mutableStateOf<EditorScene?>(null) }
     var pendingRebuildScene by remember { mutableStateOf<EditorScene?>(null) }
 
-    // Phase 3.1c-iii-c: scroll + highlight on jump request from Fragment
-    // (search / validation click-through).
+    // Phase 3.1c-iii-c: scroll + highlight on jump request from child
+    // editor screens (search / validation click-through).
     var highlightedUid by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.pendingJumpToSceneUid) {

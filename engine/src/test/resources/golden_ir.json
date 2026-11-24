@@ -1,0 +1,608 @@
+{
+    "title": "Тестовое приключение",
+    "author": "Безумный монах",
+    "description": "Приключение создано исключительно для тестирования функций приложения Adventure. Не является связной историей. Сцены, метки и переходы предназначены для проверки редактора, читалки, отладочной панели и шаговых шлюзов.",
+    "variables": {
+        "health": {
+            "name": "health",
+            "type": {
+                "type": "int_min",
+                "min": 0
+            }
+        },
+        "stamina": {
+            "name": "stamina",
+            "type": {
+                "type": "int_min",
+                "min": 0
+            }
+        },
+        "mana": {
+            "name": "mana",
+            "type": {
+                "type": "int_min",
+                "min": 0
+            }
+        },
+        "sword": {
+            "name": "sword",
+            "type": {
+                "type": "item_count"
+            }
+        },
+        "potion": {
+            "name": "potion",
+            "type": {
+                "type": "item_count"
+            }
+        },
+        "initial_flag": {
+            "name": "initial_flag",
+            "type": {
+                "type": "bool"
+            }
+        },
+        "visited_forest": {
+            "name": "visited_forest",
+            "type": {
+                "type": "bool"
+            }
+        },
+        "knows_secret": {
+            "name": "knows_secret",
+            "type": {
+                "type": "bool"
+            }
+        },
+        "hidden_secret": {
+            "name": "hidden_secret",
+            "type": {
+                "type": "bool"
+            }
+        },
+        "quest_started": {
+            "name": "quest_started",
+            "type": {
+                "type": "bool"
+            }
+        },
+        "quest_completed": {
+            "name": "quest_completed",
+            "type": {
+                "type": "bool"
+            }
+        }
+    },
+    "invariants": [
+        {
+            "condition": {
+                "type": "compare",
+                "var_name": "health",
+                "op": "le",
+                "value": 0
+            },
+            "outcome": {
+                "type": "death"
+            }
+        }
+    ],
+    "tags": [
+        {
+            "name": "health",
+            "display_name": "Здоровье",
+            "category": "HEALTH",
+            "visible": true
+        },
+        {
+            "name": "stamina",
+            "display_name": "Выносливость",
+            "category": "HEALTH",
+            "visible": true
+        },
+        {
+            "name": "mana",
+            "display_name": "Мана",
+            "category": "HEALTH",
+            "visible": true
+        },
+        {
+            "name": "sword",
+            "display_name": "Ржавый меч",
+            "category": "ITEM",
+            "visible": true
+        },
+        {
+            "name": "potion",
+            "display_name": "Зелье",
+            "category": "ITEM",
+            "visible": true
+        },
+        {
+            "name": "initial_flag",
+            "display_name": "Всё началось",
+            "visible": true
+        },
+        {
+            "name": "visited_forest",
+            "display_name": "Посетил лес",
+            "visible": true
+        },
+        {
+            "name": "knows_secret",
+            "display_name": "Знает секрет",
+            "visible": true
+        },
+        {
+            "name": "hidden_secret",
+            "display_name": "Скрытый секрет"
+        },
+        {
+            "name": "quest_started",
+            "display_name": "Квест начат",
+            "visible": true
+        },
+        {
+            "name": "quest_completed",
+            "display_name": "Квест завершён"
+        }
+    ],
+    "initial_state": {
+        "flags": [
+            "initial_flag"
+        ],
+        "stats": {
+            "health": 100,
+            "stamina": 50,
+            "mana": 10,
+            "sword": 1,
+            "potion": 3
+        }
+    },
+    "death_scene": {
+        "text": "💀 Вы погибли."
+    },
+    "start_scene": "start",
+    "chapters": [
+        {
+            "id": "chapter_1",
+            "title": "Начало",
+            "scenes": [
+                {
+                    "id": "start",
+                    "text": "Добро пожаловать в тестовое приключение.",
+                    "choices": [
+                        {
+                            "id": "start_choice_0",
+                            "text": "Проверить здоровье",
+                            "next_scene": "health_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "health",
+                                    "delta": 10
+                                }
+                            ]
+                        },
+                        {
+                            "id": "start_choice_1",
+                            "text": "Проверить предметы",
+                            "next_scene": "items_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "potion",
+                                    "delta": 2
+                                }
+                            ]
+                        },
+                        {
+                            "id": "start_choice_2",
+                            "text": "Проверить журнал",
+                            "next_scene": "journal_test",
+                            "effects": [
+                                {
+                                    "type": "set_flag",
+                                    "name": "visited_forest"
+                                },
+                                {
+                                    "type": "set_flag",
+                                    "name": "knows_secret"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "start_choice_3",
+                            "text": "Проверить условие (нужен меч)",
+                            "next_scene": "has_item_test",
+                            "condition": {
+                                "type": "compare",
+                                "var_name": "sword",
+                                "op": "gt",
+                                "value": 0
+                            }
+                        },
+                        {
+                            "id": "start_choice_4",
+                            "text": "Перейти к концу главы",
+                            "next_scene": "chapter_end_1"
+                        },
+                        {
+                            "id": "start_choice_5",
+                            "text": "Составные условия",
+                            "next_scene": "conditions_advanced_test"
+                        },
+                        {
+                            "id": "start_choice_6",
+                            "text": "Тест шагового гейта",
+                            "next_scene": "gate_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "health_test",
+                    "text": "Здесь можно наблюдать за HUD здоровья или проверить смерть.",
+                    "choices": [
+                        {
+                            "id": "health_test_choice_0",
+                            "text": "Съесть мухомор (-30 здоровья)",
+                            "next_scene": "health_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "health",
+                                    "delta": -30
+                                }
+                            ]
+                        },
+                        {
+                            "id": "health_test_choice_1",
+                            "text": "Выпить лекарство (+50 здоровья)",
+                            "next_scene": "health_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "health",
+                                    "delta": 50
+                                }
+                            ]
+                        },
+                        {
+                            "id": "health_test_choice_2",
+                            "text": "Получить удар тапком (урон -999)",
+                            "next_scene": "health_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "health",
+                                    "delta": -999
+                                }
+                            ]
+                        },
+                        {
+                            "id": "health_test_choice_3",
+                            "text": "Назад",
+                            "next_scene": "start"
+                        }
+                    ]
+                },
+                {
+                    "id": "gate_test",
+                    "text": "Демонстрация per-visit шагового гейта (gate_repeatable: true): выход из этой сцены требует 1 шаг, и каждый вход снова требует 1 шаг. Моделирует «путь» между локациями — чтобы пойти и вернуться, нужно пройти путь дважды. Пройдите 1 шаг (пройдитесь с телефоном) — кнопка «Назад» станет доступна. Для сравнения: гейты на chapter_end_1 и chapter_end_2 — one-shot (пройден один раз — больше не мешает).",
+                    "choices": [
+                        {
+                            "id": "gate_test_choice_0",
+                            "text": "Назад",
+                            "next_scene": "start"
+                        }
+                    ],
+                    "gate": {
+                        "required_steps": 1,
+                        "repeatable": true
+                    }
+                },
+                {
+                    "id": "items_test",
+                    "text": "Здесь можно проверить рюкзак.",
+                    "choices": [
+                        {
+                            "id": "items_test_choice_0",
+                            "text": "Выбросить зелье (-1)",
+                            "next_scene": "items_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "potion",
+                                    "delta": -1
+                                }
+                            ]
+                        },
+                        {
+                            "id": "items_test_choice_1",
+                            "text": "Добавить зелье (+1)",
+                            "next_scene": "items_test",
+                            "effects": [
+                                {
+                                    "type": "modify_stat",
+                                    "name": "potion",
+                                    "delta": 1
+                                }
+                            ]
+                        },
+                        {
+                            "id": "items_test_choice_2",
+                            "text": "Назад",
+                            "next_scene": "start"
+                        }
+                    ]
+                },
+                {
+                    "id": "journal_test",
+                    "text": "Здесь можно проверить журнал.",
+                    "choices": [
+                        {
+                            "id": "journal_test_choice_0",
+                            "text": "Начать квест",
+                            "next_scene": "journal_test",
+                            "effects": [
+                                {
+                                    "type": "set_flag",
+                                    "name": "quest_started"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "journal_test_choice_1",
+                            "text": "Завершить квест",
+                            "next_scene": "journal_test",
+                            "effects": [
+                                {
+                                    "type": "set_flag",
+                                    "name": "quest_completed"
+                                },
+                                {
+                                    "type": "remove_flag",
+                                    "name": "quest_started"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "journal_test_choice_2",
+                            "text": "Назад",
+                            "next_scene": "start"
+                        }
+                    ]
+                },
+                {
+                    "id": "has_item_test",
+                    "text": "Вы попали сюда, потому что у вас есть меч.",
+                    "choices": [
+                        {
+                            "id": "has_item_test_choice_0",
+                            "text": "Назад",
+                            "next_scene": "start"
+                        }
+                    ]
+                },
+                {
+                    "id": "chapter_end_1",
+                    "text": "Конец первой главы. Выход из этой сцены требует 1 шаг — обычный одноразовый шлюз (gate без gate_repeatable: пройден один раз и больше не мешает в этом прохождении).",
+                    "choices": [
+                        {
+                            "id": "chapter_end_1_choice_0",
+                            "text": "Продолжить",
+                            "next_scene": "conditions_test"
+                        }
+                    ],
+                    "gate": {
+                        "required_steps": 1
+                    }
+                }
+            ]
+        },
+        {
+            "id": "chapter_2",
+            "title": "Проверка условий",
+            "scenes": [
+                {
+                    "id": "conditions_test",
+                    "text": "Здесь тестируются условия. Один из вариантов демонстрирует межглавный переход: можно прыгнуть сразу в финальную главу, минуя гейт на конце главы 2 (1 шаг).",
+                    "choices": [
+                        {
+                            "id": "conditions_test_choice_0",
+                            "text": "Только если здоровье >= 50",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "compare",
+                                "var_name": "health",
+                                "op": "ge",
+                                "value": 50
+                            }
+                        },
+                        {
+                            "id": "conditions_test_choice_1",
+                            "text": "Только если здоровье < 50",
+                            "next_scene": "unhealthy",
+                            "condition": {
+                                "type": "compare",
+                                "var_name": "health",
+                                "op": "lt",
+                                "value": 50
+                            }
+                        },
+                        {
+                            "id": "conditions_test_choice_2",
+                            "text": "Только если есть меч",
+                            "next_scene": "has_sword_node",
+                            "condition": {
+                                "type": "compare",
+                                "var_name": "sword",
+                                "op": "gt",
+                                "value": 0
+                            }
+                        },
+                        {
+                            "id": "conditions_test_choice_3",
+                            "text": "Продолжить",
+                            "next_scene": "chapter_end_2"
+                        },
+                        {
+                            "id": "conditions_test_choice_4",
+                            "text": "В финал (демо межглавного перехода)",
+                            "next_scene": "final"
+                        },
+                        {
+                            "id": "conditions_test_choice_5",
+                            "text": "Составные условия (демо)",
+                            "next_scene": "conditions_advanced_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "healthy",
+                    "text": "У вас health >= 50.",
+                    "choices": [
+                        {
+                            "id": "healthy_choice_0",
+                            "text": "Назад",
+                            "next_scene": "conditions_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "unhealthy",
+                    "text": "У вас health < 50.",
+                    "choices": [
+                        {
+                            "id": "unhealthy_choice_0",
+                            "text": "Назад",
+                            "next_scene": "conditions_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "has_sword_node",
+                    "text": "У вас есть меч.",
+                    "choices": [
+                        {
+                            "id": "has_sword_node_choice_0",
+                            "text": "Назад",
+                            "next_scene": "conditions_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "conditions_advanced_test",
+                    "text": "Демо составных условий: &&, ||, !, in. Каждая кнопка ниже — валидное условие в новом синтаксисе. Если условие не выполнено, кнопка недоступна (в текущей читалке — скрыта, станет видимой disabled в N4).",
+                    "choices": [
+                        {
+                            "id": "conditions_advanced_test_choice_0",
+                            "text": "&& : флаг + сравнение",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "and",
+                                "left": {
+                                    "type": "has",
+                                    "name": "initial_flag"
+                                },
+                                "right": {
+                                    "type": "compare",
+                                    "var_name": "health",
+                                    "op": "ge",
+                                    "value": 50
+                                }
+                            }
+                        },
+                        {
+                            "id": "conditions_advanced_test_choice_1",
+                            "text": "|| : два флага",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "or",
+                                "left": {
+                                    "type": "has",
+                                    "name": "initial_flag"
+                                },
+                                "right": {
+                                    "type": "has",
+                                    "name": "quest_started"
+                                }
+                            }
+                        },
+                        {
+                            "id": "conditions_advanced_test_choice_2",
+                            "text": "! : отрицание флага",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "not",
+                                "inner": {
+                                    "type": "has",
+                                    "name": "quest_completed"
+                                }
+                            }
+                        },
+                        {
+                            "id": "conditions_advanced_test_choice_3",
+                            "text": "in : диапазон",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "in_range",
+                                "var_name": "health",
+                                "min": 50,
+                                "max": 100
+                            }
+                        },
+                        {
+                            "id": "conditions_advanced_test_choice_4",
+                            "text": "!(...) : отрицание группы",
+                            "next_scene": "healthy",
+                            "condition": {
+                                "type": "not",
+                                "inner": {
+                                    "type": "and",
+                                    "left": {
+                                        "type": "has",
+                                        "name": "quest_started"
+                                    },
+                                    "right": {
+                                        "type": "has",
+                                        "name": "quest_completed"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "id": "conditions_advanced_test_choice_5",
+                            "text": "Назад",
+                            "next_scene": "conditions_test"
+                        }
+                    ]
+                },
+                {
+                    "id": "chapter_end_2",
+                    "text": "Конец второй главы. Выход из этой сцены требует 1 шаг — тот же одноразовый шлюз, что и в конце главы 1.",
+                    "choices": [
+                        {
+                            "id": "chapter_end_2_choice_0",
+                            "text": "Продолжить",
+                            "next_scene": "final"
+                        }
+                    ],
+                    "gate": {
+                        "required_steps": 1
+                    }
+                }
+            ]
+        },
+        {
+            "id": "chapter_3",
+            "title": "Финальная",
+            "scenes": [
+                {
+                    "id": "final",
+                    "text": "Поздравляем! Вы прошли все тесты.",
+                    "is_ending": true
+                }
+            ]
+        }
+    ]
+}

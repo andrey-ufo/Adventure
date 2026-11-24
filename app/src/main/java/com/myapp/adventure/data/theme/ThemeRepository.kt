@@ -23,7 +23,7 @@ import kotlinx.serialization.json.Json
  *
  * Backed by a [DataStore] (see [ThemeDataStore]). The class caches the
  * latest state in memory as volatile fields so synchronous UI code
- * (View-based screens during the transition period) can read it without
+ * (`ThemeManager.currentThemeSync()` for Compose) can read it without
  * blocking. All writes go through DataStore; the cache is updated
  * optimistically so reads immediately reflect the change.
  *

@@ -11,16 +11,15 @@ import com.myapp.adventure.engine.ir.Adventure
  *
  * **Immutable.** Every mutation creates a new instance via `copy(...)`
  * and is published through `AdventureReaderViewModel.state`. The
- * Fragment reads `vm.state.value` for rendering; the future Compose
- * screen collects it via `collectAsStateWithLifecycle`.
+ * Compose reader collects it via `collectAsStateWithLifecycle`.
  *
  * **Nullable `adventure` / `compiled`.** Before `vm.init(...)` runs,
  * there is no parsed file. After `init` returns `Success`, both are
  * non-null and stay non-null for the rest of the ViewModel's lifetime.
  * All methods that mutate state check `adventure != null` (or are
- * called only after `Success` — the Fragment contract).
+ * called only after `Success` — the reader-route contract).
  *
- * **String scene ids, not `SceneId`.** Matches the current Fragment:
+ * **String scene ids, not `SceneId`.** Matches the reader route:
  * `.value` at IR boundaries, `SceneId(x)` when indexing
  * `compiled.scenesById`. A full `SceneId` migration is deferred to
  * Phase 5; the type is already correct where it matters.

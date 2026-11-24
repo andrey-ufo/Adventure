@@ -2,9 +2,8 @@ package com.myapp.adventure.ui.menu
 
 /**
  * Destinations reachable from the main menu. Declared as a sealed hierarchy
- * so the Fragment owns the mapping to concrete fragments (and, in Phase 4,
- * Navigation Compose owns the mapping to routes) without MenuScreen knowing
- * anything about FragmentManager or NavController.
+ * so `AppNavHost` owns the mapping to typed Navigation Compose routes
+ * without MenuScreen knowing anything about NavController.
  *
  * Import is intentionally NOT a destination — it is a side-effect (launch
  * SAF picker) and is handled inline by MenuScreen.

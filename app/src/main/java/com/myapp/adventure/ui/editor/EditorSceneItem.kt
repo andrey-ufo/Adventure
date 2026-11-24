@@ -173,7 +173,6 @@ private fun SceneInfoRow(
     onRebuildId: () -> Unit,
     onPreview: () -> Unit,
 ) {
-    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -182,11 +181,11 @@ private fun SceneInfoRow(
     ) {
         val idText = when {
             scene.id.isNotEmpty() ->
-                context.getString(R.string.editor_scene_id_label_fmt, scene.id)
+                stringResource(R.string.editor_scene_id_label_fmt, scene.id)
             scene.title.isNotBlank() ->
-                context.getString(R.string.editor_scene_id_label_will_generate)
+                stringResource(R.string.editor_scene_id_label_will_generate)
             else ->
-                context.getString(R.string.editor_scene_id_label_enter_title)
+                stringResource(R.string.editor_scene_id_label_enter_title)
         }
         Text(
             text = idText,
@@ -444,7 +443,7 @@ private fun SceneDeathRow(
     viewModel: AdventureEditorViewModel,
     onDirty: (structural: Boolean) -> Unit,
 ) {
-    val context = LocalContext.current
+    val withoutTitle = stringResource(R.string.label_without_title)
     var pendingReplacePreviousTitle by remember { mutableStateOf<String?>(null) }
 
     CheckRow(
@@ -457,7 +456,7 @@ private fun SceneDeathRow(
                 }
                 if (previous != null) {
                     pendingReplacePreviousTitle = previous.title.ifBlank {
-                        context.getString(R.string.label_without_title)
+                        withoutTitle
                     }
                 } else {
                     viewModel.setDeathScene(scene.uid, true)
@@ -508,7 +507,7 @@ private fun SceneDeathRow(
         ReplaceDeathSceneDialog(
             previousTitle = prevTitle,
             newTitle = scene.title.ifBlank {
-                context.getString(R.string.label_without_title)
+                withoutTitle
             },
             onConfirm = {
                 viewModel.setDeathScene(scene.uid, true)

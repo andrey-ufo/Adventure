@@ -12,8 +12,8 @@ object SearchService {
 
     /**
      * @param titleFallback displayed title for scenes whose `title` is
-     *   blank. The caller (a `Fragment`, which has `Context`) passes
-     *   `getString(R.string.label_without_title)`; `:utils` stays free
+     *   blank. The caller (`SearchRoute`) passes
+     *   `stringResource(R.string.label_without_title)`; `:utils` stays free
      *   of `Context` and free of user-facing strings.
      */
     fun search(

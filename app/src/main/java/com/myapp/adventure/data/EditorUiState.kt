@@ -18,24 +18,15 @@ enum class SaveStatus {
  * Immutable snapshot of the editor state, exposed as `StateFlow` from
  * [com.myapp.adventure.ui.editor.AdventureEditorViewModel].
  *
- * **Why this exists.** `AdventureEditorViewModel` still exposes mutable
- * `MutableList`s (`scenes`, `variables`, `templates`, …) because the
- * existing View consumers (`EditorSceneAdapter`, `InitialStateAdapter`,
- * `VariablesAdapter`, `TemplateListAdapter`) mutate them in place and then
- * call `notifyDataSetChanged()`. Compose uses `equals()` to skip
- * recomposition; a mutation like `scene.title = "x"` keeps the same object
- * identity and never triggers an emit.
+ * `AdventureEditorViewModel` still owns mutable lists (`scenes`,
+ * `variables`, `templates`, …) as a transitional implementation detail;
+ * every mutation ends with `commitState()`, which deep-copies them into
+ * this snapshot. Compose reads only the snapshot and mutates state through
+ * VM methods, so in-place mutations that keep object identity never reach
+ * the UI.
  *
- * [EditorUiState] fixes this for Compose consumers: each `commitState()`
- * takes a deep copy of every list, so each emit carries structurally
- * different objects and Compose recomposes. The View consumers are
- * unaffected — `uiState` runs in parallel with the mutable lists.
- *
- * **Migration path (Phase 3.1).** This is step 3.1b (after 3.1a). Later
- * steps move View consumers to Compose one by one (3.1c–3.1e). When the
- * last consumer is Compose-native (3.1f), the mutable lists can be
- * removed from the ViewModel; `commitState()` then becomes the only
- * entry point for state changes and the deep copies disappear.
+ * Removing the mutable lists is future work; `commitState()` is currently
+ * the single publish point.
  */
 data class EditorUiState(
     val title: String = "",

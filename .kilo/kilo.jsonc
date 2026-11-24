@@ -1,0 +1,5 @@
+{
+  "$schema": "https://kilo.ai",
+  "disabled_providers": ["kilo"],
+  "model": "deepseek/deepseek-chat"
+}

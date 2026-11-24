@@ -29,7 +29,7 @@ import com.myapp.adventure.ui.theme.AdventureTheme
  * `dialog_story_stats.xml` dialog).
  *
  * Read-only; no callbacks other than [onBack]. The stats are computed once
- * by the host Fragment (`StoryStatsFragment`) and rendered here.
+ * by `StoryStatsRoute` and rendered here.
  */
 @Composable
 fun StoryStatsScreen(
