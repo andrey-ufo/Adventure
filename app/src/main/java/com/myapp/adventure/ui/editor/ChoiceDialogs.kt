@@ -1,5 +1,6 @@
 package com.myapp.adventure.ui.editor
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -64,6 +65,8 @@ fun ChoiceEffectsDialog(
     initialTags: List<EditorTag>,
     onApply: (List<EditorTag>) -> Unit,
     onDismiss: () -> Unit,
+    @StringRes titleRes: Int = R.string.editor_choice_effects_title,
+    @StringRes infoRes: Int = R.string.editor_choice_effects_info,
 ) {
     val localTags = remember {
         mutableStateListOf<EditorTag>().apply {
@@ -74,12 +77,12 @@ fun ChoiceEffectsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.editor_choice_effects_title)) },
+        title = { Text(stringResource(titleRes)) },
         text = {
             Column {
                 Text(
                     text = stringResource(
-                        R.string.editor_choice_effects_info,
+                        infoRes,
                         choiceText.ifBlank { fallback },
                     ),
                     style = MaterialTheme.typography.bodySmall,

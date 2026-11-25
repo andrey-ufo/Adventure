@@ -50,6 +50,7 @@ fun EditorToolbar(
     onSearch: () -> Unit,
     onStats: () -> Unit,
     onTemplates: () -> Unit,
+    onSubroutines: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -74,6 +75,7 @@ fun EditorToolbar(
                 onSearch = onSearch,
                 onStats = onStats,
                 onTemplates = onTemplates,
+                onSubroutines = onSubroutines,
             )
         }
     }
@@ -133,6 +135,7 @@ private fun ActionsRow(
     onSearch: () -> Unit,
     onStats: () -> Unit,
     onTemplates: () -> Unit,
+    onSubroutines: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -164,6 +167,7 @@ private fun ActionsRow(
         ToolbarTextButton(stringResource(R.string.editor_search), onSearch)
         ToolbarTextButton(stringResource(R.string.menu_statistics), onStats)
         ToolbarTextButton(stringResource(R.string.editor_templates_button), onTemplates)
+        ToolbarTextButton(stringResource(R.string.editor_subroutines_button), onSubroutines)
     }
 }
 

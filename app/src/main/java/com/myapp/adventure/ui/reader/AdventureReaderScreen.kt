@@ -36,6 +36,8 @@ import com.myapp.adventure.engine.ChoiceState
 import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.step.StepSourceManager
+import com.myapp.adventure.ui.theme.FontScopeProvider
+import com.myapp.adventure.utils.FontScope
 
 /**
  * Phase 3.4-b: main reader screen — HUD, scene text, gate banner, choices,
@@ -227,15 +229,16 @@ fun AdventureReaderScreen(
                 }
                 else -> scene?.text.orEmpty()
             }
-            Text(
-                text = bodyText,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                lineHeight = 24.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-            )
+            FontScopeProvider(FontScope.READER) {
+                Text(
+                    text = bodyText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                )
+            }
 
             if (!state.isDead && endMessage == null && state.isGateActive) {
                 GateBanner(

@@ -51,6 +51,12 @@ data class Adventure(
      */
     @SerializedName("choice_templates")
     val choiceTemplates: List<ChoiceTemplateDto>? = null,
+    /**
+     * Ф4.7/Ф4.8: reusable atomic subroutines. `null` (field absent) keeps
+     * `"subroutines": []` out of files that have none — same "empty →
+     * omit" policy as `variables` / `choice_templates`.
+     */
+    val subroutines: List<SubroutineDto>? = null,
     val tags: List<TagDefinition>? = null,
     @SerializedName("death_scene")
     val deathScene: DeathScene? = null,
@@ -218,6 +224,13 @@ data class Choice(
      */
     @SerializedName("template_ref")
     val templateRef: TemplateRefDto? = null,
+    /**
+     * Ф4.7/Ф4.8: optional atomic subroutine invoked after the choice's
+     * effects and before moving to [nextScene] (which is the return
+     * target). The local-frame / stack semantics live in
+     * `:engine/ir/Subroutine`.
+     */
+    val call: SubroutineCallDto? = null,
 )
 
 /**
@@ -313,4 +326,50 @@ data class VarDeclDto(
     val type: String,
     val min: Int? = null,
     val max: Int? = null,
+)
+
+/**
+ * Ф4.7/Ф4.8: Gson wire-format for an atomic subroutine.
+ *
+ * Mirrors `:engine/format/dto/SubroutineDto` one-to-one except that
+ * conditions are raw strings (the editor's vocabulary) and the body is a
+ * flat list of guarded steps. `inputs`/`outputs` reuse [VarDeclDto] so the
+ * editor's variable-kind picker and the IR use the same `"type"` strings.
+ */
+data class SubroutineDto(
+    val id: String,
+    val inputs: List<VarDeclDto>? = null,
+    val outputs: List<VarDeclDto>? = null,
+    val body: List<SubroutineStepDto>? = null,
+)
+
+/**
+ * Ф4.7/Ф4.8: one flat guarded step. `condition` is a raw condition string;
+ * `set_flags` / `remove_flags` / `modify_stats` are the same three effect
+ * fields as scene/choice effects; `call` is an optional nested call.
+ */
+data class SubroutineStepDto(
+    val condition: String? = null,
+    @SerializedName("set_flags")
+    val setFlags: List<String>? = null,
+    @SerializedName("remove_flags")
+    val removeFlags: List<String>? = null,
+    @SerializedName("modify_stats")
+    val modifyStats: Map<String, Int>? = null,
+    val call: SubroutineCallDto? = null,
+)
+
+/**
+ * Ф4.7/Ф4.8: a call from a choice or from another subroutine step.
+ *
+ * `args` maps callee input name → source variable/local name; `outputs`
+ * maps callee output name → target variable/local name. On a choice the
+ * names are global variables; inside a subroutine body they are the
+ * enclosing frame's local parameters (same contract as the IR).
+ */
+data class SubroutineCallDto(
+    @SerializedName("subroutine_id")
+    val subroutineId: String,
+    val args: Map<String, String>? = null,
+    val outputs: Map<String, String>? = null,
 )

@@ -57,6 +57,12 @@ internal data class AdventureDto(
      */
     @SerialName("choice_templates")
     val choiceTemplates: List<ChoiceTemplateDto> = emptyList(),
+    /**
+     * Ф4.7: reusable atomic procedures. Empty / absent → no subroutines.
+     * Calls are referenced from [ChoiceDto.call] and nested
+     * [SubroutineStepDto.call].
+     */
+    val subroutines: List<SubroutineDto> = emptyList(),
     val invariants: List<InvariantDto> = emptyList(),
     val tags: List<TagDefinitionDto> = emptyList(),
     @SerialName("death_scene")
@@ -144,6 +150,12 @@ internal data class ChoiceDto(
     val removeFlags: List<String> = emptyList(),
     @SerialName("modify_stats")
     val modifyStats: Map<String, Int> = emptyMap(),
+    /**
+     * Ф4.7: optional atomic subroutine call. The choice keeps
+     * `next_scene` as the **return target**; the call runs before the
+     * transition.
+     */
+    val call: SubroutineCallDto? = null,
 )
 
 @Serializable
@@ -263,6 +275,50 @@ internal data class VarDeclDto(
     val type: String,
     val min: Int? = null,
     val max: Int? = null,
+)
+
+/**
+ * Ф4.7: wire-format for a reusable atomic subroutine.
+ *
+ * Flat body: each step is a [SubroutineStepDto] with an optional
+ * condition string, the same three effect fields as scenes/choices, and an
+ * optional nested call. This mirrors the IR `Subroutine` one-to-one except
+ * for conditions (string → AST) and parameter types (string → `VarType`).
+ */
+@Serializable
+internal data class SubroutineDto(
+    val id: String,
+    val inputs: List<VarDeclDto> = emptyList(),
+    val outputs: List<VarDeclDto> = emptyList(),
+    val body: List<SubroutineStepDto> = emptyList(),
+)
+
+@Serializable
+internal data class SubroutineStepDto(
+    val condition: String? = null,
+    @SerialName("set_flags")
+    val setFlags: List<String> = emptyList(),
+    @SerialName("remove_flags")
+    val removeFlags: List<String> = emptyList(),
+    @SerialName("modify_stats")
+    val modifyStats: Map<String, Int> = emptyMap(),
+    val call: SubroutineCallDto? = null,
+)
+
+/**
+ * Ф4.7: wire-format for a subroutine call.
+ *
+ * Same shape in both contexts: on a [ChoiceDto] the names refer to global
+ * variables; inside a subroutine body they refer to the enclosing frame's
+ * local parameters. `args` maps callee input → source name; `outputs` maps
+ * callee output → target name. See `:engine/ir/SubroutineCall` KDoc.
+ */
+@Serializable
+internal data class SubroutineCallDto(
+    @SerialName("subroutine_id")
+    val subroutineId: String,
+    val args: Map<String, String> = emptyMap(),
+    val outputs: Map<String, String> = emptyMap(),
 )
 
 /**

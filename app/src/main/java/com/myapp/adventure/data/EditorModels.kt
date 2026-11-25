@@ -97,6 +97,14 @@ data class EditorChoice(
      * `template_ref.args` so Ф4.3.3 can re-apply with the same args.
      */
     var templateArgs: Map<String, String> = emptyMap(),
+    /**
+     * Ф4.7/Ф4.8: optional atomic subroutine call. Executed after [tags]
+     * (effects) and before [nextSceneId] (the return target). `null` for
+     * ordinary choices. Edited by the "Использовать подпрограмму" dialog;
+     * round-trips through `:app/data/Choice.call` and the IR
+     * `Choice.call`.
+     */
+    var subroutineCall: EditorSubroutineCall? = null,
 )
 
 data class EditorTag(
@@ -121,6 +129,7 @@ fun EditorScene.deepCopy(): EditorScene = copy(
             // freezes it so that undo/redo snapshots cannot alias the
             // live editor state.
             templateArgs = choice.templateArgs.toMap(),
+            subroutineCall = choice.subroutineCall?.deepCopy(),
         )
     }.toMutableList()
 )
@@ -272,4 +281,66 @@ data class EditorTemplate(
 fun EditorTemplate.deepCopy(): EditorTemplate = copy(
     parameters = parameters.map { it.copy() }.toMutableList(),
     effects = effects.map { it.copy() }.toMutableList(),
+)
+
+/**
+ * Ф4.7/Ф4.8: editor model of an atomic subroutine.
+ *
+ * Mirrors `:engine/ir/Subroutine`: typed [inputs] / [outputs] and a flat
+ * [body] of guarded steps. [uid] is the editor identity (survives id
+ * rename); [id] is the JSON/IR id used by calls. The body sees only
+ * inputs/outputs — the editor UI shows that local scope, and the engine
+ * type checker enforces it.
+ */
+data class EditorSubroutine(
+    val uid: String = UUID.randomUUID().toString(),
+    var id: String = "",
+    val inputs: MutableList<EditorVarDecl> = mutableListOf(),
+    val outputs: MutableList<EditorVarDecl> = mutableListOf(),
+    val body: MutableList<EditorSubroutineStep> = mutableListOf(),
+)
+
+fun EditorSubroutine.deepCopy(): EditorSubroutine = copy(
+    inputs = inputs.map { it.copy() }.toMutableList(),
+    outputs = outputs.map { it.copy() }.toMutableList(),
+    body = body.map { it.deepCopy() }.toMutableList(),
+)
+
+/**
+ * Ф4.7/Ф4.8: one flat guarded step of [EditorSubroutine].
+ *
+ * `condition` is a raw string (same as `EditorChoice.conditionTag`);
+ * [effects] are [EditorTag]s serialized to `set_flags` / `remove_flags` /
+ * `modify_stats`; [call] is an optional nested call binding local names.
+ * No nested `if` tree — an `else` is a following step with a negated
+ * condition (decision A1).
+ */
+data class EditorSubroutineStep(
+    val uid: String = UUID.randomUUID().toString(),
+    var condition: String = "",
+    val effects: MutableList<EditorTag> = mutableListOf(),
+    var call: EditorSubroutineCall? = null,
+)
+
+fun EditorSubroutineStep.deepCopy(): EditorSubroutineStep = copy(
+    effects = effects.map { it.copy() }.toMutableList(),
+    call = call?.deepCopy(),
+)
+
+/**
+ * Ф4.7/Ф4.8: editor model of a subroutine call.
+ *
+ * [subroutineId] is the callee's JSON/IR id. On a choice, [args] /
+ * [outputs] values are global variable names; inside a subroutine body
+ * they are names of the enclosing frame's inputs/outputs.
+ */
+data class EditorSubroutineCall(
+    var subroutineId: String = "",
+    var args: Map<String, String> = emptyMap(),
+    var outputs: Map<String, String> = emptyMap(),
+)
+
+fun EditorSubroutineCall.deepCopy(): EditorSubroutineCall = copy(
+    args = args.toMap(),
+    outputs = outputs.toMap(),
 )

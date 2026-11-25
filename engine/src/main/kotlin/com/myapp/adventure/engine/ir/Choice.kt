@@ -45,6 +45,12 @@ import kotlinx.serialization.Serializable
  * @property templateRef if this choice was expanded from a template,
  *   the reference. Metadata for the editor; `null` for hand-written
  *   choices.
+ * @property call Ф4.7: optional atomic subroutine invoked **after**
+ *   [effects] and **before** moving to [nextScene]. The subroutine runs
+ *   with a local frame; its outputs are written back into global
+ *   variables, then invariants are evaluated and the transition happens.
+ *   [nextScene] is therefore the return target (use the current scene id
+ *   to stay in place). See [Subroutine] KDoc.
  */
 @Serializable
 public data class Choice(
@@ -58,4 +64,5 @@ public data class Choice(
     public val effects: List<Effect> = emptyList(),
     @SerialName("template_ref")
     public val templateRef: TemplateRef? = null,
+    public val call: SubroutineCall? = null,
 )

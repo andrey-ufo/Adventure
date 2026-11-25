@@ -311,10 +311,17 @@ screen or string. Use the Russian text as the source key.
 | Настройки                                                                                          | Settings                                                                                 |
 | Включить запись лога в файл                                                                        | Enable file logging                                                                      |
 | Синхронизация с Health Connect                                                                     | Sync with Health Connect                                                                 |
-| Размер шрифта интерфейса:                                                                          | Interface font size:                                                                     |
+| Шрифты                                                                                             | Fonts                                                                                    |
+| Шрифт текста приключений:                                                                          | Adventure text font:                                                                     |
 | Шрифт интерфейса:                                                                                  | Interface font:                                                                          |
-| Добавить                                                                                           | Add                                                                                      |
-| Образец текста                                                                                     | Text sample                                                                              |
+| Шрифт редактора:                                                                                   | Editor font:                                                                             |
+| Сбросить размер шрифта                                                                             | Reset font size                                                                          |
+| Размер шрифта: %1$d                                                                                | Font size: %1$d                                                                          |
+| Так выглядит текст приключения                                                                     | This is how adventure text looks                                                         |
+| Так выглядит интерфейс приложения                                                                  | This is how the app interface looks                                                      |
+| Так выглядит интерфейс редактора                                                                   | This is how the editor interface looks                                                   |
+| Добавить шрифт                                                                                     | Add font                                                                                 |
+| Шрифт добавлен: %1$s                                                                               | Font added: %1$s                                                                         |
 | Выключено — используется датчик телефона (шаги в реальном времени)                                 | Disabled — using the phone sensor (real-time steps)                                     |
 | Включено — шаги обновляются с задержкой (Health Connect)                                           | Enabled — steps update with a delay (Health Connect)                                    |
 | Health Connect недоступен — используется датчик телефона                                           | Health Connect unavailable — using the phone sensor                                     |
@@ -384,8 +391,6 @@ screen or string. Use the Russian text as the source key.
 | Удалить вариант действия?                                                                          | Delete choice?                                                                           |
 | Заменить сцену смерти?                                                                             | Replace death scene?                                                                     |
 | Пересобрать ID?                                                                                    | Rebuild ID?                                                                              |
-| Смена шрифта                                                                                       | Change font                                                                              |
-| Применить шрифт «…» ко всем экранам? Приложение будет перезапущено.                                 | Apply font "…" to all screens? The app will restart.                                     |
 | Черновик автосохранён                                                                              | Draft auto-saved                                                                         |
 | Изменения…                                                                                         | Changes…                                                                                 |
 | Сохранение…                                                                                        | Saving…                                                                                  |

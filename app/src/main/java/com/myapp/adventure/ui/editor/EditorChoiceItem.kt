@@ -131,6 +131,7 @@ private fun ChoiceHeader(
             if (choice.tags.isNotEmpty()) add("⚙ ${choice.tags.size}")
             if (choice.nextSceneId.isNotEmpty()) add("🔗")
             if (choice.conditionTag.isNotEmpty()) add("?")
+            if (choice.subroutineCall != null) add("⚡")
         }.joinToString(" ")
         if (badges.isNotEmpty()) {
             Text(
@@ -185,6 +186,13 @@ private fun ChoiceBody(
     )
 
     NextScenePicker(sceneUid = sceneUid, choice = choice, viewModel = viewModel, onDirty = onDirty)
+
+    ChoiceSubroutineRow(
+        sceneUid = sceneUid,
+        choice = choice,
+        viewModel = viewModel,
+        onDirty = onDirty,
+    )
 
     var localCondition by remember(choice.uid) { mutableStateOf(choice.conditionTag) }
     LaunchedEffect(choice.conditionTag) {
@@ -286,6 +294,87 @@ private fun NextScenePicker(
                 showNewSceneDialog = false
             },
             onDismiss = { showNewSceneDialog = false },
+        )
+    }
+}
+
+/**
+ * Ф4.8: "Подпрограмма: …" row on a choice. Opens the shared
+ * [SubroutineCallDialog] with global variable names; the engine validates
+ * the call. A blank call is "none"; clearing writes `null`.
+ */
+@Composable
+private fun ChoiceSubroutineRow(
+    sceneUid: String,
+    choice: EditorChoice,
+    viewModel: AdventureEditorViewModel,
+    onDirty: (Boolean) -> Unit,
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showDialog by remember { mutableStateOf(false) }
+    val globalNames = state.variables
+        .map { it.name.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+    val call = choice.subroutineCall?.takeIf { it.subroutineId.isNotBlank() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.subroutine_choice_label),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = call?.subroutineId ?: "—",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { showDialog = true }
+                .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+        )
+        if (call != null) {
+            Text(
+                text = "✕",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .clickable {
+                        viewModel.setChoiceSubroutineCall(sceneUid, choice.uid, null)
+                        onDirty(true)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+
+    if (showDialog) {
+        SubroutineCallDialog(
+            subroutines = state.subroutines,
+            inputSources = globalNames,
+            outputTargets = globalNames,
+            initial = choice.subroutineCall,
+            title = stringResource(R.string.subroutine_call_dialog_choice_title),
+            onApply = { newCall ->
+                viewModel.setChoiceSubroutineCall(sceneUid, choice.uid, newCall)
+                onDirty(true)
+                showDialog = false
+            },
+            onDismiss = { showDialog = false },
+            onClear = if (call != null) {
+                {
+                    viewModel.setChoiceSubroutineCall(sceneUid, choice.uid, null)
+                    onDirty(true)
+                    showDialog = false
+                }
+            } else {
+                null
+            },
         )
     }
 }

@@ -15,6 +15,7 @@ import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
 import com.myapp.adventure.ui.AppNavHost
 import com.myapp.adventure.ui.theme.AdventureTheme
+import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ThemeManager
 import kotlinx.coroutines.runBlocking
@@ -25,6 +26,7 @@ class MainActivity : AppCompatActivity() {
         // the night mode and theme during its own onCreate, and changing them
         // afterwards causes a flash or a spurious recreate().
         ThemeManager.initialize(this)
+        FontManager.initialize(this)
         runBlocking { ThemeManager.awaitInitialized() }
         ThemeManager.apply(this)
 

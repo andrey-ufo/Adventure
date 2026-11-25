@@ -10,11 +10,15 @@ import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.InitialState
 import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep
 import com.myapp.adventure.engine.ir.TagCategory
 import com.myapp.adventure.engine.ir.TagDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [TypeChecker].
@@ -45,6 +49,7 @@ class TypeCheckerTest {
         variables: Map<String, VarDecl> = emptyMap(),
         tags: List<TagDefinition> = emptyList(),
         initialState: InitialState = InitialState(),
+        subroutines: List<Subroutine> = emptyList(),
         vararg scenes: Scene,
     ): Adventure {
         val start = scenes.firstOrNull()?.id ?: SceneId("start")
@@ -52,6 +57,7 @@ class TypeCheckerTest {
             title = "T",
             startScene = start,
             variables = variables,
+            subroutines = subroutines,
             tags = tags,
             initialState = initialState,
             chapters = listOf(Chapter("ch", "ch", scenes.toList())),
@@ -74,12 +80,14 @@ class TypeCheckerTest {
         next: String = "start",
         condition: Condition? = null,
         effects: List<Effect> = emptyList(),
+        call: SubroutineCall? = null,
     ): Choice = Choice(
         id = ChoiceId(id),
         text = "go",
         nextScene = SceneId(next),
         condition = condition,
         effects = effects,
+        call = call,
     )
 
     // ---------- empty input ----------
@@ -514,4 +522,214 @@ class TypeCheckerTest {
         assertIs<TypeError.UnknownVariable>(errors.single())
     }
 
+    // ---------- Ф4.7: subroutines ----------
+
+    @Test
+    fun `subroutine body uses local inputs and outputs`() {
+        val consume = Subroutine(
+            id = "consume",
+            inputs = listOf(
+                VarDecl("item", VarType.ItemCount),
+                VarDecl("health", VarType.IntMin(0)),
+            ),
+            outputs = listOf(
+                VarDecl("item", VarType.ItemCount),
+                VarDecl("health", VarType.IntMin(0)),
+            ),
+            body = listOf(
+                SubroutineStep(
+                    condition = Condition.Compare("item", CompareOp.GT, 0),
+                    effects = listOf(
+                        Effect.ModifyStat("item", -1),
+                        Effect.ModifyStat("health", 5),
+                    ),
+                ),
+            ),
+        )
+        val adv = adventure(
+            variables = variables(
+                "potion" to VarType.ItemCount,
+                "health" to VarType.IntMin(0),
+            ),
+            subroutines = listOf(consume),
+            scenes = arrayOf(scene("start")),
+        )
+        assertEquals(emptyList(), TypeChecker.check(adv))
+    }
+
+    @Test
+    fun `subroutine body is checked even when no global variables are declared`() {
+        val sub = Subroutine(
+            id = "bad",
+            body = listOf(
+                SubroutineStep(effects = listOf(Effect.ModifyStat("ghost", 1))),
+            ),
+        )
+        val adv = adventure(
+            subroutines = listOf(sub),
+            scenes = arrayOf(scene("start")),
+        )
+
+        val wrapped = assertIs<TypeError.InSubroutine>(TypeChecker.check(adv).single())
+        assertIs<TypeError.UnknownVariable>(wrapped.cause)
+    }
+
+    @Test
+    fun `subroutine body cannot see global variables`() {
+        val sub = Subroutine(
+            id = "bad",
+            inputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            outputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            body = listOf(
+                SubroutineStep(effects = listOf(Effect.ModifyStat("ghost", 1))),
+            ),
+        )
+        val adv = adventure(
+            variables = variables("health" to VarType.IntMin(0)),
+            subroutines = listOf(sub),
+            scenes = arrayOf(scene("start")),
+        )
+
+        val wrapped = assertIs<TypeError.InSubroutine>(TypeChecker.check(adv).single())
+        assertEquals("bad", wrapped.subroutineId)
+        val cause = assertIs<TypeError.UnknownVariable>(wrapped.cause)
+        assertEquals("ghost", cause.name)
+    }
+
+    @Test
+    fun `subroutine cannot write input-only parameter`() {
+        val sub = Subroutine(
+            id = "bad",
+            inputs = listOf(VarDecl("item", VarType.ItemCount)),
+            outputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            body = listOf(
+                SubroutineStep(effects = listOf(Effect.ModifyStat("item", -1))),
+            ),
+        )
+        val adv = adventure(
+            variables = variables(
+                "potion" to VarType.ItemCount,
+                "health" to VarType.IntMin(0),
+            ),
+            subroutines = listOf(sub),
+            scenes = arrayOf(scene("start")),
+        )
+
+        val wrapped = assertIs<TypeError.InSubroutine>(TypeChecker.check(adv).single())
+        val cause = assertIs<TypeError.InvalidSubroutineSignature>(wrapped.cause)
+        assertTrue(cause.detail.contains("input-only"), cause.detail)
+    }
+
+    @Test
+    fun `top-level call argument type must match input type`() {
+        val sub = Subroutine(
+            id = "use_item",
+            inputs = listOf(VarDecl("item", VarType.ItemCount)),
+        )
+        val adv = adventure(
+            variables = variables("potion" to VarType.Bool),
+            subroutines = listOf(sub),
+            scenes = arrayOf(
+                scene(
+                    "start",
+                    choices = listOf(
+                        choice(
+                            call = SubroutineCall(
+                                subroutineId = "use_item",
+                                args = mapOf("item" to "potion"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = assertIs<TypeError.InvalidSubroutineSignature>(
+            TypeChecker.check(adv).single(),
+        )
+        assertEquals(SceneId("start"), error.sceneId)
+        assertTrue(error.message.contains("ItemCount"), error.message)
+        assertTrue(error.message.contains("potion"), error.message)
+        assertTrue(error.message.contains("Bool"), error.message)
+    }
+
+    @Test
+    fun `top-level call unknown global argument is UnknownVariable`() {
+        val sub = Subroutine(
+            id = "use_item",
+            inputs = listOf(VarDecl("item", VarType.ItemCount)),
+        )
+        val adv = adventure(
+            variables = variables("potion" to VarType.ItemCount),
+            subroutines = listOf(sub),
+            scenes = arrayOf(
+                scene(
+                    "start",
+                    choices = listOf(
+                        choice(
+                            call = SubroutineCall(
+                                subroutineId = "use_item",
+                                args = mapOf("item" to "ghost"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = assertIs<TypeError.UnknownVariable>(TypeChecker.check(adv).single())
+        assertEquals("ghost", error.name)
+        assertEquals(SceneId("start"), error.sceneId)
+    }
+
+    @Test
+    fun `nested call argument type must match local type`() {
+        val inner = Subroutine(
+            id = "inner",
+            inputs = listOf(VarDecl("health", VarType.IntMin(0))),
+        )
+        val outer = Subroutine(
+            id = "outer",
+            inputs = listOf(VarDecl("health", VarType.Bool)),
+            body = listOf(
+                SubroutineStep(
+                    call = SubroutineCall(
+                        subroutineId = "inner",
+                        args = mapOf("health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val adv = adventure(
+            variables = variables("health" to VarType.IntMin(0)),
+            subroutines = listOf(inner, outer),
+            scenes = arrayOf(scene("start")),
+        )
+
+        val wrapped = assertIs<TypeError.InSubroutine>(TypeChecker.check(adv).single())
+        assertEquals("outer", wrapped.subroutineId)
+        val cause = assertIs<TypeError.InvalidSubroutineSignature>(wrapped.cause)
+        assertEquals("outer", cause.callerSubroutineId)
+        assertTrue(cause.message.contains("IntMin(0)"), cause.message)
+        assertTrue(cause.message.contains("Bool"), cause.message)
+    }
+
+    @Test
+    fun `in-out parameter type mismatch is a signature error`() {
+        val sub = Subroutine(
+            id = "bad",
+            inputs = listOf(VarDecl("x", VarType.Integer)),
+            outputs = listOf(VarDecl("x", VarType.Bool)),
+        )
+        val adv = adventure(
+            variables = variables("dummy" to VarType.Integer),
+            subroutines = listOf(sub),
+            scenes = arrayOf(scene("start")),
+        )
+
+        val wrapped = assertIs<TypeError.InSubroutine>(TypeChecker.check(adv).single())
+        val cause = assertIs<TypeError.InvalidSubroutineSignature>(wrapped.cause)
+        assertTrue(cause.detail.contains("input type Integer"), cause.detail)
+        assertTrue(cause.detail.contains("output type Bool"), cause.detail)
+    }
 }

@@ -141,9 +141,130 @@ public object Analyzer {
         issues += lintEndingSceneWithChoices(compiled)
         issues += lintUnreachableInvariants(compiled)
         issues += deadConditions(compiled)
+        issues += checkMerges(compiled)
         return issues.sortedWith(
             compareBy<LintIssue> { it.sceneId == null }
                 .thenBy { it.sceneId?.value ?: "" }
+                .thenBy { it.message },
+        )
+    }
+
+    // ----- Ф4.6: merge conflict analysis -----
+
+    /**
+     * Ф4.6 (N5): validates every declared merge point against the scene
+     * graph. Returns **warnings only** — a mis-declared merge never
+     * prevents the file from opening or playing.
+     *
+     * **Checks** (see [LintKind.MergeConflict.Reason]):
+     * 1. `merge: true` with no incoming edges → [NoIncomingBranches].
+     * 2. A declared `merge_sources` id has no `choice.nextScene`
+     *    pointing at the merge → [SourceDoesNotLeadHere].
+     * 3. A declared source **has an edge here** but is unreachable from
+     *    `start_scene`, while the merge itself is reachable →
+     *    [SourceNotReachable]. This is the "unreachable combination"
+     *    half of the DoD: the branch can never arrive at the merge. A
+     *    source that does not even lead here gets only
+     *    [SourceDoesNotLeadHere] — no duplicate reachability warning.
+     *
+     * **What is not checked.** State compatibility between branches
+     * ("A sets health = 10, B sets health = 20") needs per-branch deltas
+     * and belongs to the Ф5 save/delta model. A scene with
+     * `merge_sources` but `merge: false` is also not reported: the
+     * declared sources are meaningful only for an actual merge point;
+     * rejecting the combination outright would add noise without a
+     * user-facing benefit.
+     *
+     * **Deterministic.** Scenes are visited by id; issues are sorted by
+     * (scene id, message), so `checkMerges` alone is stable too.
+     *
+     * **Cost.** O(scenes × choices + mergeScenes × sources). The
+     * incoming-edge map is built once. Called from [lint], so the editor
+     * validation dialog sees merge conflicts without extra plumbing.
+     */
+    public fun checkMerges(compiled: CompiledAdventure): List<LintIssue> {
+        val allScenes = compiled.adventure.chapters.flatMap { it.scenes }
+        val mergeScenes = allScenes.filter { it.isMerge }.sortedBy { it.id.value }
+        if (mergeScenes.isEmpty()) return emptyList()
+
+        // One pass over every choice: which scenes point at each target?
+        val incomingByScene = mutableMapOf<SceneId, MutableSet<SceneId>>()
+        for (scene in allScenes) {
+            for (choice in scene.choices) {
+                incomingByScene
+                    .getOrPut(choice.nextScene) { mutableSetOf() }
+                    .add(scene.id)
+            }
+        }
+
+        val reachability = reachable(compiled)
+        val startId = compiled.adventure.startScene.value
+        val issues = mutableListOf<LintIssue>()
+
+        for (merge in mergeScenes) {
+            val incoming = incomingByScene[merge.id].orEmpty()
+
+            if (incoming.isEmpty()) {
+                issues += LintIssue(
+                    kind = LintKind.MergeConflict(
+                        reason = LintKind.MergeConflict.Reason.NoIncomingBranches,
+                    ),
+                    message = "Scene '${merge.id.value}' is marked as a merge " +
+                            "point, but no choice in any scene leads to it. " +
+                            "The merge can never be entered.",
+                    sceneId = merge.id,
+                    severity = Severity.WARNING,
+                )
+            }
+
+            for (sourceId in merge.mergeSources.distinct()) {
+                // Compile already rejected unknown ids (MissingMergeSource);
+                // keep the guard so a hand-built CompiledAdventure cannot
+                // crash the analyzer.
+                if (sourceId !in compiled.scenesById) continue
+
+                if (sourceId !in incoming) {
+                    issues += LintIssue(
+                        kind = LintKind.MergeConflict(
+                            reason = LintKind.MergeConflict.Reason.SourceDoesNotLeadHere,
+                            sourceSceneId = sourceId,
+                        ),
+                        message = "Merge scene '${merge.id.value}' declares " +
+                                "source '${sourceId.value}', but no choice in " +
+                                "'${sourceId.value}' leads to '${merge.id.value}'.",
+                        sceneId = merge.id,
+                        severity = Severity.WARNING,
+                    )
+                    // "Not reachable" is a separate property; reporting it
+                    // for a source that does not even lead here would add
+                    // noise on top of the actionable warning above.
+                    continue
+                }
+
+                // Only meaningful when the merge itself can be entered;
+                // otherwise UnreachableScene already reports the whole
+                // unreachable area.
+                if (merge.id in reachability.reachable &&
+                    sourceId !in reachability.reachable
+                ) {
+                    issues += LintIssue(
+                        kind = LintKind.MergeConflict(
+                            reason = LintKind.MergeConflict.Reason.SourceNotReachable,
+                            sourceSceneId = sourceId,
+                        ),
+                        message = "Merge scene '${merge.id.value}' declares " +
+                                "source '${sourceId.value}', which is not reachable " +
+                                "from start scene '$startId'. The branch combination " +
+                                "cannot occur.",
+                        sceneId = merge.id,
+                        severity = Severity.WARNING,
+                    )
+                }
+            }
+        }
+
+        return issues.sortedWith(
+            compareBy<LintIssue> { it.sceneId?.value ?: "" }
                 .thenBy { it.message },
         )
     }

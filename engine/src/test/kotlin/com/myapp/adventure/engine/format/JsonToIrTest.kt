@@ -4,6 +4,7 @@ import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ParseError
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.engine.ir.ChoiceId
@@ -838,5 +839,133 @@ class JsonToIrTest {
         val m = adv.chapters[0].scenes.first { it.id == SceneId("m") }
         assertEquals(true, m.isMerge)
         assertEquals(listOf(SceneId("s1"), SceneId("s2")), m.mergeSources)
+    }
+
+    // ---------- Ф4.7: subroutines ----------
+
+    @Test
+    fun `subroutines block parses parameters guarded steps and nested call`() {
+        val json = """
+            {"title":"T","start_scene":"s1","subroutines":[
+              {"id":"heal",
+               "inputs":[{"name":"amount","type":"int_min","min":0}],
+               "outputs":[{"name":"health","type":"int_min","min":0}],
+               "body":[
+                 {"condition":"amount > 0","modify_stats":{"health":5}},
+                 {"call":{"subroutine_id":"inner","args":{"x":"amount"},"outputs":{"y":"health"}}}
+               ]}
+            ],"chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val sub = success(json).subroutines.single()
+        assertEquals("heal", sub.id)
+        assertEquals("amount", sub.inputs.single().name)
+        assertEquals(VarType.IntMin(0), sub.inputs.single().type)
+        assertEquals("health", sub.outputs.single().name)
+        assertEquals(2, sub.body.size)
+        assertIs<Condition.Compare>(sub.body[0].condition)
+        assertEquals(
+            listOf(Effect.ModifyStat("health", 5)),
+            sub.body[0].effects,
+        )
+        val nested = assertIs<com.myapp.adventure.engine.ir.SubroutineCall>(sub.body[1].call)
+        assertEquals("inner", nested.subroutineId)
+        assertEquals(mapOf("x" to "amount"), nested.args)
+        assertEquals(mapOf("y" to "health"), nested.outputs)
+    }
+
+    @Test
+    fun `choice call parses`() {
+        val json = """
+            {"title":"T","start_scene":"s1","subroutines":[
+              {"id":"use_item","inputs":[{"name":"item","type":"item_count"}],
+               "outputs":[{"name":"item","type":"item_count"}],
+               "body":[{"modify_stats":{"item":-1}}]}
+            ],"chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi","choices":[
+                {"text":"Use potion","next_scene":"s1",
+                 "call":{"subroutine_id":"use_item",
+                         "args":{"item":"potion"},"outputs":{"item":"potion"}}}
+              ]}
+            ]}]}
+        """.trimIndent()
+        val call = assertIs<com.myapp.adventure.engine.ir.SubroutineCall>(
+            success(json).chapters[0].scenes[0].choices[0].call,
+        )
+        assertEquals("use_item", call.subroutineId)
+        assertEquals(mapOf("item" to "potion"), call.args)
+        assertEquals(mapOf("item" to "potion"), call.outputs)
+    }
+
+    @Test
+    fun `subroutines absent defaults to empty and choice call is null`() {
+        val json = """
+            {"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi","choices":[{"text":"Go","next_scene":"s1"}]}
+            ]}]}
+        """.trimIndent()
+        val adv = success(json)
+        assertEquals(emptyList(), adv.subroutines)
+        assertNull(adv.chapters[0].scenes[0].choices[0].call)
+    }
+
+    @Test
+    fun `duplicate subroutine id is an error`() {
+        val json = """
+            {"title":"T","start_scene":"s1","subroutines":[
+              {"id":"dup","body":[]},
+              {"id":"dup","body":[]}
+            ],"chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val errors = failure(json)
+        assertTrue(
+            errors.any {
+                it is ParseError.Structure &&
+                        it.message.contains("Duplicate subroutine id") &&
+                        it.message.contains("dup")
+            },
+            "expected duplicate subroutine error, got $errors",
+        )
+    }
+
+    @Test
+    fun `duplicate subroutine parameter name is an error`() {
+        val json = """
+            {"title":"T","start_scene":"s1","subroutines":[
+              {"id":"bad","inputs":[
+                {"name":"x","type":"int"},
+                {"name":"x","type":"int"}
+              ],"body":[]}
+            ],"chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val errors = failure(json)
+        assertTrue(
+            errors.any {
+                it is ParseError.Structure &&
+                        it.message.contains("Duplicate parameter name") &&
+                        it.message.contains("x")
+            },
+            "expected duplicate parameter error, got $errors",
+        )
+    }
+
+    @Test
+    fun `in-out parameter type mismatch is an error`() {
+        val json = """
+            {"title":"T","start_scene":"s1","subroutines":[
+              {"id":"bad",
+               "inputs":[{"name":"x","type":"int"}],
+               "outputs":[{"name":"x","type":"bool"}],
+               "body":[]}
+            ],"chapters":[{"id":"c1","scenes":[{"id":"s1","text":"Hi"}]}]}
+        """.trimIndent()
+        val errors = failure(json)
+        assertTrue(
+            errors.any {
+                it is ParseError.Structure &&
+                        it.message.contains("different types") &&
+                        it.message.contains("x")
+            },
+            "expected in-out type mismatch error, got $errors",
+        )
     }
 }

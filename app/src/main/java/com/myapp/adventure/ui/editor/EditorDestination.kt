@@ -8,6 +8,7 @@ package com.myapp.adventure.ui.editor
 sealed interface EditorDestination {
     data object Menu : EditorDestination
     data object Templates : EditorDestination
+    data object Subroutines : EditorDestination
     data object Meta : EditorDestination
     data object Validation : EditorDestination
     data object Search : EditorDestination

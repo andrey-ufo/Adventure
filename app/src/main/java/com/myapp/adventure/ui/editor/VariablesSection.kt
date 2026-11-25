@@ -212,7 +212,7 @@ private fun BareTextField(
 }
 
 @Composable
-private fun KindDropdown(current: VarKind, onChange: (VarKind) -> Unit) {
+internal fun KindDropdown(current: VarKind, onChange: (VarKind) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         Text(

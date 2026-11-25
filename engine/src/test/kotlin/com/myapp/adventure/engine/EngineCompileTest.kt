@@ -6,6 +6,12 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.ChoiceId
+import com.myapp.adventure.engine.ir.Effect
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -14,9 +20,13 @@ import kotlin.test.assertTrue
 
 class EngineCompileTest {
 
-    private fun adventure(vararg chapters: Chapter): Adventure = Adventure(
+    private fun adventure(
+        vararg chapters: Chapter,
+        subroutines: List<Subroutine> = emptyList(),
+    ): Adventure = Adventure(
         title = "T",
         startScene = chapters.firstOrNull()?.scenes?.firstOrNull()?.id ?: SceneId(""),
+        subroutines = subroutines,
         chapters = chapters.toList(),
     )
 
@@ -186,5 +196,150 @@ class EngineCompileTest {
             chapters = listOf(chapter("ch", a, b, m)),
         )
         assertIs<CompileResult.Success>(Engine.compile(adv))
+    }
+
+    // ---------- Ф4.7: subroutine calls ----------
+
+    private fun consumeSubroutine(): Subroutine = Subroutine(
+        id = "consume",
+        inputs = listOf(VarDecl("item", VarType.ItemCount)),
+        outputs = listOf(VarDecl("item", VarType.ItemCount)),
+        body = listOf(
+            SubroutineStep(effects = listOf(Effect.ModifyStat("item", -1))),
+        ),
+    )
+
+    @Test
+    fun `valid subroutine call compiles`() {
+        val use = Choice(
+            id = ChoiceId("use"),
+            text = "Use",
+            nextScene = SceneId("s1"),
+            call = SubroutineCall(
+                subroutineId = "consume",
+                args = mapOf("item" to "potion"),
+                outputs = mapOf("item" to "potion"),
+            ),
+        )
+        val s1 = Scene(SceneId("s1"), "S", choices = listOf(use))
+        val adv = adventure(
+            chapter("c", s1),
+            subroutines = listOf(consumeSubroutine()),
+        )
+        assertIs<CompileResult.Success>(Engine.compile(adv))
+    }
+
+    @Test
+    fun `missing subroutine fails compile`() {
+        val choice = Choice(
+            id = ChoiceId("use"),
+            text = "Use",
+            nextScene = SceneId("s1"),
+            call = SubroutineCall("ghost"),
+        )
+        val s1 = Scene(SceneId("s1"), "S", choices = listOf(choice))
+        val adv = adventure(chapter("c", s1))
+
+        val error = assertIs<CompileResult.Failure>(Engine.compile(adv))
+            .errors
+            .filterIsInstance<CompileError.MissingSubroutine>()
+            .single()
+        assertEquals("ghost", error.subroutineId)
+        assertEquals(SceneId("s1"), error.sceneId)
+        assertEquals(ChoiceId("use"), error.choiceId)
+        assertTrue(error.message.contains("ghost"), error.message)
+        assertTrue(error.message.contains("scene 's1'"), error.message)
+    }
+
+    @Test
+    fun `subroutine missing input argument fails compile`() {
+        val choice = Choice(
+            id = ChoiceId("use"),
+            text = "Use",
+            nextScene = SceneId("s1"),
+            call = SubroutineCall("consume", args = emptyMap(), outputs = mapOf("item" to "potion")),
+        )
+        val s1 = Scene(SceneId("s1"), "S", choices = listOf(choice))
+        val adv = adventure(
+            chapter("c", s1),
+            subroutines = listOf(consumeSubroutine()),
+        )
+
+        val error = assertIs<CompileResult.Failure>(Engine.compile(adv))
+            .errors
+            .filterIsInstance<CompileError.InvalidSubroutineCall>()
+            .single()
+        assertEquals("consume", error.subroutineId)
+        assertTrue(error.detail.contains("missing input"), error.detail)
+        assertTrue(error.detail.contains("item"), error.detail)
+    }
+
+    @Test
+    fun `subroutine unknown output name fails compile`() {
+        val choice = Choice(
+            id = ChoiceId("use"),
+            text = "Use",
+            nextScene = SceneId("s1"),
+            call = SubroutineCall(
+                subroutineId = "consume",
+                args = mapOf("item" to "potion"),
+                outputs = mapOf("ghost" to "potion"),
+            ),
+        )
+        val s1 = Scene(SceneId("s1"), "S", choices = listOf(choice))
+        val adv = adventure(
+            chapter("c", s1),
+            subroutines = listOf(consumeSubroutine()),
+        )
+
+        val error = assertIs<CompileResult.Failure>(Engine.compile(adv))
+            .errors
+            .filterIsInstance<CompileError.InvalidSubroutineCall>()
+            .single()
+        assertTrue(error.detail.contains("unknown output"), error.detail)
+        assertTrue(error.detail.contains("ghost"), error.detail)
+    }
+
+    @Test
+    fun `subroutine cycle fails compile`() {
+        val first = Subroutine(
+            id = "a",
+            body = listOf(SubroutineStep(call = SubroutineCall("b"))),
+        )
+        val second = Subroutine(
+            id = "b",
+            body = listOf(SubroutineStep(call = SubroutineCall("a"))),
+        )
+        val s1 = scene("s1")
+        val adv = adventure(
+            chapter("c", s1),
+            subroutines = listOf(first, second),
+        )
+
+        val cycle = assertIs<CompileResult.Failure>(Engine.compile(adv))
+            .errors
+            .filterIsInstance<CompileError.SubroutineCycle>()
+            .single()
+        assertEquals("a", cycle.path.first())
+        assertEquals(cycle.path.first(), cycle.path.last())
+        assertTrue(cycle.message.contains("Recursion is not allowed"), cycle.message)
+    }
+
+    @Test
+    fun `duplicate subroutine id fails compile`() {
+        val s1 = scene("s1")
+        val adv = adventure(
+            chapter("c", s1),
+            subroutines = listOf(
+                Subroutine(id = "dup"),
+                Subroutine(id = "dup"),
+            ),
+        )
+
+        val error = assertIs<CompileResult.Failure>(Engine.compile(adv))
+            .errors
+            .filterIsInstance<CompileError.DuplicateSubroutineId>()
+            .single()
+        assertEquals("dup", error.subroutineId)
     }
 }

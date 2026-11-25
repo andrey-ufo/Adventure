@@ -209,6 +209,58 @@ public sealed class TypeError {
                     "but it is ${actualType.displayName()}. " +
                     "Move it to initial_state.flags."
     }
+
+    /**
+     * Ф4.7: wraps an error found while checking a [com.myapp.adventure.engine.ir.Subroutine]
+     * body. The body has no scene, so [sceneId] is usually `null`; the
+     * wrapper adds the subroutine id to the message.
+     *
+     * The editor's title mapping delegates to [cause], so an unknown local
+     * still shows the familiar "unknown variable" title, with the subroutine
+     * context in the description.
+     */
+    public data class InSubroutine(
+        public val subroutineId: String,
+        public val cause: TypeError,
+    ) : TypeError() {
+        override val sceneId: SceneId? = cause.sceneId
+        override val message: String =
+            "In subroutine '$subroutineId': ${cause.message}"
+    }
+
+    /**
+     * Ф4.7: a subroutine declaration or call is structurally inconsistent —
+     * duplicate parameter names, an in-out parameter with mismatched types,
+     * an unsupported `ItemList` parameter, a write to an input-only
+     * parameter, or an argument/output whose type does not match.
+     *
+     * Arity errors (missing/extra args) are [com.myapp.adventure.engine.CompileError]s;
+     * this variant is about types and parameter semantics.
+     *
+     * @property subroutineId the callee (or the subroutine being declared).
+     * @property detail human-readable explanation.
+     * @property sceneId set for a top-level call from a choice.
+     * @property callerSubroutineId set for a nested call from a body.
+     */
+    public data class InvalidSubroutineSignature(
+        public val subroutineId: String,
+        public val detail: String,
+        override val sceneId: SceneId? = null,
+        public val callerSubroutineId: String? = null,
+    ) : TypeError() {
+        override val message: String = buildString {
+            append("Subroutine '$subroutineId'")
+            val sid = sceneId
+            val caller = callerSubroutineId
+            when {
+                sid != null -> append(" (called from scene '${sid.value}')")
+                caller != null -> append(" (called from subroutine '$caller')")
+            }
+            append(": ")
+            append(detail.trimEnd('.'))
+            append('.')
+        }
+    }
 }
 
 /**

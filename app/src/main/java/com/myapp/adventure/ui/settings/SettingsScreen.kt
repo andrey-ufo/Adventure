@@ -14,22 +14,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,13 +58,16 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.theme.FontScopeProvider
 import com.myapp.adventure.utils.FontManager
+import com.myapp.adventure.utils.FontScope
+import com.myapp.adventure.utils.FontScopeSettings
+import com.myapp.adventure.utils.FontSettings
 import com.myapp.adventure.utils.ThemeManager
 import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
-    onRecreateActivity: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(),
 ) {
@@ -110,7 +115,6 @@ fun SettingsScreen(
                     )
                     context.startActivity(intent)
                 }
-                is SettingsEvent.RecreateActivity -> onRecreateActivity()
             }
         }
     }
@@ -192,60 +196,54 @@ fun SettingsScreen(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        // ----- Font size -----
-        SectionHeader(stringResource(R.string.settings_font_size_label))
-        FontSizeRow(
-            sizePx = state.fontSizePx,
-            onSizeChange = { viewModel.setFontSizePx(it) },
+        // ----- Fonts -----
+        SectionHeader(stringResource(R.string.settings_fonts_title))
+        TextButton(onClick = {
+            addFontLauncher.launch(
+                arrayOf(
+                    "font/ttf",
+                    "font/otf",
+                    "application/x-font-ttf",
+                    "application/vnd.ms-opentype",
+                )
+            )
+        }) {
+            Text(stringResource(R.string.settings_add_font))
+        }
+
+        FontScopeSection(
+            scope = FontScope.READER,
+            title = stringResource(R.string.settings_font_reader_label),
+            settings = state.fontSettings.reader,
+            options = state.availableFonts,
+            sample = stringResource(R.string.settings_font_sample_reader),
+            onFontSelected = { viewModel.setFontName(FontScope.READER, it) },
+            onSizeChange = { viewModel.setFontSize(FontScope.READER, it) },
         )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        // ----- Font selection -----
-        SectionHeader(stringResource(R.string.settings_font_label))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FontPicker(
-                selected = state.selectedFont,
-                options = state.availableFonts,
-                onSelected = { viewModel.requestFontChange(it) },
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = {
-                addFontLauncher.launch(
-                    arrayOf(
-                        "font/ttf",
-                        "font/otf",
-                        "application/x-font-ttf",
-                        "application/vnd.ms-opentype",
-                    )
-                )
-            }) {
-                Text(stringResource(R.string.settings_add_font))
-            }
-        }
+        FontScopeSection(
+            scope = FontScope.UI,
+            title = stringResource(R.string.settings_font_interface_label),
+            settings = state.fontSettings.ui,
+            options = state.availableFonts,
+            sample = stringResource(R.string.settings_font_sample_interface),
+            onFontSelected = { viewModel.setFontName(FontScope.UI, it) },
+            onSizeChange = { viewModel.setFontSize(FontScope.UI, it) },
+        )
 
-        // Font sample
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.medium,
-                )
-                .padding(12.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.settings_font_sample),
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        FontScopeSection(
+            scope = FontScope.EDITOR,
+            title = stringResource(R.string.settings_font_editor_label),
+            settings = state.fontSettings.editor,
+            options = state.availableFonts,
+            sample = stringResource(R.string.settings_font_sample_editor),
+            onFontSelected = { viewModel.setFontName(FontScope.EDITOR, it) },
+            onSizeChange = { viewModel.setFontSize(FontScope.EDITOR, it) },
+        )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -255,27 +253,6 @@ fun SettingsScreen(
             checked = state.loggingEnabled,
             enabled = true,
             onCheckedChange = { viewModel.setLoggingEnabled(it) },
-        )
-    }
-
-    // Font change confirmation
-    state.pendingFontConfirmation?.let { newFont ->
-        AlertDialog(
-            onDismissRequest = { viewModel.cancelFontChange() },
-            title = { Text(stringResource(R.string.settings_change_font_title)) },
-            text = {
-                Text(stringResource(R.string.settings_change_font_message_fmt, newFont))
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.confirmFontChange() }) {
-                    Text(stringResource(R.string.dialog_yes))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.cancelFontChange() }) {
-                    Text(stringResource(R.string.dialog_cancel))
-                }
-            },
         )
     }
 }
@@ -290,20 +267,70 @@ private fun SectionHeader(text: String) {
 }
 
 @Composable
+private fun FontScopeSection(
+    scope: FontScope,
+    title: String,
+    settings: FontScopeSettings,
+    options: List<String>,
+    sample: String,
+    onFontSelected: (String) -> Unit,
+    onSizeChange: (Int) -> Unit,
+) {
+    SectionHeader(title)
+    FontPicker(
+        selected = settings.fontName,
+        options = options,
+        onSelected = onFontSelected,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    FontSizeRow(
+        sizePx = settings.sizePx,
+        defaultSizePx = FontSettings.Default[scope].sizePx,
+        onSizeChange = onSizeChange,
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.medium,
+            )
+            .padding(12.dp),
+    ) {
+        FontScopeProvider(scope) {
+            Text(
+                text = sample,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun FontSizeRow(
     sizePx: Int,
+    defaultSizePx: Int,
     onSizeChange: (Int) -> Unit,
 ) {
     val resetDescription = stringResource(R.string.settings_font_size_reset)
     // Пока пользователь ведёт палец, меняем только число: если масштабировать
     // текст сразу, вся разметка пересчитывается и ползунок «убегает» из-под пальца.
     var pendingSizePx by remember(sizePx) { mutableFloatStateOf(sizePx.toFloat()) }
+    val pendingInt = pendingSizePx.roundToInt()
+    val sizeDescription = stringResource(
+        R.string.settings_font_size_content_description_fmt,
+        pendingInt,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        IconButton(onClick = { onSizeChange(FontManager.DEFAULT_FONT_SIZE_PX) }) {
+        IconButton(onClick = { onSizeChange(defaultSizePx) }) {
             Text(
                 text = "↺",
                 style = MaterialTheme.typography.titleLarge,
@@ -311,21 +338,27 @@ private fun FontSizeRow(
             )
         }
         Text(
-            text = stringResource(
-                R.string.settings_font_size_px_fmt,
-                pendingSizePx.roundToInt(),
-            ),
+            text = pendingInt.toString(),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(min = 56.dp),
+            modifier = Modifier
+                .widthIn(min = 32.dp)
+                .semantics { contentDescription = sizeDescription },
         )
         Slider(
             value = pendingSizePx,
             onValueChange = { pendingSizePx = it },
             onValueChangeFinished = { onSizeChange(pendingSizePx.roundToInt()) },
-            valueRange = FontManager.MIN_FONT_SIZE_PX.toFloat()..
-                    FontManager.MAX_FONT_SIZE_PX.toFloat(),
-            steps = FontManager.MAX_FONT_SIZE_PX - FontManager.MIN_FONT_SIZE_PX - 1,
+            valueRange = FontSettings.MIN_SIZE_PX.toFloat()..FontSettings.MAX_SIZE_PX.toFloat(),
+            steps = 0,
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    sliderState = sliderState,
+                    modifier = Modifier.height(2.dp),
+                    drawStopIndicator = null,
+                    drawTick = { _, _ -> },
+                )
+            },
             modifier = Modifier.weight(1f),
         )
     }
@@ -378,6 +411,10 @@ private fun FontPicker(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val selectedFamily = remember(selected) {
+        FontManager.getFontFamily(context, selected)
+    }
     Box(modifier = modifier) {
         OutlinedButton(
             onClick = { expanded = true },
@@ -385,6 +422,7 @@ private fun FontPicker(
         ) {
             Text(
                 text = selected,
+                fontFamily = selectedFamily,
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Start,
             )
@@ -393,7 +431,12 @@ private fun FontPicker(
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { font ->
                 DropdownMenuItem(
-                    text = { Text(font) },
+                    text = {
+                        Text(
+                            text = font,
+                            fontFamily = FontManager.getFontFamily(context, font),
+                        )
+                    },
                     onClick = {
                         expanded = false
                         onSelected(font)

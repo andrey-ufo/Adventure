@@ -15,6 +15,11 @@ import com.myapp.adventure.engine.ir.toPlayerState
 import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep
+import com.myapp.adventure.engine.ir.types.VarDecl
+import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.engine.CompiledAdventure
 import kotlin.test.Test
@@ -33,12 +38,16 @@ class EngineStepTest {
         choices: List<Choice> = emptyList(),
         gate: Gate? = null,
         effects: List<Effect> = emptyList(),
+        isMerge: Boolean = false,
+        mergeSources: List<SceneId> = emptyList(),
     ): Scene = Scene(
         id = SceneId(id),
         text = "text of $id",
         effects = effects,
         choices = choices,
         gate = gate,
+        isMerge = isMerge,
+        mergeSources = mergeSources,
     )
 
     private fun choice(
@@ -46,20 +55,26 @@ class EngineStepTest {
         next: String,
         condition: Condition? = null,
         effects: List<Effect> = emptyList(),
+        call: SubroutineCall? = null,
     ): Choice = Choice(
         id = ChoiceId(id),
         text = "choice $id",
         nextScene = SceneId(next),
         condition = condition,
         effects = effects,
+        call = call,
     )
 
     private fun chapter(id: String, vararg scenes: Scene): Chapter =
         Chapter(id = id, title = id, scenes = scenes.toList())
 
-    private fun adventure(vararg chapters: Chapter): Adventure = Adventure(
+    private fun adventure(
+        vararg chapters: Chapter,
+        subroutines: List<Subroutine> = emptyList(),
+    ): Adventure = Adventure(
         title = "T",
         startScene = chapters.firstOrNull()?.scenes?.firstOrNull()?.id ?: SceneId(""),
+        subroutines = subroutines,
         chapters = chapters.toList(),
     )
 
@@ -533,6 +548,270 @@ class EngineStepTest {
         val continueChoice = chapterEnd2.choices.single()
         assertEquals("Продолжить", continueChoice.text)
         assertEquals(SceneId("final"), continueChoice.nextScene)
+    }
+
+    // ---------- Ф4.5: merge points ----------
+
+    @Test
+    fun `merge point receives accumulated delta from either branch`() {
+        val left = scene(
+            "left",
+            choices = listOf(
+                choice(
+                    id = "take_left",
+                    next = "merge",
+                    effects = listOf(
+                        Effect.ModifyStat("health", -10),
+                        Effect.SetFlag("chose_left"),
+                    ),
+                ),
+            ),
+        )
+        val right = scene(
+            "right",
+            choices = listOf(
+                choice(
+                    id = "take_right",
+                    next = "merge",
+                    effects = listOf(
+                        Effect.ModifyStat("health", 5),
+                        Effect.SetFlag("chose_right"),
+                    ),
+                ),
+            ),
+        )
+        val merge = scene(
+            id = "merge",
+            isMerge = true,
+            mergeSources = listOf(SceneId("left"), SceneId("right")),
+        )
+        val compiled = compile(adventure(chapter("ch", left, right, merge)))
+        val initial = state(stats = mapOf("health" to 100))
+
+        val fromLeft = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("left"), ChoiceId("take_left")),
+        )
+        assertEquals(SceneId("merge"), fromLeft.currentScene.id)
+        assertEquals(90, fromLeft.state.stats["health"])
+        assertEquals(setOf("chose_left"), fromLeft.state.flags)
+
+        val fromRight = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("right"), ChoiceId("take_right")),
+        )
+        assertEquals(SceneId("merge"), fromRight.currentScene.id)
+        assertEquals(105, fromRight.state.stats["health"])
+        assertEquals(setOf("chose_right"), fromRight.state.flags)
+    }
+
+    // ---------- Ф4.7: subroutines ----------
+
+    private fun consumeSubroutine(): Subroutine = Subroutine(
+        id = "consume",
+        inputs = listOf(
+            VarDecl("item", VarType.ItemCount),
+            VarDecl("health", VarType.IntMin(0)),
+        ),
+        outputs = listOf(
+            VarDecl("item", VarType.ItemCount),
+            VarDecl("health", VarType.IntMin(0)),
+        ),
+        body = listOf(
+            SubroutineStep(
+                condition = Condition.Compare("item", CompareOp.GT, 0),
+                effects = listOf(
+                    Effect.ModifyStat("item", -1),
+                    Effect.ModifyStat("health", 5),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun `subroutine called from two scenes returns state to each caller`() {
+        val consume = consumeSubroutine()
+        val a = scene(
+            "a",
+            choices = listOf(
+                choice(
+                    id = "use_a",
+                    next = "a",
+                    call = SubroutineCall(
+                        subroutineId = "consume",
+                        args = mapOf("item" to "potion", "health" to "health"),
+                        outputs = mapOf("item" to "potion", "health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val b = scene(
+            "b",
+            choices = listOf(
+                choice(
+                    id = "use_b",
+                    next = "b",
+                    call = SubroutineCall(
+                        subroutineId = "consume",
+                        args = mapOf("item" to "elixir", "health" to "health"),
+                        outputs = mapOf("item" to "elixir", "health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventure(chapter("ch", a, b), subroutines = listOf(consume)),
+        )
+        val initial = state(
+            stats = mapOf("potion" to 1, "elixir" to 2, "health" to 10),
+        )
+
+        val fromA = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("a"), ChoiceId("use_a")),
+        )
+        assertEquals(SceneId("a"), fromA.currentScene.id)
+        assertEquals(0, fromA.state.stats["potion"])
+        assertEquals(2, fromA.state.stats["elixir"])
+        assertEquals(15, fromA.state.stats["health"])
+
+        val fromB = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("b"), ChoiceId("use_b")),
+        )
+        assertEquals(SceneId("b"), fromB.currentScene.id)
+        assertEquals(1, fromB.state.stats["potion"])
+        assertEquals(1, fromB.state.stats["elixir"])
+        assertEquals(15, fromB.state.stats["health"])
+    }
+
+    @Test
+    fun `nested subroutine calls preserve the frame stack`() {
+        val addFive = Subroutine(
+            id = "add_five",
+            inputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            outputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            body = listOf(
+                SubroutineStep(effects = listOf(Effect.ModifyStat("health", 5))),
+            ),
+        )
+        val addTen = Subroutine(
+            id = "add_ten",
+            inputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            outputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            body = listOf(
+                SubroutineStep(
+                    call = SubroutineCall(
+                        subroutineId = "add_five",
+                        args = mapOf("health" to "health"),
+                        outputs = mapOf("health" to "health"),
+                    ),
+                ),
+                SubroutineStep(
+                    call = SubroutineCall(
+                        subroutineId = "add_five",
+                        args = mapOf("health" to "health"),
+                        outputs = mapOf("health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val s = scene(
+            "s",
+            choices = listOf(
+                choice(
+                    id = "boost",
+                    next = "s",
+                    call = SubroutineCall(
+                        subroutineId = "add_ten",
+                        args = mapOf("health" to "health"),
+                        outputs = mapOf("health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventure(chapter("ch", s), subroutines = listOf(addFive, addTen)),
+        )
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(
+                compiled,
+                state(stats = mapOf("health" to 10)),
+                SceneId("s"),
+                ChoiceId("boost"),
+            ),
+        )
+        assertEquals(20, result.state.stats["health"])
+    }
+
+    @Test
+    fun `invariants are evaluated after subroutine outputs`() {
+        val kill = Subroutine(
+            id = "kill",
+            inputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            outputs = listOf(VarDecl("health", VarType.IntMin(0))),
+            body = listOf(
+                SubroutineStep(effects = listOf(Effect.Set("health", 0))),
+            ),
+        )
+        val s = scene(
+            "s",
+            choices = listOf(
+                choice(
+                    id = "die",
+                    next = "s",
+                    call = SubroutineCall(
+                        subroutineId = "kill",
+                        args = mapOf("health" to "health"),
+                        outputs = mapOf("health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventure(chapter("ch", s), subroutines = listOf(kill)),
+        )
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(
+                compiled,
+                state(stats = mapOf("health" to 10)),
+                SceneId("s"),
+                ChoiceId("die"),
+            ),
+        )
+        assertEquals(0, result.state.stats["health"])
+        assertEquals(Outcome.Death, result.outcome)
+    }
+
+    @Test
+    fun `guarded subroutine step is skipped when condition is false`() {
+        val consume = consumeSubroutine()
+        val s = scene(
+            "s",
+            choices = listOf(
+                choice(
+                    id = "try",
+                    next = "s",
+                    call = SubroutineCall(
+                        subroutineId = "consume",
+                        args = mapOf("item" to "potion", "health" to "health"),
+                        outputs = mapOf("item" to "potion", "health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventure(chapter("ch", s), subroutines = listOf(consume)),
+        )
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(
+                compiled,
+                state(stats = mapOf("potion" to 0, "health" to 10)),
+                SceneId("s"),
+                ChoiceId("try"),
+            ),
+        )
+        assertEquals(0, result.state.stats["potion"])
+        assertEquals(10, result.state.stats["health"])
     }
 
     private fun loadResource(path: String): String {

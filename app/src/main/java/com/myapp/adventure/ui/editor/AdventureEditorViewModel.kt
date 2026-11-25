@@ -9,6 +9,9 @@ import com.myapp.adventure.data.DeathScene
 import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorSnapshot
+import com.myapp.adventure.data.EditorSubroutine
+import com.myapp.adventure.data.EditorSubroutineCall
+import com.myapp.adventure.data.EditorSubroutineStep
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.EditorUiState
 import com.myapp.adventure.data.EditorVarDecl
@@ -26,6 +29,9 @@ import com.myapp.adventure.data.TemplateRefDto
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.data.ChoiceTemplateDto
 import com.myapp.adventure.data.EditorTemplate
+import com.myapp.adventure.data.SubroutineCallDto
+import com.myapp.adventure.data.SubroutineDto
+import com.myapp.adventure.data.SubroutineStepDto
 import com.myapp.adventure.data.VarDeclDto
 import com.myapp.adventure.engine.ir.Adventure as IrAdventure
 import com.myapp.adventure.engine.ir.Chapter as IrChapter
@@ -41,6 +47,9 @@ import com.myapp.adventure.engine.ir.SceneId as IrSceneId
 import com.myapp.adventure.engine.ir.TagCategory as IrTagCategory
 import com.myapp.adventure.engine.ir.TagDefinition as IrTagDefinition
 import com.myapp.adventure.engine.ir.ChoiceTemplate as IrChoiceTemplate
+import com.myapp.adventure.engine.ir.Subroutine as IrSubroutine
+import com.myapp.adventure.engine.ir.SubroutineCall as IrSubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep as IrSubroutineStep
 import com.myapp.adventure.engine.ir.applyTemplate as irApplyTemplate
 import com.myapp.adventure.engine.ir.types.VarDecl as IrVarDecl
 import com.myapp.adventure.engine.parse.ConditionParser
@@ -85,6 +94,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             description = description,
             variables = variables.map { it.copy() },
             templates = templates.map { it.deepCopy() },
+            subroutines = subroutines.map { it.deepCopy() },
             initialStateTags = initialStateTags.map { it.copy() },
             scenes = scenes.map { it.deepCopy() },
             expandedScenes = expandedScenes.toSet(),
@@ -148,6 +158,22 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * the load / save round-trip.
      */
     val templates: MutableList<EditorTemplate> = mutableListOf()
+
+    /**
+     * Ф4.7/Ф4.8: reusable atomic subroutines. Mirrors
+     * `Adventure.subroutines`; kept in editor state so load → save keeps
+     * them. The list is the source of truth for the subroutines screen,
+     * the choice call dialog and `buildAdventure` / `buildIrAdventure`.
+     */
+    val subroutines: MutableList<EditorSubroutine> = mutableListOf()
+
+    /**
+     * Ф4.8: working copy of the subroutine being edited, or `null` when
+     * the subroutines screen is showing the list. Mirrors
+     * [editingTemplate]: survives a configuration change so the edit form
+     * can be restored with unsaved fields intact.
+     */
+    var editingSubroutine: EditorSubroutine? = null
 
     /**
      * Ф4.3.2a-fix1: working copy of the template currently being edited,
@@ -306,6 +332,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         description = description,
         variables = variables.map { it.copy() },
         templates = templates.map { it.deepCopy() },
+        subroutines = subroutines.map { it.deepCopy() },
         initialStateTags = initialStateTags.map { it.copy() },
         scenes = scenes.map { it.deepCopy() }
     )
@@ -318,6 +345,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         variables.addAll(snapshot.variables.map { it.copy() })
         templates.clear()
         templates.addAll(snapshot.templates.map { it.deepCopy() })
+        subroutines.clear()
+        subroutines.addAll(snapshot.subroutines.map { it.deepCopy() })
         initialStateTags.clear()
         initialStateTags.addAll(snapshot.initialStateTags.map { it.copy() })
         scenes.clear()
@@ -742,6 +771,81 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    /** Ф4.8: typed subroutine/template parameter DTO → editor form. */
+    fun editorVarDeclFromDto(dto: VarDeclDto): EditorVarDecl {
+        val kind = when (dto.type) {
+            "bool" -> VarKind.BOOL
+            "int" -> VarKind.INTEGER
+            "int_min" -> VarKind.INT_MIN
+            "int_range" -> VarKind.INT_RANGE
+            "item_count" -> VarKind.ITEM_COUNT
+            "item_list" -> VarKind.ITEM_LIST
+            else -> VarKind.INTEGER
+        }
+        return EditorVarDecl(name = dto.name, kind = kind, min = dto.min, max = dto.max)
+    }
+
+    /**
+     * Ф4.8: `SubroutineDto` (JSON) → [EditorSubroutine].
+     *
+     * Effects are rebuilt as `EditorTag`s with default `JOURNAL` category
+     * (same as templates — the editor does not know the author's intended
+     * category from a bare `set_flags` list; the tag registry restores it
+     * on the next save via the global name).
+     */
+    fun editorSubroutineFromDto(dto: SubroutineDto): EditorSubroutine {
+        val inputs = dto.inputs.orEmpty()
+            .map { editorVarDeclFromDto(it) }
+            .toMutableList()
+        val outputs = dto.outputs.orEmpty()
+            .map { editorVarDeclFromDto(it) }
+            .toMutableList()
+        val body = dto.body.orEmpty().map { step ->
+            val effects = mutableListOf<EditorTag>()
+            for (flag in step.setFlags.orEmpty()) {
+                effects += EditorTag(
+                    name = flag,
+                    value = 0,
+                    isStatModifier = false,
+                    category = TagCategory.JOURNAL,
+                )
+            }
+            for (flag in step.removeFlags.orEmpty()) {
+                effects += EditorTag(
+                    name = "!$flag",
+                    value = 0,
+                    isStatModifier = false,
+                    category = TagCategory.JOURNAL,
+                )
+            }
+            for ((name, delta) in step.modifyStats.orEmpty()) {
+                effects += EditorTag(
+                    name = name,
+                    value = delta,
+                    isStatModifier = true,
+                    category = TagCategory.JOURNAL,
+                )
+            }
+            EditorSubroutineStep(
+                condition = step.condition ?: "",
+                effects = effects,
+                call = step.call?.let { call ->
+                    EditorSubroutineCall(
+                        subroutineId = call.subroutineId,
+                        args = call.args.orEmpty(),
+                        outputs = call.outputs.orEmpty(),
+                    )
+                },
+            )
+        }.toMutableList()
+        return EditorSubroutine(
+            id = dto.id,
+            inputs = inputs,
+            outputs = outputs,
+            body = body,
+        )
+    }
+
     /**
      * Ф2.7: `MutableList<EditorVarDecl>` → JSON-map для Gson-save.
      * Пустая коллекция → `null` (Gson опускает поле, JSON чистый).
@@ -889,6 +993,18 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                                 args = choice.templateArgs,
                             )
                         },
+                        // Ф4.8: atomic subroutine call. Blank id means
+                        // "no call" (a half-filled dialog must not write
+                        // an unresolvable reference).
+                        call = choice.subroutineCall
+                            ?.takeIf { it.subroutineId.isNotBlank() }
+                            ?.let { call ->
+                                SubroutineCallDto(
+                                    subroutineId = call.subroutineId.trim(),
+                                    args = call.args.takeIf { it.isNotEmpty() },
+                                    outputs = call.outputs.takeIf { it.isNotEmpty() },
+                                )
+                            },
                     )
                 }.ifEmpty { null },
                 // Ф1.7.5: emit `"is_ending": true` only when the flag is
@@ -1001,6 +1117,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             initialState = buildInitialState(),
             variables = buildVariablesDto(),
             choiceTemplates = buildChoiceTemplatesDto(),
+            subroutines = buildSubroutinesDto(),
             tags = tagRegistry.values.toList(),
             deathScene = deathScene,
             chapters = chapters
@@ -1120,6 +1237,30 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
+        /**
+         * Ф4.8: parse a condition with an arbitrary path (subroutine steps
+         * are not tied to a scene, so `conditionOf`'s path shape does not
+         * fit). Errors are still collected into `parseErrors` and the
+         * caller gets `null` to keep the IR playable/validatable.
+         */
+        fun conditionAtPath(raw: String, path: String): IrCondition? {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return null
+            return when (val r = ConditionParser.parse(trimmed)) {
+                is ParseResult.Success -> r.value
+                is ParseResult.Failure -> {
+                    r.errors.forEach { err ->
+                        parseErrors += if (err is ParseError.ConditionError) {
+                            err.copy(path = path)
+                        } else {
+                            err
+                        }
+                    }
+                    null
+                }
+            }
+        }
+
         val deathSceneEditor = scenes.firstOrNull { it.isDeathScene }
 
         // Chapters + scenes — same grouping algorithm as buildAdventure().
@@ -1169,6 +1310,17 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                         field = "visibility_condition",
                     ),
                     effects = effectsOf(choice.tags),
+                    // Ф4.8: atomic subroutine call. Same shape as JSON;
+                    // `:engine` validates the callee/arity/types.
+                    call = choice.subroutineCall
+                        ?.takeIf { it.subroutineId.isNotBlank() }
+                        ?.let { call ->
+                            IrSubroutineCall(
+                                subroutineId = call.subroutineId.trim(),
+                                args = call.args.toMap(),
+                                outputs = call.outputs.toMap(),
+                            )
+                        },
                 )
             }
             currentScenes += IrScene(
@@ -1250,11 +1402,57 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 val type = decl.toVarType() ?: return@mapNotNull null
                 clean to com.myapp.adventure.engine.ir.types.VarDecl(clean, type)
             }.toMap()
+
+        // Ф4.8: editor subroutines → IR. Blank ids are skipped (nothing can
+        // reference them); duplicate ids/params and bad local references
+        // are reported by the engine's compile/type-check layers.
+        val irSubroutines: List<IrSubroutine> = subroutines.mapNotNull { s ->
+            val cleanId = s.id.trim()
+            if (cleanId.isEmpty()) return@mapNotNull null
+            val inputs = s.inputs.mapNotNull { decl ->
+                val clean = decl.name.trim()
+                if (clean.isEmpty()) return@mapNotNull null
+                val type = decl.toVarType() ?: return@mapNotNull null
+                IrVarDecl(clean, type)
+            }
+            val outputs = s.outputs.mapNotNull { decl ->
+                val clean = decl.name.trim()
+                if (clean.isEmpty()) return@mapNotNull null
+                val type = decl.toVarType() ?: return@mapNotNull null
+                IrVarDecl(clean, type)
+            }
+            val body = s.body.mapIndexed { stepIndex, step ->
+                IrSubroutineStep(
+                    condition = conditionAtPath(
+                        step.condition,
+                        "subroutines[$cleanId].body[$stepIndex].condition",
+                    ),
+                    effects = effectsOf(step.effects),
+                    call = step.call
+                        ?.takeIf { it.subroutineId.isNotBlank() }
+                        ?.let { call ->
+                            IrSubroutineCall(
+                                subroutineId = call.subroutineId.trim(),
+                                args = call.args.toMap(),
+                                outputs = call.outputs.toMap(),
+                            )
+                        },
+                )
+            }
+            IrSubroutine(
+                id = cleanId,
+                inputs = inputs,
+                outputs = outputs,
+                body = body,
+            )
+        }
+
         val adventure = IrAdventure(
             title = title,
             author = author,
             description = description,
             variables = irVariables,
+            subroutines = irSubroutines,
             tags = tagRegistry.values.toList(),
             initialState = irInitial,
             deathScene = irDeath,
@@ -1282,18 +1480,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             val cleanId = t.id.trim()
             if (cleanId.isEmpty()) continue
             val (setFlags, removeFlags, modifyStats) = serializeTags(t.effects)
-            val params = t.parameters.mapNotNull { p ->
-                val name = p.name.trim()
-                if (name.isEmpty()) return@mapNotNull null
-                when (p.kind) {
-                    VarKind.BOOL -> VarDeclDto(name, "bool")
-                    VarKind.INTEGER -> VarDeclDto(name, "int")
-                    VarKind.INT_MIN -> VarDeclDto(name, "int_min", min = p.min)
-                    VarKind.INT_RANGE -> VarDeclDto(name, "int_range", min = p.min, max = p.max)
-                    VarKind.ITEM_COUNT -> VarDeclDto(name, "item_count")
-                    VarKind.ITEM_LIST -> VarDeclDto(name, "item_list")
-                }
-            }
+            val params = t.parameters.mapNotNull { editorVarDeclToVarDeclDto(it) }
             list.add(
                 ChoiceTemplateDto(
                     id = cleanId,
@@ -1305,6 +1492,67 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                     removeFlags = removeFlags,
                     modifyStats = modifyStats,
                     nextScene = t.nextSceneId,
+                )
+            )
+        }
+        return list.ifEmpty { null }
+    }
+
+    /**
+     * Ф4.8: `EditorVarDecl` → Gson `VarDeclDto`; `null` for a blank name
+     * (an unfinished row must not be written into the file).
+     */
+    private fun editorVarDeclToVarDeclDto(p: EditorVarDecl): VarDeclDto? {
+        val name = p.name.trim()
+        if (name.isEmpty()) return null
+        return when (p.kind) {
+            VarKind.BOOL -> VarDeclDto(name, "bool")
+            VarKind.INTEGER -> VarDeclDto(name, "int")
+            VarKind.INT_MIN -> VarDeclDto(name, "int_min", min = p.min)
+            VarKind.INT_RANGE -> VarDeclDto(name, "int_range", min = p.min, max = p.max)
+            VarKind.ITEM_COUNT -> VarDeclDto(name, "item_count")
+            VarKind.ITEM_LIST -> VarDeclDto(name, "item_list")
+        }
+    }
+
+    /**
+     * Ф4.8: editor subroutines → Gson DTOs. `null` on empty (Gson omits
+     * `"subroutines"`). Subroutines with a blank `id` are skipped: no call
+     * can reference them. Body steps keep their order; a blank condition
+     * is written as `null`, and a step call with a blank id is dropped.
+     */
+    private fun buildSubroutinesDto(): List<SubroutineDto>? {
+        if (subroutines.isEmpty()) return null
+        val list = mutableListOf<SubroutineDto>()
+        for (s in subroutines) {
+            val cleanId = s.id.trim()
+            if (cleanId.isEmpty()) continue
+            val inputs = s.inputs.mapNotNull { editorVarDeclToVarDeclDto(it) }
+            val outputs = s.outputs.mapNotNull { editorVarDeclToVarDeclDto(it) }
+            val body = s.body.map { step ->
+                val (setFlags, removeFlags, modifyStats) = serializeTags(step.effects)
+                SubroutineStepDto(
+                    condition = step.condition.trim().ifEmpty { null },
+                    setFlags = setFlags,
+                    removeFlags = removeFlags,
+                    modifyStats = modifyStats,
+                    call = step.call
+                        ?.takeIf { it.subroutineId.isNotBlank() }
+                        ?.let { call ->
+                            SubroutineCallDto(
+                                subroutineId = call.subroutineId.trim(),
+                                args = call.args.takeIf { it.isNotEmpty() }?.toMap(),
+                                outputs = call.outputs.takeIf { it.isNotEmpty() }?.toMap(),
+                            )
+                        },
+                )
+            }
+            list.add(
+                SubroutineDto(
+                    id = cleanId,
+                    inputs = inputs.ifEmpty { null },
+                    outputs = outputs.ifEmpty { null },
+                    body = body.ifEmpty { null },
                 )
             )
         }
@@ -1656,6 +1904,24 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val choice = scene.choices.find { it.uid == choiceUid } ?: return
         choice.tags.clear()
         choice.tags.addAll(newTags.map { it.copy() })
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    /**
+     * Ф4.8: set/clear the atomic subroutine call on a choice. The dialog
+     * passes `null` for "remove"; a call with a blank subroutine id is
+     * treated as "no call" by `buildAdventure`/`buildIrAdventure`.
+     */
+    fun setChoiceSubroutineCall(
+        sceneUid: String,
+        choiceUid: String,
+        call: EditorSubroutineCall?,
+    ) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        val choice = scene.choices.find { it.uid == choiceUid } ?: return
+        choice.subroutineCall = call?.deepCopy()
         _uiState.value = _uiState.value.copy(
             scenes = scenes.map { it.deepCopy() },
         )

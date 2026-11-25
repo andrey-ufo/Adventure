@@ -16,8 +16,14 @@ import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.format.dto.VariableDto
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.format.dto.SubroutineCallDto
+import com.myapp.adventure.engine.format.dto.SubroutineDto
+import com.myapp.adventure.engine.format.dto.SubroutineStepDto
 import com.myapp.adventure.engine.format.dto.VarDeclDto
 import com.myapp.adventure.engine.ir.ChoiceTemplate
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,14 +76,14 @@ class SchemaFingerprintTest {
     private val expectedFlatFields: Map<String, Set<String>> = mapOf(
         "Adventure" to setOf(
             "version", "title", "author", "description",
-            "variables", "choice_templates", "invariants", "tags",
+            "variables", "choice_templates", "subroutines", "invariants", "tags",
             "initial_state", "death_scene", "start_scene", "chapters",
         ),
         "Chapter" to setOf("id", "title", "scenes"),
         "Scene" to setOf("id", "text", "effects", "choices", "gate", "is_ending", "merge", "merge_sources"),
         "Choice" to setOf(
             "id", "text", "next_scene", "condition", "visibility_condition",
-            "effects", "template_ref",
+            "effects", "template_ref", "call",
         ),
         "TemplateRef" to setOf("template_id", "args"),
         "TagDefinition" to setOf("name", "display_name", "category", "visible"),
@@ -94,6 +100,14 @@ class SchemaFingerprintTest {
             "effects", "next_scene",
         ),
         "VarDeclDto" to setOf("name", "type", "min", "max"),
+        "Subroutine" to setOf("id", "inputs", "outputs", "body"),
+        "SubroutineStep" to setOf("condition", "effects", "call"),
+        "SubroutineCall" to setOf("subroutine_id", "args", "outputs"),
+        "SubroutineDto" to setOf("id", "inputs", "outputs", "body"),
+        "SubroutineStepDto" to setOf(
+            "condition", "set_flags", "remove_flags", "modify_stats", "call",
+        ),
+        "SubroutineCallDto" to setOf("subroutine_id", "args", "outputs"),
         "Invariant" to setOf("condition", "outcome"),
     )
 
@@ -190,6 +204,12 @@ class SchemaFingerprintTest {
         assertFlat("VariableDto", VariableDto.serializer().descriptor)
         assertFlat("ChoiceTemplate", ChoiceTemplate.serializer().descriptor)
         assertFlat("VarDeclDto", VarDeclDto.serializer().descriptor)
+        assertFlat("Subroutine", Subroutine.serializer().descriptor)
+        assertFlat("SubroutineStep", SubroutineStep.serializer().descriptor)
+        assertFlat("SubroutineCall", SubroutineCall.serializer().descriptor)
+        assertFlat("SubroutineDto", SubroutineDto.serializer().descriptor)
+        assertFlat("SubroutineStepDto", SubroutineStepDto.serializer().descriptor)
+        assertFlat("SubroutineCallDto", SubroutineCallDto.serializer().descriptor)
         assertFlat("Invariant", Invariant.serializer().descriptor)
     }
 

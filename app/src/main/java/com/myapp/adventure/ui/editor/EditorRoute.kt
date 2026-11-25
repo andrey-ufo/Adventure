@@ -145,6 +145,7 @@ fun EditorRoute(
             onSearch = { onNavigate(EditorDestination.Search) },
             onStats = { onNavigate(EditorDestination.Stats) },
             onTemplates = { onNavigate(EditorDestination.Templates) },
+            onSubroutines = { onNavigate(EditorDestination.Subroutines) },
         )
 
         EditorScenesList(

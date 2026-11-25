@@ -31,11 +31,14 @@ import com.myapp.adventure.engine.ir.types.TypeError
  * `Adventure` (built by `AdventureEditorViewModel.buildAdventure()`)
  * and runs the exact pipeline the reader will run:
  *
- * 1. [TypeChecker.check] — unknown variables, wrong types (Ф2.2).
+ * 1. [TypeChecker.check] — unknown variables, wrong types (Ф2.2),
+ *    subroutine local scopes and call types (Ф4.7).
  * 2. [Engine.compile] — duplicate scene ids, missing start scene,
- *    dangling `nextScene` (Ф1.5.5.1 / Ф1.6.2.1).
+ *    dangling `nextScene` (Ф1.5.5.1 / Ф1.6.2.1), subroutine refs,
+ *    arity and cycles (Ф4.7).
  * 3. [Analyzer.lint] — reachability, dead ends, unestablished items,
- *    contradictory endings (Ф1.6).
+ *    contradictory endings (Ф1.6), dead conditions (Ф3.6), merge
+ *    conflicts (Ф4.6).
  *
  * The result is a `List<ValidationIssue>` ready for the editor's
  * validation dialog. The author sees **the same errors** that the
@@ -171,6 +174,12 @@ object StoryValidator {
             uidBySceneId[compileError.sceneId.value] ?: ""
         is CompileError.MissingMergeSource ->
             uidBySceneId[compileError.sceneId.value] ?: ""
+        is CompileError.DuplicateSubroutineId -> ""
+        is CompileError.MissingSubroutine ->
+            compileError.sceneId?.let { uidBySceneId[it.value] } ?: ""
+        is CompileError.InvalidSubroutineCall ->
+            compileError.sceneId?.let { uidBySceneId[it.value] } ?: ""
+        is CompileError.SubroutineCycle -> ""
     }
 
     // ---------- Titles (Russian UI) ----------
@@ -193,6 +202,8 @@ object StoryValidator {
         is TypeError.InRangeOnNonNumeric -> R.string.validation_title_in_range_on_non_numeric
         is TypeError.InitialFlagOnNonBool -> R.string.validation_title_initial_flag_on_non_bool
         is TypeError.InitialStatOnNonNumeric -> R.string.validation_title_initial_stat_on_non_numeric
+        is TypeError.InSubroutine -> titleFor(typeError.cause)
+        is TypeError.InvalidSubroutineSignature -> R.string.validation_title_subroutine_signature
     }
 
     @StringRes
@@ -201,10 +212,14 @@ object StoryValidator {
         is CompileError.MissingStartScene -> R.string.validation_title_missing_start_scene
         is CompileError.MissingNextScene -> R.string.validation_title_missing_next_scene
         is CompileError.MissingMergeSource -> R.string.validation_title_missing_merge_source
+        is CompileError.DuplicateSubroutineId -> R.string.validation_title_duplicate_subroutine_id
+        is CompileError.MissingSubroutine -> R.string.validation_title_missing_subroutine
+        is CompileError.InvalidSubroutineCall -> R.string.validation_title_invalid_subroutine_call
+        is CompileError.SubroutineCycle -> R.string.validation_title_subroutine_cycle
     }
 
     @StringRes
-    private fun titleFor(lintIssue: LintIssue): Int = when (lintIssue.kind) {
+    private fun titleFor(lintIssue: LintIssue): Int = when (val kind = lintIssue.kind) {
         is LintKind.UnreachableScene -> R.string.validation_title_unreachable_scene
         is LintKind.RemovingUnestablishedItem -> R.string.validation_title_removing_unestablished_item
         is LintKind.DeathSceneWithoutHealth -> R.string.validation_title_death_scene_without_health
@@ -214,5 +229,13 @@ object StoryValidator {
         is LintKind.EndingSceneWithChoices -> R.string.validation_title_ending_scene_with_choices
         is LintKind.UnreachableInvariant -> R.string.validation_title_unreachable_invariant
         is LintKind.DeadCondition -> R.string.validation_title_dead_condition
+        is LintKind.MergeConflict -> when (kind.reason) {
+            LintKind.MergeConflict.Reason.NoIncomingBranches ->
+                R.string.validation_title_merge_no_incoming
+            LintKind.MergeConflict.Reason.SourceDoesNotLeadHere ->
+                R.string.validation_title_merge_source_not_linked
+            LintKind.MergeConflict.Reason.SourceNotReachable ->
+                R.string.validation_title_merge_source_unreachable
+        }
     }
 }

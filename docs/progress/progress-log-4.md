@@ -1416,3 +1416,561 @@ in IR.*
       all. ✅
 
   **Next — Ф4.5 (N5: explicit merge node).**
+
+---
+
+- **2026-11-25 · Ф4.5 — N5: explicit merge points (`merge` /
+  `merge_sources`), runtime delta pinned**
+
+  **DoD** *(translated from `checklist-tracker.md` §Ф4.5; original is
+  Russian)*. "N5: explicit merge of branches: `MergeNode` in IR with
+  state transfer; IR contains `MergeNode` (or an explicit scene
+  attribute) with the declared list of input branches; the runtime
+  performs the merge; unit test: two branches with different state
+  changes → merge transfers the delta."
+
+  **Important context — most code landed unlogged.** The Ф4.5
+  implementation was already present in commit `642ea05`
+  ("Доработка", the same commit that carried the unplanned
+  Compose/Material 3 migration and the 4.3.2b entry). It was not
+  recorded in this log. This entry closes the DoD gaps and records the
+  design: the missing delta test, the merge section in
+  `engine-architecture.md`, and this log entry. No IR or runtime
+  behaviour changed in this batch.
+
+  **Scope decisions (agreed before coding).**
+
+    - **A1 — explicit scene attribute, not a separate `MergeNode`.**
+      The checklist explicitly allows "`MergeNode` **or** an explicit
+      scene attribute". `Scene.isMerge: Boolean` (JSON `merge`) marks
+      the convergence point; `Scene.mergeSources: List<SceneId>` (JSON
+      `merge_sources`) declares the branches. Benefit: no new IR node,
+      no changes to `Engine.step`'s signature, no format migration.
+    - **B1 — no runtime "merge operation"; delta transfers
+      implicitly.** `Engine.step` applies the branch's `choice.effects`
+      before the transition; the reader applies `scene.effects` on
+      first entry. The `PlayerState` arriving at the merge already
+      contains the branch delta. Per-branch delta tracking (a true
+      runtime merge) requires the Ф5 save/delta model and would not
+      change what the player sees today.
+    - **C1 — compile checks existence only.** Every id in
+      `merge_sources` must exist (`CompileError.MissingMergeSource`).
+      Declaration-vs-reality ("does this source actually lead here?")
+      and reachability of each source are analyzer concerns → Ф4.6.
+    - **D1 — no editor UI in this batch.** `merge` / `mergeSources`
+      round-trip through `:app/data/Scene`, `EditorScene`, save and load;
+      visual editing is Ф4.10.
+    - **E1 — no version bump.** Both fields are optional with defaults
+      `false` / `[]`; identity migration, same reasoning as `variables`
+      (Ф2.8), `invariants` (Ф3.5), `choice_templates` (Ф4.1).
+
+  **What changed (this batch: 3 files).**
+
+    1. `engine/src/test/.../EngineStepTest.kt` — `scene(...)` helper
+       gains `isMerge` / `mergeSources`; new
+       `merge point receives accumulated delta from either branch`:
+       `left` applies `health -10` + `chose_left`, `right` applies
+       `health +5` + `chose_right`, both lead to `merge`. Stepping from
+       either branch lands in `merge` with 90 / 105 health and the
+       respective flag — the DoD delta test.
+    2. `docs/engine-architecture.md` — new §"Merge points (Ф4.5)";
+       IR `Scene` line mentions `isMerge` / `mergeSources`; compile
+       errors gain `MissingMergeSource`; `Engine.step` result updated to
+       `Success(state, currentScene, outcome)`; `Evaluator.choiceState`
+       documented; analyzer table gains `UnreachableInvariant` (Ф3.5) and
+       `DeadCondition` (Ф3.6); condition grammar synced to Ф3.2;
+       template sections updated to shipped 4.3.2b / 4.4 state.
+    3. `docs/progress/progress-log-4.md` — this entry.
+
+  **Previously landed (unlogged, commit `642ea05`; listed so the log is
+  a complete record).**
+
+    - `engine/.../ir/Scene.kt` — `isMerge` + `mergeSources` with KDoc
+      (delta semantics, why metadata, compile vs analyzer split).
+    - `engine/.../ir/Adventure.kt` — version-history KDoc
+      "Still 5 (Ф4.5)".
+    - `engine/.../format/dto/Dto.kt` / `format/JsonToIr.kt` — parse
+      `merge` (nullable → `false`) and `merge_sources` (absent →
+      `emptyList`).
+    - `engine/.../CompileResult.kt` / `Engine.kt` — `MissingMergeSource`
+      + deterministic compile check (sorted by scene id, then source
+      id).
+    - `engine/src/test/.../EngineCompileTest.kt` — missing-source fails;
+      valid sources compile. `JsonToIrTest.kt` — absent defaults;
+      `merge: true` + sources parse. `SchemaFingerprintTest.kt` — Scene
+      field names include `merge` / `merge_sources`.
+    - `:app` round-trip — `data/Adventure.kt` (`Scene.merge`,
+      `mergeSources` nullable), `data/EditorModels.kt`
+      (`EditorScene.isMerge` / `mergeSources`, frozen in `deepCopy`),
+      `AdventureEditorViewModel.kt` (write JSON + IR),
+      `EditorRouteSupport.kt` (load), `StoryValidator.kt` /
+      `strings.xml` (`MissingMergeSource` title).
+
+  **User benefit.** (a) An author can declare "these branches converge
+  here" in JSON, and the declaration survives open → save → open even
+  without an editor UI yet. (b) A mistyped source id is caught at
+  compile time as `MissingMergeSource`, not as a mysterious map edge
+  later. (c) The player sees no behavioural change: state accumulated
+  on either branch is simply there when the merge scene opens — the
+  most predictable semantics. (d) The analyzer (Ф4.6) now has the data
+  it needs to validate declarations and unreachable merge combinations.
+
+  **What was NOT done (deliberately).**
+
+    - **`Analyzer.checkMerges` / `LintKind.MergeConflict`** —
+      declaration-vs-reality, source reachability, impossible
+      combinations. **Ф4.6.**
+    - **Editor UI for merge** — toggle, source picker, map join.
+      **Ф4.10.**
+    - **`test_adventure.json` merge example** — bundled with templates,
+      disabled choice and subroutine. **Ф4.11.**
+    - **Per-branch delta tracking / true runtime merge** — needs the
+      Ф5 `StateDelta` model; current implicit transfer is the agreed
+      pre-Ф5 semantic.
+    - **App round-trip smoke** — the app-side code existed before this
+      batch; no app files were touched here, so no phone smoke was run.
+      The next app-side batch (Ф4.10) will exercise it.
+
+  **Verified.** `:engine:test --rerun-tasks` → **346/346 PASSED**
+  (345 before + 1 new Ф4.5 delta test; 0 failures, 0 errors). Docs-only
+  changes; `:app` not touched in this batch, so `:app:assembleDebug`
+  was not required.
+
+  **Next — Ф4.6 (N5): `Analyzer.checkMerges(ir)`.** Planned surface:
+  `LintKind.MergeConflict(...)`; checks (a) each declared
+  `merge_sources` id actually has a `choice.nextScene` pointing at the
+  merge scene, (b) each source is reachable from `start_scene`
+  (intersection with `Analyzer.reachable`), (c) a merge scene with
+  `merge: true` but no incoming edges; report in the editor via the
+  existing validation pipeline. Need to decide whether "source does not
+  lead here" is WARNING (declaration vs reality) and whether a
+  `merge: true` scene with zero incoming edges is WARNING or ERROR.
+
+---
+
+- **2026-11-25 · Ф4.6 — N5: merge conflict analysis
+  (`Analyzer.checkMerges`)**
+
+  **DoD** *(translated from `checklist-tracker.md` §Ф4.6; original is
+  Russian)*. "N5: merge analysis: warning about unreachable
+  combinations / incompatible states; `Analyzer.checkMerges(ir)` finds
+  combinations that cannot happen (intersection with
+  `computeReachable`); report in the editor; test on a knowingly
+  unreachable merge."
+
+  **Scope decisions (agreed before coding).**
+
+    - **A1 — both confirmed cases are WARNING.** Per user decision:
+      (a) a declared `merge_sources` entry that does not actually lead
+      to the merge scene → WARNING; (b) `merge: true` with no incoming
+      edges → WARNING. Neither blocks opening the file; the adventure
+      still plays, only the author's declaration is wrong.
+    - **B1 — one `LintKind.MergeConflict(reason, sourceSceneId)` with
+      a `Reason` enum** (`NoIncomingBranches`, `SourceDoesNotLeadHere`,
+      `SourceNotReachable`). Same shape as `DeadCondition(condition,
+      reason)` / `UnreachableInvariant(reason)`: structured data for
+      tests and the UI, one generic engine message per issue.
+    - **C1 — `SourceNotReachable` only when the merge scene itself is
+      reachable.** If the whole merge area is unreachable,
+      `LintKind.UnreachableScene` already reports it; adding per-source
+      reachability warnings would duplicate noise without new
+      information.
+    - **D1 — `merge_sources` on a scene with `merge: false` is not
+      reported.** The sources only mean something for an actual merge
+      point; flagging the half-filled combination adds noise without a
+      user-facing benefit. The field still round-trips.
+    - **E1 — `checkMerges` is public and included in `lint()`.** The
+      editor's "Проверить" dialog (via `Analyzer.lint`) sees the
+      warnings without extra plumbing; the future realtime linter
+      (Ф9.2) can call `checkMerges` on its own.
+    - **F1 — no state-compatibility analysis.** "Branch A always sets
+      health = 10, branch B sets health = 20" needs per-branch deltas,
+      which arrive with the Ф5 save/delta model. Current check is
+      graph-only.
+
+  **What changed (5 files + tests + docs).**
+
+    1. `engine/.../analyze/LintIssue.kt` — new
+       `LintKind.MergeConflict(reason: Reason, sourceSceneId: SceneId?
+       = null)` with nested `Reason` enum; KDoc lists the three checks,
+       why WARNING, and what needs Ф5.
+    2. `engine/.../analyze/Analyzer.kt` — new public
+       `checkMerges(compiled)`:
+       - builds `incomingByScene: Map<SceneId, Set<SceneId>>` in one
+         pass over all choices;
+       - `NoIncomingBranches` when a merge scene has no incoming edges;
+       - `SourceDoesNotLeadHere` for each declared source without an
+         edge to the merge;
+       - `SourceNotReachable` for each declared source not in
+         `reachable(compiled)` when the merge is reachable;
+       - unknown source ids are skipped defensively (compile already
+         rejects them as `MissingMergeSource`);
+       - results sorted by (scene id, message); `lint()` now appends
+         `checkMerges(compiled)`.
+    3. `engine/src/test/.../analyze/AnalyzerTest.kt` — `scene(...)`
+       helper gains `isMerge` / `mergeSources`; 6 new tests:
+       no incoming branches; declared source does not lead here;
+       declared source unreachable; a source that neither leads here
+       nor is reachable reports a single `SourceDoesNotLeadHere`
+       (no duplicate reachability warning); clean merge (all sources
+       lead here and are reachable); `lint()` includes merge
+       conflicts.
+    4. `:app/utils/StoryValidator.kt` — exhaustive `titleFor(LintIssue)`
+       handles `MergeConflict` and maps each `Reason` to a string
+       resource; KDoc pipeline list mentions Ф3.6 / Ф4.6 checks.
+    5. `:app/res/values/strings.xml` — three titles:
+       `validation_title_merge_no_incoming`,
+       `validation_title_merge_source_not_linked`,
+       `validation_title_merge_source_unreachable`.
+    6. `docs/engine-architecture.md` — merge section status and
+       validation split updated; analyzer table gains
+       `MergeConflict(reason, source?)`; deferred list replaced with
+       Ф5 (state compatibility) / Ф4.10 (editor UI); testing strategy
+       mentions merge conflicts.
+    7. `docs/progress/progress-log-4.md` — this entry.
+
+  **User benefit.** (a) An author who marks a scene `merge: true` but
+  forgot to wire any branch into it gets a concrete warning in the
+  editor's validation dialog instead of a silently dead merge point.
+  (b) A declared `merge_sources` id that does not actually lead to the
+  merge is named explicitly, so the author can fix the edge or the
+  declaration. (c) A branch that exists and points at the merge but is
+  unreachable from `start_scene` is surfaced as "this combination
+  cannot occur" — the graph-level half of the N5 promise. (d) All three
+  are warnings: the player can still open and play the adventure; only
+  `ERROR` blocks loading. (e) Clicking an issue still jumps to the
+  merge scene because `LintIssue.sceneId` is the merge scene id.
+
+  **What was NOT done (deliberately).**
+
+    - **State compatibility between branches** — needs the Ф5
+      `StateDelta` model; graph reachability is the only analysis today.
+    - **Merge editing UI** — toggle, source picker, map join. **Ф4.10.**
+    - **`test_adventure.json` merge example** — bundled with templates,
+      disabled choice and subroutine. **Ф4.11.**
+    - **Warning for `merge_sources` on a non-merge scene** — decision
+      D1; can be added if authors start making that mistake in practice.
+    - **Undeclared incoming edges** — a merge with extra branches that
+      are not in `merge_sources` is not reported; declaring a subset may
+      be intentional (the author only asserts the branches they care
+      about).
+
+  **Verified.** `:engine:test --rerun-tasks` → **352/352 PASSED**
+  (346 before + 6 new Ф4.6 tests; 0 failures, 0 errors).
+  `:app:assembleDebug` → BUILD SUCCESSFUL (the exhaustive
+  `StoryValidator` `when` and three new string resources compile).
+
+  **Manual smoke — deferred to Ф4.10.** The editor has no UI to create a
+  merge scene yet (merge is metadata round-trip only), so the smoke
+  scenario "add a merge scene with a broken declaration and press
+  'Проверить'" cannot be performed through the UI. The engine/analyzer
+  behaviour is covered by `AnalyzerTest`; the editor validation view
+  will be smoke-tested once Ф4.10 adds the merge toggle/source editor.
+  The reference sample itself stays merge-free until Ф4.11, so the
+  default onboarding flow is unchanged.
+
+  **Next — Ф4.7 (N6.base): subroutines.** `Subroutine` in IR (typed
+  input/output parameters, body), runtime `call` / `return` with a
+  stack, callable from two scenes, state preserved across the call.
+  Развилки для Ф4.7 — в следующем сообщении.
+
+---
+
+- **2026-11-25 · План — из `checklist-tracker.md` убраны оценки
+  сроков (Фазы 4–10)**
+
+  По решению владельца проекта: выбор варианта должен опираться на
+  качество продукта, а не на сроки. Из таблиц Фаз 4–10 удалена колонка
+  «Дни», строки «Итого: … дней» и бюджетные предупреждения; DoD,
+  зависимости и гейты сохранены. Changelog трекера — запись **v2.2**.
+  Фазы 0–3 и приложения с историческими оценками не трогались (это
+  reference-история).
+
+---
+
+- **2026-11-25 · Ф4.7 — N6.base: атомарные подпрограммы
+  (`Subroutine`, `Choice.call`, локальная рамка, стек)**
+
+  **DoD** *(translated from `checklist-tracker.md` §Ф4.7; original is
+  Russian)*. "N6.base: subroutines: `Subroutine` in IR (input/output
+  parameters, body), call and return. IR contains `Subroutine`; runtime:
+  `call` / `return` with stack preservation; unit test: a subroutine is
+  called from two scenes, returns state; output parameters are typed."
+
+  **Модель выбрана после продуктового сравнения вариантов.** Пользователь
+  отклонил сравнение по срокам и попросил оценивать влияние на автора и
+  читателя. Итог:
+
+    - **A1 — T2: атомарные подпрограммы с условиями, но без циклов и
+      произвольных локальных переменных.** Тело — плоский список
+      guarded-шагов (`condition?`, `effects`, `call?`). Это table-friendly
+      для Ф4.8 и покрывает конечные ветвления: «else» — следующий шаг с
+      отрицанием условия. Циклы/локальные переменные/RNG — Ф13
+      `Procedure`.
+    - **A2 — вызов через `Choice.call`**, а не `Effect.Call` и не
+      авто-вызов на входе в сцену. Игрок явно выбирает действие; условия
+      и видимость выбора уже работают; reader-flow не меняется.
+    - **A3 — локальная рамка параметров.** Входы копируются в кадр,
+      выходы пишутся обратно; имя в обоих списках — in-out. Тело видит
+      **только** свои параметры, не глобальные переменные. Это чистый
+      контракт и защита от случайного изменения чужого состояния.
+    - **A4 — явный стек кадров.** Вложенный вызов пишет выходы в локали
+      родителя; родитель продолжает со следующего шага. Стек живёт
+      только внутри одного `Engine.step`; в сохранения не попадает.
+    - **A5 — рекурсия запрещена в N6.base.** `Engine.compile` отклоняет
+      цикл вызовов (`SubroutineCycle`); runtime дополнительно имеет
+      `MAX_DEPTH = 64` как защиту от hand-built IR.
+    - **A6 — сознательные ограничения.** `ItemList`-параметры не
+      поддерживаются; дельты эффектов — литералы (вход влияет на
+      условие, но нет «прибавить значение X»); нет `Stop`/раннего
+      выхода. Всё это — Ф13 или отдельные шаги, не Ф4.7.
+    - **A7 — `Engine.step` уже выполняет вызовы.** Это закрывает
+      рантайм-часть Ф4.7; Ф4.9 остаётся для интеграции с Compose-читалкой
+      (сейчас reader применяет эффекты напрямую и обходит `Engine.step`,
+      поэтому объявленный вызов будет провалидирован, но не сработает в
+      читалке до Ф4.9).
+    - **A8 — разделение слоёв.** Парсер — структура JSON (пустые id,
+      дубли параметров, несогласованные in-out типы); `Engine.compile` —
+      ссылки, арность, циклы; `TypeChecker` — типы параметров/аргументов,
+      запись в input-only, `ItemList`; runtime — исполнение.
+    - **A9 — без version bump.** `Adventure.subroutines = []` и
+      `Choice.call = null` по умолчанию; существующие файлы не меняются.
+
+  **Что изменено (engine + app bridge + docs).**
+
+    1. `engine/ir/Subroutine.kt` — новые `Subroutine`, `SubroutineStep`,
+       `SubroutineCall` с KDoc о локальной рамке, flat guarded steps,
+       стеке и запрете рекурсии.
+    2. `engine/ir/Adventure.kt` — `subroutines: List<Subroutine>` +
+       version-history «Still 5 (Ф4.7)».
+    3. `engine/ir/Choice.kt` — `call: SubroutineCall?`; KDoc:
+       `effects` → call → invariants → `nextScene` (return target).
+    4. `engine/format/dto/Dto.kt` — `SubroutineDto`,
+       `SubroutineStepDto`, `SubroutineCallDto`; `AdventureDto.subroutines`,
+       `ChoiceDto.call`.
+    5. `engine/format/JsonToIr.kt` — сборка сабрутин, валидация
+       structure (id/имя параметра/дубли/in-out типы/пустые call-id),
+       маппинг вложенного `call`.
+    6. `engine/CompileResult.kt` — `DuplicateSubroutineId`,
+       `MissingSubroutine`, `InvalidSubroutineCall`, `SubroutineCycle`
+       с человекочитаемыми caller-локациями.
+    7. `engine/Engine.kt` — проверка таблицы сабрутин, top-level и
+       вложенных вызовов, DFS-детект циклов; `step()` выполняет
+       `choice.call` после эффектов выбора и до инвариантов.
+    8. `engine/SubroutineExecutor.kt` — явный стек `ArrayDeque<Frame>`;
+       копирование входов, outputs в глобалы/родителя, `MAX_DEPTH`;
+       `Result.Failure` вместо исключений.
+    9. `engine/StepResult.kt` — `RejectReason.SubroutineFailure`
+       (defensive, structural).
+    10. `engine/ir/types/TypeError.kt` — `InSubroutine` (wrapper с
+        `cause`) и `InvalidSubroutineSignature`.
+    11. `engine/ir/types/TypeChecker.kt` — локальные скоупы сабрутин,
+        проверка top-level/nested args/outputs, input-only writes,
+        `ItemList`; проверка тел идёт даже при пустой глобальной
+        таблице типов.
+    12. Тесты: `JsonToIrTest` +6 (парсинг/дефолты/дубли/in-out),
+        `EngineCompileTest` +6 (valid/missing/signature/cycle/duplicate),
+        `EngineStepTest` +4 (два вызывающих сцены, вложенный стек,
+        инварианты после outputs, false-guard), `TypeCheckerTest` +8
+        (локальный скоуп, невидимость глобалов, input-only,
+        top-level/nested типы, in-out mismatch, пустая глобальная
+        таблица), `SchemaFingerprintTest` обновлён.
+    13. `:app/utils/StoryValidator.kt` — title/sceneUid mappings для
+        новых `TypeError`/`CompileError`; KDoc pipeline.
+    14. `:app/res/values/strings.xml` — 5 новых validation-заголовков
+        (signature, duplicate id, missing, invalid call, cycle).
+    15. `docs/engine-architecture.md` — IR-классы, compile errors,
+        `Engine.step`, §«Subroutines (Ф4.7)», error hierarchy, testing
+        strategy.
+    16. `docs/engine-types.md` — `InSubroutine` /
+        `InvalidSubroutineSignature` в таблице ошибок.
+    17. `docs/progress/progress-log-4.md` — эта запись.
+
+  **User benefit.** (a) Автор получает переиспользуемые механические
+  блоки (выпить зелье, применить урон, общий чек) с типизированными
+  входами/выходами и вложенной композицией. (b) Читатель не видит
+  дополнительных экранов: подпрограмма разрешается мгновенно, undo
+  возвращает состояние до выбора, формат сохранений не меняется.
+  (c) Локальная рамка не даёт общей процедуре незаметно испортить
+  глобальное состояние: изменения возможны только через объявленные
+  outputs. (d) Ошибки ссылок/арности/циклов/типов ловятся до открытия
+  приключения — в редакторе и в `JsonToIr.parse`.
+
+  **Что НЕ сделано (намеренно).**
+
+    - **UI редактора сабрутин** (создание, параметры, body, вызов из
+      сцены) — **Ф4.8**.
+    - **Интеграция с Compose-читалкой** — **Ф4.9**. Сейчас
+      `AdventureReaderViewModel` применяет эффекты напрямую; вызовы
+      валидируются, но не исполняются в reader до этого шага.
+    - **Round-trip в `:app/data`** (сохранение subroutines/call из
+      редактора) — **Ф4.10**; сейчас JSON с сабрутинами читается
+      engine-ом, но редактор их не пишет.
+    - **`test_adventure.json`** с подпрограммой — **Ф4.11**.
+    - **`docs/engine-choices.md`** — **Ф4.12**.
+    - **Циклы, произвольные локальные переменные, параметризованные
+      дельты, RNG** — Ф13 `Procedure` / Ф12.
+    - **`ItemList`-параметры** — осознанно отклоняются в N6.base.
+    - **Ручной smoke** — UI для создания подпрограммы появится в Ф4.8;
+      до этого сценарий нельзя пройти через редактор. Поведение ядра
+      покрыто unit-тестами.
+
+  **Verified.** `:engine:test --rerun-tasks` → **376/376 PASSED**
+  (352 before + 24 new/updated tests across parser, compile, runtime and
+  type checker; 0 failures, 0 errors). `:app:testDebugUnitTest` →
+  **37/37 PASSED**. `:app:assembleDebug` → BUILD SUCCESSFUL (exhaustive
+  `StoryValidator` mappings and 5 new string resources compile).
+
+  **Next — Ф4.8 (N6.base UI): редактор подпрограмм.** Экран списка
+  сабрутин, создание/редактирование, типизированные параметры, плоский
+  редактор guarded-шагов, выбор подпрограммы из сцены и привязка
+  args/outputs. Развилки (где разместить экран, как редактировать шаги,
+  как показывать локальный скоуп) — в следующем сообщении.
+
+---
+
+- **2026-11-25 · Ф4.8 — N6.base UI: экран подпрограмм, плоские шаги,
+  диалог вызова**
+
+  **DoD** *(translated from `checklist-tracker.md` §Ф4.8; original is
+  Russian)*. "N6.base UI: create a subroutine in the editor (typed
+  inputs/outputs, body), call it from two different scenes, typing an
+  untyped value is rejected with a friendly error; save/load preserves
+  subroutines."
+
+  **Product decisions (confirmed by the owner before coding).**
+
+    - **A1 — separate editor destination.** "Подпрограммы" is a sibling
+      of Templates / Meta / Validation in the editor navigation, not a
+      section inside the scenes list. Keeps the main editing surface
+      focused and gives the subroutine form room for parameters + body.
+    - **A2 — flat guarded-step editor.** Each body row is
+      `condition? + effects + optional nested call`, matching the IR
+      (Ф4.7 A1). No nested `if` tree; an `else` is the next row with a
+      negated condition. Easy to scan, edit and validate.
+    - **A3 — one "Использовать подпрограмму" dialog** for both call
+      sites. From a choice it binds global variable names; from a nested
+      step it binds the enclosing frame's local names. Inputs must map
+      to a non-blank source; outputs are optional (unmapped = discard).
+      The dialog does **not** hide type errors — those go to "Проверить".
+    - **A4 — working copy in the ViewModel.** The form edits a
+      `deepCopy`; "Сохранить" upserts it into `viewModel.subroutines`,
+      "Отмена"/system back discards. `editingSubroutine` survives a
+      configuration change, so rotation keeps unsaved fields (same
+      pattern as `editingTemplate`).
+    - **A5 — round-trip everywhere.** `subroutines` and `Choice.call`
+      are added to `:app/data/Adventure`, `EditorSubroutine*` models,
+      `EditorSnapshot` (undo/redo), `EditorDraft`/`EditorDraftManager`
+      (autosave/restore), `EditorUiState`, `buildAdventure` (JSON) and
+      `buildIrAdventure` (validation/IR). Open → save no longer loses
+      them.
+    - **A6 — global scope = declared variables.** The choice dialog lists
+      `viewModel.variables`; if none are declared it shows a hint
+      ("объявите переменные"). Nested calls list the subroutine's own
+      inputs+outputs (sources) and outputs (targets), matching the local
+      frame contract.
+    - **A7 — no automatic id rename / delete cleanup.** Renaming a
+      subroutine id does not rewrite existing calls, and deleting a
+      subroutine leaves calls that now fail validation with
+      `MissingSubroutine`. This is deliberate for Ф4.8 (explicit,
+      visible errors); "update all uses" / cascade cleanup can be a
+      separate quality step.
+    - **A8 — no reader execution yet.** The Compose reader still applies
+      effects directly instead of calling `Engine.step`; a saved call is
+      validated but will not run until **Ф4.9**.
+
+  **What changed (app + tests + docs).**
+
+    1. `:app/data/Adventure.kt` — `Adventure.subroutines`,
+       `Choice.call`, `SubroutineDto`, `SubroutineStepDto`,
+       `SubroutineCallDto` (Gson wire names: `subroutine_id`,
+       `set_flags`, `remove_flags`, `modify_stats`).
+    2. `:app/data/EditorModels.kt` — `EditorSubroutine`,
+       `EditorSubroutineStep`, `EditorSubroutineCall` + `deepCopy`;
+       `EditorChoice.subroutineCall`; scene deep copy preserves calls.
+    3. `:app/data/EditorSnapshot.kt`, `EditorDraft.kt`,
+       `EditorUiState.kt` — `subroutines` field.
+    4. `:app/utils/EditorDraftManager.kt` — `saveDraft(... subroutines ...)`;
+       `EditorRouteSupport.applyDraft` restores them (with `orEmpty()`
+       for old drafts).
+    5. `AdventureEditorViewModel.kt` — `subroutines` list +
+       `editingSubroutine`; `commitState` / snapshot / restore;
+       `buildAdventure` emits `subroutines` and `Choice.call`;
+       `buildIrAdventure` emits `IrSubroutine` / `IrSubroutineStep` /
+       `IrSubroutineCall` and parses step conditions with
+       `subroutines[id].body[i]` paths; `editorSubroutineFromDto`,
+       `editorVarDeclFromDto(VarDeclDto)`, `buildSubroutinesDto`,
+       `setChoiceSubroutineCall`.
+    6. `EditorRouteSupport.loadAdventureFromUri` — loads subroutines and
+       per-choice calls; `EditorChildRoutes` / draft save call sites pass
+       the new list.
+    7. `SubroutinesScreen.kt` (new) — list + editor; typed parameter
+       rows (name/kind/min/max), flat step cards (condition, effects
+       dialog, nested call dialog), delete confirmation; `BackHandler`
+       discards the working copy.
+    8. `SubroutineCallDialog.kt` (new) — shared choice/step binding
+       dialog; optional "Убрать вызов"; blank-input guard.
+    9. `EditorChoiceItem.kt` — "Подпрограмма: …" row + ⚡ badge; opens
+       the dialog with global variables.
+    10. Navigation/toolbar — `EditorDestination.Subroutines`,
+        `AppRoutes.Subroutines`, `EditorToolbar` button, `SubroutinesRoute`.
+    11. `ChoiceDialogs.kt` — effects dialog gains `titleRes` / `infoRes`
+        so the step editor reuses it without "choice" wording.
+    12. `VariablesSection.kt` — `KindDropdown` is now `internal` and
+        reused by the subroutine parameter rows.
+    13. Tests — `AdventureSubroutineSerializationTest` (3 tests): choice
+        call round-trip, subroutine + flat body + nested call round-trip,
+        absent subroutines stay absent.
+    14. `:app/res/values/strings.xml` — ~40 UI strings for the screen,
+        dialogs and errors.
+    15. `docs/engine-architecture.md` — Ф4.8 status/editor paragraph.
+    16. `docs/progress/progress-log-4.md` — this entry.
+
+  **User benefit.** (a) An author can create a reusable procedure with
+  typed inputs/outputs and a flat, readable body without touching JSON.
+  (b) The same subroutine can be attached to choices in different
+  scenes; the dialog makes the input/output contract explicit. (c) The
+  file survives open → save → open with subroutines, calls, drafts and
+  undo/redo intact. (d) The editor shows the local-scope rule in the form
+  ("тело видит только входы и выходы"), matching what the engine
+  enforces. (e) Validation catches id/signature/type/cycle problems
+  before play.
+
+  **Manual smoke (now possible).**
+
+    1. Declare `potion` (`item_count`) and `health` (`int_min`, min 0).
+    2. "Подпрограммы" → Add → id `consume`; inputs `item:item_count`,
+       `health:int_min`; outputs the same two; one step: condition
+       `item > 0`, effects `item -1`, `health +5`.
+    3. On two different scenes, add a choice; "Подпрограмма: —" → choose
+       `consume`; bind `item → potion`, `health → health`; outputs to the
+       same names. Repeat on the second scene.
+    4. Save to file, reload, open "Подпрограммы" — the subroutine and
+       both calls must still be there.
+    5. "Проверить" — no subroutine errors. In the reader the call will
+       **not** execute until Ф4.9, so do not expect the effect yet.
+
+  **What was NOT done (deliberately).**
+
+    - **Reader execution of calls** — **Ф4.9**.
+    - **Full N6 integration**: map/visual join, "call from scene" polish,
+      `test_adventure.json` sample — **Ф4.10 / Ф4.11**.
+    - **Rename propagation / delete cleanup** — decision A7; validation
+      reports dangling calls.
+    - **Undo/redo buttons on the subroutines screen** — editor-level
+      history still covers committed subroutines (snapshot includes
+      them), but the screen itself has no undo toolbar.
+    - **`ItemList` parameters** — engine rejects them; the UI can create
+      them and will show the validation error.
+    - **Live preview of a subroutine body** — preview still opens from a
+      scene; full preview integration is Ф4.9/Ф4.10.
+
+  **Verified.** `:app:testDebugUnitTest` → **40/40 PASSED** (37 before +
+  3 new serialization tests). `:engine:test` remains **376/376 PASSED**.
+  `:app:assembleDebug` → BUILD SUCCESSFUL.
+
+  **Next — Ф4.9 (N6.base runtime integration):** wire `Engine.step` (and
+  therefore `SubroutineExecutor`) into the Compose reader, so a saved
+  call actually applies its outputs, invariant/death handling sees the
+  post-call state, and a mid-subroutine save/restore cannot break.
+  Manual two-scene smoke becomes meaningful there.

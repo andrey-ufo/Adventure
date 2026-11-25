@@ -4,6 +4,8 @@ import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.SceneId
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
 import com.myapp.adventure.engine.ir.TagCategory
 
 /**
@@ -24,10 +26,17 @@ import com.myapp.adventure.engine.ir.TagCategory
  * - **Analyzer** (`Analyzer.lint`): "is the IR coherent?" — reachability,
  *   dead ends, unestablished items.
  *
- * `TypeChecker` sits between the parser and the compiler, but it is
- * **not wired into `JsonToIr.parse` yet** — that is Ф2.3. Ф2.2 (this
- * step) only defines the check itself, so that the pipeline change in
- * Ф2.3 is a one-line addition (`parse → TypeChecker.check → compile`).
+ * `TypeChecker` sits between the parser and the compiler and **is wired
+ * into `JsonToIr.parse`** (Ф2.3): a successful parse runs this check and
+ * returns `ParseResult.Failure(typeErrors = …)` if anything is wrong, so
+ * `Engine.compile` only ever sees type-clean IR.
+ *
+ * **Ф4.7 subroutine scopes.** Subroutine bodies are checked against their
+ * own local table (`inputs + outputs`), not `Adventure.variables`; a body
+ * sees only its parameters. Top-level `Choice.call` args/targets are
+ * checked against the global table, nested calls against the enclosing
+ * frame. These checks run even when the global type table is empty,
+ * because local types are explicit.
  *
  * **Two modes** (developed from the C4 decision, 2026-11-12):
  *
@@ -92,41 +101,65 @@ public object TypeChecker {
      */
     public fun check(adventure: Adventure): List<TypeError> {
         val typeTable = buildTypeTable(adventure)
-        if (typeTable.isEmpty()) return emptyList()
-
         val errors = mutableListOf<TypeError>()
+        val subroutinesById = adventure.subroutines.associateBy { it.id }
 
-        // 1. InitialState — must match the declared type (or inferred, in
-        //    fallback mode). These are the only errors without a sceneId;
-        //    they are reported first by the sort at the end.
-        for (flag in adventure.initialState.flags) {
-            val type = typeTable[flag] ?: continue
-            if (type != VarType.Bool) {
-                errors += TypeError.InitialFlagOnNonBool(flag, type)
-            }
-        }
-        for (stat in adventure.initialState.stats.keys) {
-            val type = typeTable[stat] ?: continue
-            if (!type.isNumeric()) {
-                errors += TypeError.InitialStatOnNonNumeric(stat, type)
-            }
-        }
-
-        // 2. Scenes: scene effects, then each choice's condition and effects.
-        //    Order within a scene follows the source (scene first, then
-        //    choices), so that when the author opens the editor, the
-        //    first reported error is the one "highest" in the visual
-        //    hierarchy. Stable-sorted at the end.
-        for (chapter in adventure.chapters) {
-            for (scene in chapter.scenes) {
-                checkEffects(scene.effects, scene.id, typeTable, errors)
-                for (choice in scene.choices) {
-                    choice.condition?.let {
-                        checkCondition(it, scene.id, typeTable, errors)
-                    }
-                    checkEffects(choice.effects, scene.id, typeTable, errors)
+        // `typeTable.isEmpty()` means there is nothing declared or
+        // inferable to check scene/global references against. Do **not**
+        // report every name as unknown — that would reject every legacy
+        // file that relies on the implicit zero-value fallback. Subroutine
+        // bodies are still checked below because their scope is explicit
+        // (inputs + outputs), independent of the global table.
+        if (typeTable.isNotEmpty()) {
+            // 1. InitialState — must match the declared type (or inferred, in
+            //    fallback mode). These are the only errors without a sceneId;
+            //    they are reported first by the sort at the end.
+            for (flag in adventure.initialState.flags) {
+                val type = typeTable[flag] ?: continue
+                if (type != VarType.Bool) {
+                    errors += TypeError.InitialFlagOnNonBool(flag, type)
                 }
             }
+            for (stat in adventure.initialState.stats.keys) {
+                val type = typeTable[stat] ?: continue
+                if (!type.isNumeric()) {
+                    errors += TypeError.InitialStatOnNonNumeric(stat, type)
+                }
+            }
+
+            // 2. Scenes: scene effects, then each choice's condition and
+            //    effects. Order within a scene follows the source (scene
+            //    first, then choices), so that when the author opens the
+            //    editor, the first reported error is the one "highest" in the
+            //    visual hierarchy. Stable-sorted at the end.
+            for (chapter in adventure.chapters) {
+                for (scene in chapter.scenes) {
+                    checkEffects(scene.effects, scene.id, typeTable, errors)
+                    for (choice in scene.choices) {
+                        choice.condition?.let {
+                            checkCondition(it, scene.id, typeTable, errors)
+                        }
+                        checkEffects(choice.effects, scene.id, typeTable, errors)
+                        choice.call?.let {
+                            checkTopLevelSubroutineCall(
+                                call = it,
+                                sceneId = scene.id,
+                                globalTypes = typeTable,
+                                subroutinesById = subroutinesById,
+                                errors = errors,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ф4.7: subroutine bodies have their own local scope
+        // (inputs + outputs), not the global variable table. Always check
+        // them: their types are explicit even when the adventure declares
+        // no global variables.
+        for (subroutine in adventure.subroutines) {
+            checkSubroutine(subroutine, subroutinesById, errors)
         }
 
         return errors.sortedWith(
@@ -198,7 +231,7 @@ public object TypeChecker {
 
     private fun checkCondition(
         condition: Condition,
-        sceneId: SceneId,
+        sceneId: SceneId?,
         typeTable: Map<String, VarType>,
         errors: MutableList<TypeError>,
     ) {
@@ -288,7 +321,7 @@ public object TypeChecker {
 
     private fun checkEffects(
         effects: List<Effect>,
-        sceneId: SceneId,
+        sceneId: SceneId?,
         typeTable: Map<String, VarType>,
         errors: MutableList<TypeError>,
     ) {
@@ -330,6 +363,210 @@ public object TypeChecker {
                         errors += TypeError.ModifyStatOnNonNumeric(effect.name, type, sceneId)
                     }
                 }
+            }
+        }
+    }
+
+    // ---------- Subroutine checking (Ф4.7) ----------
+
+    /**
+     * Checks one subroutine in its **local scope**: only `inputs` and
+     * `outputs` are visible, never `Adventure.variables`. This enforces the
+     * pure-function contract described in `Subroutine` KDoc.
+     *
+     * Body errors are wrapped in [TypeError.InSubroutine] so the message
+     * names the subroutine even though there is no scene to jump to.
+     */
+    private fun checkSubroutine(
+        subroutine: Subroutine,
+        subroutinesById: Map<String, Subroutine>,
+        errors: MutableList<TypeError>,
+    ) {
+        val localErrors = mutableListOf<TypeError>()
+        val localTypes = mutableMapOf<String, VarType>()
+        val inputNames = mutableSetOf<String>()
+
+        for (input in subroutine.inputs) {
+            if (input.type is VarType.ItemList) {
+                localErrors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = subroutine.id,
+                    detail = "ItemList input '${input.name}' is not supported in N6.base",
+                )
+            }
+            if (localTypes.containsKey(input.name)) {
+                localErrors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = subroutine.id,
+                    detail = "duplicate parameter '${input.name}'",
+                )
+            } else {
+                localTypes[input.name] = input.type
+            }
+            inputNames += input.name
+        }
+
+        for (output in subroutine.outputs) {
+            if (output.type is VarType.ItemList) {
+                localErrors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = subroutine.id,
+                    detail = "ItemList output '${output.name}' is not supported in N6.base",
+                )
+            }
+            val existing = localTypes[output.name]
+            if (existing != null && existing != output.type) {
+                localErrors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = subroutine.id,
+                    detail = "parameter '${output.name}' has input type " +
+                            "${existing.displayName()} but output type " +
+                            output.type.displayName(),
+                )
+            } else {
+                localTypes[output.name] = output.type
+            }
+        }
+
+        val inputOnly = inputNames - subroutine.outputs.map { it.name }.toSet()
+
+        for (step in subroutine.body) {
+            step.condition?.let {
+                checkCondition(it, null, localTypes, localErrors)
+            }
+            checkEffects(step.effects, null, localTypes, localErrors)
+            checkInputOnlyWrites(step.effects, inputOnly, subroutine.id, localErrors)
+            step.call?.let {
+                checkNestedSubroutineCall(
+                    call = it,
+                    callerSubroutineId = subroutine.id,
+                    localTypes = localTypes,
+                    inputOnly = inputOnly,
+                    subroutinesById = subroutinesById,
+                    errors = localErrors,
+                )
+            }
+        }
+
+        errors += localErrors.map { TypeError.InSubroutine(subroutine.id, it) }
+    }
+
+    private fun checkInputOnlyWrites(
+        effects: List<Effect>,
+        inputOnly: Set<String>,
+        subroutineId: String,
+        errors: MutableList<TypeError>,
+    ) {
+        for (effect in effects) {
+            val name = when (effect) {
+                is Effect.SetFlag -> effect.name
+                is Effect.RemoveFlag -> effect.name
+                is Effect.ModifyStat -> effect.name
+                is Effect.Set -> effect.name
+            }
+            if (name in inputOnly) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = subroutineId,
+                    detail = "effect writes input-only parameter '$name'",
+                )
+            }
+        }
+    }
+
+    private fun checkNestedSubroutineCall(
+        call: SubroutineCall,
+        callerSubroutineId: String,
+        localTypes: Map<String, VarType>,
+        inputOnly: Set<String>,
+        subroutinesById: Map<String, Subroutine>,
+        errors: MutableList<TypeError>,
+    ) {
+        val callee = subroutinesById[call.subroutineId] ?: return
+        val inputs = callee.inputs.associateBy { it.name }
+        for ((parameter, source) in call.args) {
+            val input = inputs[parameter] ?: continue
+            val sourceType = localTypes[source]
+            if (sourceType == null) {
+                errors += TypeError.UnknownVariable(source, null)
+            } else if (sourceType != input.type) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = callee.id,
+                    detail = "argument '$parameter' expects " +
+                            "${input.type.displayName()}, but local '$source' is " +
+                            sourceType.displayName(),
+                    callerSubroutineId = callerSubroutineId,
+                )
+            }
+        }
+
+        val outputs = callee.outputs.associateBy { it.name }
+        for ((parameter, target) in call.outputs) {
+            val output = outputs[parameter] ?: continue
+            val targetType = localTypes[target]
+            if (targetType == null) {
+                errors += TypeError.UnknownVariable(target, null)
+                continue
+            }
+            if (target in inputOnly) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = callee.id,
+                    detail = "output '$parameter' targets input-only local '$target'",
+                    callerSubroutineId = callerSubroutineId,
+                )
+            }
+            if (targetType != output.type) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = callee.id,
+                    detail = "output '$parameter' expects " +
+                            "${output.type.displayName()}, but local '$target' is " +
+                            targetType.displayName(),
+                    callerSubroutineId = callerSubroutineId,
+                )
+            }
+        }
+    }
+
+    /**
+     * Top-level call from a [com.myapp.adventure.engine.ir.Choice]: argument
+     * sources and output targets are global variables from
+     * [Adventure.variables] (or the inferred fallback table).
+     */
+    private fun checkTopLevelSubroutineCall(
+        call: SubroutineCall,
+        sceneId: SceneId,
+        globalTypes: Map<String, VarType>,
+        subroutinesById: Map<String, Subroutine>,
+        errors: MutableList<TypeError>,
+    ) {
+        val callee = subroutinesById[call.subroutineId] ?: return
+
+        val inputs = callee.inputs.associateBy { it.name }
+        for ((parameter, source) in call.args) {
+            val input = inputs[parameter] ?: continue
+            val sourceType = globalTypes[source]
+            if (sourceType == null) {
+                errors += TypeError.UnknownVariable(source, sceneId)
+            } else if (sourceType != input.type) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = callee.id,
+                    detail = "argument '$parameter' expects " +
+                            "${input.type.displayName()}, but variable '$source' is " +
+                            sourceType.displayName(),
+                    sceneId = sceneId,
+                )
+            }
+        }
+
+        val outputs = callee.outputs.associateBy { it.name }
+        for ((parameter, target) in call.outputs) {
+            val output = outputs[parameter] ?: continue
+            val targetType = globalTypes[target]
+            if (targetType == null) {
+                errors += TypeError.UnknownVariable(target, sceneId)
+            } else if (targetType != output.type) {
+                errors += TypeError.InvalidSubroutineSignature(
+                    subroutineId = callee.id,
+                    detail = "output '$parameter' expects " +
+                            "${output.type.displayName()}, but variable '$target' is " +
+                            targetType.displayName(),
+                    sceneId = sceneId,
+                )
             }
         }
     }

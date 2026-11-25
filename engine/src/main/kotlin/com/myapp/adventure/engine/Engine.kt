@@ -6,6 +6,8 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.ChoiceId
 import com.myapp.adventure.engine.ir.PlayerState
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
 
 /**
  * Entry point of the runtime: compiles an [Adventure] into a
@@ -132,6 +134,53 @@ public object Engine {
         )
         errors += missingMergeSources
 
+        // Ф4.7: subroutine table and call validation.
+        adventure.subroutines
+            .groupBy { it.id }
+            .filter { it.value.size > 1 }
+            .keys
+            .sorted()
+            .forEach { id -> errors += CompileError.DuplicateSubroutineId(id) }
+
+        val subroutinesById = adventure.subroutines.associateBy { it.id }
+
+        // Top-level calls from choices.
+        adventure.chapters.forEach { chapter ->
+            chapter.scenes.forEach { scene ->
+                scene.choices.forEach { choice ->
+                    choice.call?.let { call ->
+                        validateSubroutineCall(
+                            call = call,
+                            callee = subroutinesById[call.subroutineId],
+                            sceneId = scene.id,
+                            choiceId = choice.id,
+                            callerSubroutineId = null,
+                            errors = errors,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Nested calls from subroutine bodies.
+        adventure.subroutines.forEach { subroutine ->
+            subroutine.body.forEach { step ->
+                step.call?.let { call ->
+                    validateSubroutineCall(
+                        call = call,
+                        callee = subroutinesById[call.subroutineId],
+                        sceneId = null,
+                        choiceId = null,
+                        callerSubroutineId = subroutine.id,
+                        errors = errors,
+                    )
+                }
+            }
+        }
+
+        // N6.base forbids recursion; a cycle would hang Engine.step.
+        errors += detectSubroutineCycles(adventure.subroutines)
+
         return if (errors.isEmpty()) {
             CompileResult.Success(
                 CompiledAdventure(
@@ -143,6 +192,108 @@ public object Engine {
         } else {
             CompileResult.Failure(errors)
         }
+    }
+
+    /**
+     * Ф4.7: validates one [SubroutineCall] against the callee's signature.
+     * Type mismatches are left to `TypeChecker`; this layer only checks
+     * structural arity and names.
+     */
+    private fun validateSubroutineCall(
+        call: SubroutineCall,
+        callee: Subroutine?,
+        sceneId: SceneId?,
+        choiceId: ChoiceId?,
+        callerSubroutineId: String?,
+        errors: MutableList<CompileError>,
+    ) {
+        if (callee == null) {
+            errors += CompileError.MissingSubroutine(
+                subroutineId = call.subroutineId,
+                sceneId = sceneId,
+                choiceId = choiceId,
+                callerSubroutineId = callerSubroutineId,
+            )
+            return
+        }
+
+        val inputNames = callee.inputs.map { it.name }.toSet()
+        val outputNames = callee.outputs.map { it.name }.toSet()
+        val missingArgs = (inputNames - call.args.keys).sorted()
+        val extraArgs = (call.args.keys - inputNames).sorted()
+        val extraOutputs = (call.outputs.keys - outputNames).sorted()
+        if (missingArgs.isEmpty() && extraArgs.isEmpty() && extraOutputs.isEmpty()) {
+            return
+        }
+
+        val details = buildList {
+            if (missingArgs.isNotEmpty()) {
+                add(
+                    "missing input(s): " +
+                            missingArgs.joinToString(", ") { "'$it'" },
+                )
+            }
+            if (extraArgs.isNotEmpty()) {
+                add(
+                    "unknown input(s): " +
+                            extraArgs.joinToString(", ") { "'$it'" },
+                )
+            }
+            if (extraOutputs.isNotEmpty()) {
+                add(
+                    "unknown output(s): " +
+                            extraOutputs.joinToString(", ") { "'$it'" },
+                )
+            }
+        }.joinToString("; ")
+
+        errors += CompileError.InvalidSubroutineCall(
+            subroutineId = call.subroutineId,
+            detail = details,
+            sceneId = sceneId,
+            choiceId = choiceId,
+            callerSubroutineId = callerSubroutineId,
+        )
+    }
+
+    /**
+     * Ф4.7: DFS cycle detection over the subroutine call graph. Top-level
+     * choice calls are not nodes (nothing can call a choice), so only
+     * subroutine → subroutine edges are traversed.
+     */
+    private fun detectSubroutineCycles(
+        subroutines: List<Subroutine>,
+    ): List<CompileError.SubroutineCycle> {
+        val byId = subroutines.associateBy { it.id }
+        val visited = mutableSetOf<String>()
+        val onStack = mutableSetOf<String>()
+        val stack = mutableListOf<String>()
+        val reported = mutableSetOf<Set<String>>()
+        val cycles = mutableListOf<CompileError.SubroutineCycle>()
+
+        fun visit(id: String) {
+            if (id in onStack) {
+                val start = stack.indexOf(id)
+                val cyclePath = stack.subList(start, stack.size).toList() + id
+                if (reported.add(cyclePath.toSet())) {
+                    cycles += CompileError.SubroutineCycle(cyclePath)
+                }
+                return
+            }
+            if (id in visited) return
+            val subroutine = byId[id] ?: return
+            onStack.add(id)
+            stack.add(id)
+            for (step in subroutine.body) {
+                step.call?.let { visit(it.subroutineId) }
+            }
+            stack.removeAt(stack.lastIndex)
+            onStack.remove(id)
+            visited.add(id)
+        }
+
+        subroutines.forEach { visit(it.id) }
+        return cycles
     }
 
     /**
@@ -180,7 +331,11 @@ public object Engine {
      *    (`choice.nextScene`). **Checked before applying effects** so
      *    a missing target scene does not silently apply effects into a
      *    void.
-     * 5. `choice.effects` applied. → [StepResult.Success].
+     * 5. `choice.effects` applied.
+     * 6. Ф4.7: if [com.myapp.adventure.engine.ir.Choice.call] is present,
+     *    the subroutine executes atomically against the state from step 5;
+     *    its outputs are written back to globals. → [StepResult.Success]
+     *    with the **post-call** state and invariants evaluated on it.
      *
      * **Gate and `stepsInScene`.**
      * The engine does not count steps. The reader passes how many steps
@@ -233,9 +388,25 @@ public object Engine {
             ?: return StepResult.Rejected(RejectReason.SceneNotFound(choice.nextScene))
 
         // 5. Apply choice effects (target scene's effects are reader's job).
-        val stateAfterChoice = EffectsApplier.apply(state, choice.effects)
+        var stateAfterChoice = EffectsApplier.apply(state, choice.effects)
 
-        // 6. Ф3.5: evaluate invariants after choice effects. If an invariant
+        // 6. Ф4.7: atomic subroutine call. The call sees the state after
+        //    choice effects and returns the post-call global state. A
+        //    failure here is a structural bug (compile should have caught
+        //    it); surface it as Rejected rather than crashing the reader.
+        choice.call?.let { call ->
+            when (val result = SubroutineExecutor.execute(compiled.adventure, call, stateAfterChoice)) {
+                is SubroutineExecutor.Result.Success -> stateAfterChoice = result.state
+                is SubroutineExecutor.Result.Failure -> return StepResult.Rejected(
+                    RejectReason.SubroutineFailure(
+                        subroutineId = result.subroutineId,
+                        reason = result.reason,
+                    ),
+                )
+            }
+        }
+
+        // 7. Ф3.5: evaluate invariants after choice effects and the call. If an invariant
         //    fired (Death today), it is passed up to the caller, which can
         //    short-circuit to the death screen. If null, no invariant matched —
         //    the caller proceeds to enter the target scene and re-checks after

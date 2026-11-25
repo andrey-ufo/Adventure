@@ -46,10 +46,9 @@ public enum class Severity {
  * Type of a [LintIssue]. One variant per check.
  *
  * **Why sealed and not an enum.** Future checks need per-variant data
- * ([LintKind.UnreachableScene] today; `TypeMismatch(variable)` in Ф2.2,
- * `DeadCondition(condition, reason)` in Ф3.6, `MergeConflict(nodeId)`
- * in Ф4.6).
- * Ф3.5 added [UnreachableInvariant] with a `reason` field, so
+ * ([LintKind.UnreachableScene], [LintKind.DeadCondition] in Ф3.6,
+ * [LintKind.MergeConflict] in Ф4.6). Ф3.5 added
+ * [UnreachableInvariant] with a `reason` field, so
  * "reference to unset flag" and (future) "numeric condition never
  * holds" coexist in one variant.
  * An enum cannot carry that data; a sealed class can grow without
@@ -292,6 +291,55 @@ public sealed class LintKind {
         public val condition: Condition,
         public val reason: String,
     ) : LintKind()
+
+    /**
+     * Ф4.6 (N5): a **merge point declaration** does not match the scene
+     * graph. Detected by [Analyzer.checkMerges].
+     *
+     * **Why a warning, not an error.** The adventure still parses,
+     * compiles and plays; the merge is simply not the convergence the
+     * author described. Only an `ERROR` blocks the reader, and a
+     * mis-declared merge does not break any transition (state transfer
+     * is implicit — see [com.myapp.adventure.engine.ir.Scene.isMerge]).
+     *
+     * **What is checked (Ф4.6).**
+     * - [Reason.NoIncomingBranches] — `merge: true`, but no choice in
+     *   any scene leads to this scene. The merge can never be entered.
+     * - [Reason.SourceDoesNotLeadHere] — a declared `merge_sources`
+     *   entry has no choice pointing at the merge scene.
+     * - [Reason.SourceNotReachable] — a declared source exists and leads
+     *   here, but is not reachable from `start_scene`, so the branch
+     *   combination cannot occur. Only reported when the merge scene
+     *   itself is reachable (otherwise `UnreachableScene` already covers
+     *   the area).
+     *
+     * **Not checked (needs the Ф5 delta model).** State compatibility
+     * ("branch A always sets health = 10, branch B sets health = 20")
+     * requires per-branch deltas; today `PlayerState` is a single
+     * accumulated value.
+     *
+     * @property reason which graph inconsistency was found.
+     * @property sourceSceneId the declared source involved in
+     *   [Reason.SourceDoesNotLeadHere] / [Reason.SourceNotReachable];
+     *   `null` for [Reason.NoIncomingBranches].
+     */
+    public data class MergeConflict(
+        public val reason: Reason,
+        public val sourceSceneId: SceneId? = null,
+    ) : LintKind() {
+
+        /** The exact merge-declaration problem, for UI/tests. */
+        public enum class Reason {
+            /** `merge: true`, but nothing leads to this scene. */
+            NoIncomingBranches,
+
+            /** A declared source has no choice pointing at the merge scene. */
+            SourceDoesNotLeadHere,
+
+            /** A declared source cannot be reached from `start_scene`. */
+            SourceNotReachable,
+        }
+    }
 
     /**
      * A scene is marked

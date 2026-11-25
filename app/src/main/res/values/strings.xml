@@ -204,7 +204,7 @@
     <string name="scene_picker_nothing_found">Ничего не найдено</string>
     <string name="scene_picker_query_hint">Поиск по ID или названию сцены</string>
     <string name="scene_no_id">(без id)</string>
-    <string name="scene_picker_self_row_label">@self — эта же сцена</string>
+    <string name="scene_picker_self_row_label">self — эта же сцена</string>
     <string name="scene_picker_start_typing">Начните вводить ID или название</string>
     <!-- ============================================================ -->
     <!-- MAP (AdventureMapFragment / AdventureMapAdapter)             -->
@@ -305,12 +305,16 @@
     <string name="settings_title">Настройки</string>
     <string name="settings_logging">Включить запись лога в файл</string>
     <string name="settings_health_connect">Синхронизация с Health Connect</string>
-    <string name="settings_font_size_label">Размер шрифта интерфейса:</string>
-    <string name="settings_font_size_px_fmt">%1$d px</string>
-    <string name="settings_font_size_reset">Сбросить размер шрифта до 16 px</string>
-    <string name="settings_font_label">Шрифт интерфейса:</string>
-    <string name="settings_add_font">Добавить</string>
-    <string name="settings_font_sample">Образец текста</string>
+    <string name="settings_fonts_title">Шрифты</string>
+    <string name="settings_font_reader_label">Шрифт текста приключений:</string>
+    <string name="settings_font_interface_label">Шрифт интерфейса:</string>
+    <string name="settings_font_editor_label">Шрифт редактора:</string>
+    <string name="settings_font_size_reset">Сбросить размер шрифта</string>
+    <string name="settings_font_size_content_description_fmt">Размер шрифта: %1$d</string>
+    <string name="settings_font_sample_reader">Так выглядит текст приключения</string>
+    <string name="settings_font_sample_interface">Так выглядит интерфейс приложения</string>
+    <string name="settings_font_sample_editor">Так выглядит интерфейс редактора</string>
+    <string name="settings_add_font">Добавить шрифт</string>
     <string name="settings_font_added_fmt">Шрифт добавлен: %1$s</string>
     <string name="settings_hc_enabled">Health Connect включён</string>
     <string name="settings_hc_permission_denied">Разрешение не выдано — используется датчик телефона</string>
@@ -320,8 +324,6 @@
     <string name="settings_hc_status_off">Выключено — используется датчик телефона (шаги в реальном времени)</string>
     <string name="settings_hc_status_active">Включено — шаги обновляются с задержкой (Health Connect)</string>
     <string name="settings_hc_status_unavailable">Health Connect недоступен — используется датчик телефона</string>
-    <string name="settings_change_font_title">Смена шрифта</string>
-    <string name="settings_change_font_message_fmt">Применить шрифт \"%1$s\" ко всем экранам? Приложение будет перезапущено.</string>
 
     <!-- ============================================================ -->
     <!-- SETUP (first-run)                                            -->
@@ -387,6 +389,14 @@
     <string name="validation_title_ending_scene_with_choices">Конец игры с выборами</string>
     <string name="validation_title_unreachable_invariant">Инвариант не сработает</string>
     <string name="validation_title_dead_condition">Недостижимое условие</string>
+    <string name="validation_title_merge_no_incoming">Слияние без входящих веток</string>
+    <string name="validation_title_merge_source_not_linked">Источник слияния не ведёт в сцену</string>
+    <string name="validation_title_merge_source_unreachable">Недостижимый источник слияния</string>
+    <string name="validation_title_subroutine_signature">Ошибка подпрограммы</string>
+    <string name="validation_title_duplicate_subroutine_id">Дубликат ID подпрограммы</string>
+    <string name="validation_title_missing_subroutine">Подпрограмма не найдена</string>
+    <string name="validation_title_invalid_subroutine_call">Неверный вызов подпрограммы</string>
+    <string name="validation_title_subroutine_cycle">Цикл вызовов подпрограмм</string>
 
     <!-- Summary -->
     <string name="validation_summary_errors_fmt">Ошибок: %1$d</string>
@@ -644,4 +654,45 @@
 
     <string name="library_loading">Загрузка…</string>
     <string name="dialog_new_scene_id_note">ID будет сгенерирован из названия автоматически.</string>
+    <string name="editor_subroutines_button">Подпрограммы</string>
+    <string name="subroutine_list_title">Подпрограммы</string>
+    <string name="subroutine_add">+ Добавить</string>
+    <string name="subroutine_untitled">(без id)</string>
+    <string name="subroutine_empty_hint">Подпрограмм пока нет. Нажмите «Добавить», чтобы создать первую.</string>
+    <string name="subroutine_summary_fmt">Входов: %1$d · выходов: %2$d · шагов: %3$d</string>
+    <string name="subroutine_delete_title">Удалить подпрограмму?</string>
+    <string name="subroutine_delete_message_fmt">Удалить подпрограмму «%1$s»? Вызовы, которые на неё ссылаются, станут ошибкой валидации.</string>
+    <string name="subroutine_editor_title">Подпрограмма</string>
+    <string name="subroutine_editor_title_new">Новая подпрограмма</string>
+    <string name="subroutine_id_label">ID подпрограммы</string>
+    <string name="subroutine_id_hint">например, drink_potion</string>
+    <string name="subroutine_local_scope_hint">Тело видит только входы и выходы; глобальные переменные недоступны.</string>
+    <string name="subroutine_inputs_title">Входы</string>
+    <string name="subroutine_outputs_title">Выходы</string>
+    <string name="subroutine_add_param">+ Параметр</string>
+    <string name="subroutine_no_params">Нет параметров</string>
+    <string name="subroutine_steps_title">Тело</string>
+    <string name="subroutine_add_step">+ Шаг</string>
+    <string name="subroutine_step_title_fmt">Шаг %1$d</string>
+    <string name="subroutine_step_condition_hint">Условие (необязательно)</string>
+    <string name="subroutine_step_effects_title">Эффекты шага</string>
+    <string name="subroutine_step_effects_info">Эффекты применяются при выполнении шага «%1$s».</string>
+    <string name="subroutine_step_effects_fmt">Эффектов: %1$d</string>
+    <string name="subroutine_step_effects_button">Изменить</string>
+    <string name="subroutine_step_call_title">Вызов подпрограммы</string>
+    <string name="subroutine_step_call_fmt">Вызов: %1$s</string>
+    <string name="subroutine_step_no_call">Вызов: —</string>
+    <string name="subroutine_step_call_button">Выбрать</string>
+    <string name="subroutine_choice_label">Подпрограмма:</string>
+    <string name="subroutine_call_dialog_choice_title">Использовать подпрограмму</string>
+    <string name="subroutine_call_no_subroutines">Подпрограмм пока нет. Создайте подпрограмму на экране «Подпрограммы».</string>
+    <string name="subroutine_call_pick">Подпрограмма</string>
+    <string name="subroutine_call_inputs">Входы</string>
+    <string name="subroutine_call_outputs">Выходы</string>
+    <string name="subroutine_call_not_selected">— не выбрано —</string>
+    <string name="subroutine_call_discard">— не сохранять —</string>
+    <string name="subroutine_call_remove">Убрать вызов</string>
+    <string name="subroutine_call_no_scope">Нет переменных в области видимости. Объявите переменные на экране редактора сцен.</string>
+    <string name="subroutine_call_no_targets">Нет выходных параметров в области видимости.</string>
+    <string name="subroutine_call_no_parameters">Без параметров.</string>
 </resources>

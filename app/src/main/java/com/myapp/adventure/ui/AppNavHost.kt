@@ -18,6 +18,7 @@ import com.myapp.adventure.ui.editor.EditorPreviewRequest
 import com.myapp.adventure.ui.editor.EditorRoute
 import com.myapp.adventure.ui.editor.SearchRoute
 import com.myapp.adventure.ui.editor.StoryStatsRoute
+import com.myapp.adventure.ui.editor.SubroutinesRoute
 import com.myapp.adventure.ui.editor.TemplateListScreen
 import com.myapp.adventure.ui.editor.ValidationIssuesRoute
 import com.myapp.adventure.ui.list.AdventureListScreen
@@ -29,6 +30,8 @@ import com.myapp.adventure.ui.reader.ReaderRoute
 import com.myapp.adventure.ui.settings.SettingsScreen
 import com.myapp.adventure.ui.setup.SetupScreen
 import com.myapp.adventure.ui.statistics.StatisticsScreen
+import com.myapp.adventure.ui.theme.FontScopeProvider
+import com.myapp.adventure.utils.FontScope
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -46,6 +49,7 @@ object AppRoutes {
     @Serializable @SerialName("editor") data object Editor
     @Serializable @SerialName("editor_meta") data object EditMeta
     @Serializable @SerialName("editor_templates") data object Templates
+    @Serializable @SerialName("editor_subroutines") data object Subroutines
     @Serializable @SerialName("editor_validation") data object Validation
     @Serializable @SerialName("editor_search") data object Search
     @Serializable @SerialName("editor_stats") data object StoryStats
@@ -117,65 +121,86 @@ fun AppNavHost(
         }
 
         composable<AppRoutes.Settings> {
-            val activity = LocalActivity.current
-            SettingsScreen(onRecreateActivity = { activity?.recreate() })
+            SettingsScreen()
         }
 
         composable<AppRoutes.Editor> {
-            val editorViewModel = activityEditorViewModel()
-            val previewViewModel = activityReaderPreviewViewModel()
-            EditorRoute(
-                viewModel = editorViewModel,
-                onNavigate = { destination ->
-                    when (destination) {
-                        EditorDestination.Menu -> navController.navigate(AppRoutes.Menu)
-                        EditorDestination.Templates -> navController.navigate(AppRoutes.Templates)
-                        EditorDestination.Meta -> navController.navigate(AppRoutes.EditMeta)
-                        EditorDestination.Validation -> navController.navigate(AppRoutes.Validation)
-                        EditorDestination.Search -> navController.navigate(AppRoutes.Search)
-                        EditorDestination.Stats -> navController.navigate(AppRoutes.StoryStats)
-                    }
-                },
-                onPreviewRequest = { request ->
-                    val id = previewViewModel.put(request)
-                    navController.navigate(AppRoutes.Reader(previewId = id))
-                },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                val editorViewModel = activityEditorViewModel()
+                val previewViewModel = activityReaderPreviewViewModel()
+                EditorRoute(
+                    viewModel = editorViewModel,
+                    onNavigate = { destination ->
+                        when (destination) {
+                            EditorDestination.Menu -> navController.navigate(AppRoutes.Menu)
+                            EditorDestination.Templates -> navController.navigate(AppRoutes.Templates)
+                            EditorDestination.Subroutines -> navController.navigate(AppRoutes.Subroutines)
+                            EditorDestination.Meta -> navController.navigate(AppRoutes.EditMeta)
+                            EditorDestination.Validation -> navController.navigate(AppRoutes.Validation)
+                            EditorDestination.Search -> navController.navigate(AppRoutes.Search)
+                            EditorDestination.Stats -> navController.navigate(AppRoutes.StoryStats)
+                        }
+                    },
+                    onPreviewRequest = { request ->
+                        val id = previewViewModel.put(request)
+                        navController.navigate(AppRoutes.Reader(previewId = id))
+                    },
+                )
+            }
         }
 
         composable<AppRoutes.EditMeta> {
-            EditMetaRoute(
-                viewModel = activityEditorViewModel(),
-                onBack = { navController.popBackStack() },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                EditMetaRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<AppRoutes.Templates> {
-            TemplateListScreen(
-                viewModel = activityEditorViewModel(),
-                onBack = { navController.popBackStack() },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                TemplateListScreen(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+
+        composable<AppRoutes.Subroutines> {
+            FontScopeProvider(FontScope.EDITOR) {
+                SubroutinesRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<AppRoutes.Validation> {
-            ValidationIssuesRoute(
-                viewModel = activityEditorViewModel(),
-                onBack = { navController.popBackStack() },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                ValidationIssuesRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<AppRoutes.Search> {
-            SearchRoute(
-                viewModel = activityEditorViewModel(),
-                onBack = { navController.popBackStack() },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                SearchRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<AppRoutes.StoryStats> {
-            StoryStatsRoute(
-                viewModel = activityEditorViewModel(),
-                onBack = { navController.popBackStack() },
-            )
+            FontScopeProvider(FontScope.EDITOR) {
+                StoryStatsRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<AppRoutes.Reader> { entry ->

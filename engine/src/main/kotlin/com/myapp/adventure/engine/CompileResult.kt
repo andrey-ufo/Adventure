@@ -41,12 +41,16 @@ public sealed class CompileResult {
  * A single compile error: a problem that prevents building the runtime
  * indexes.
  *
- * **What is here.** Only [DuplicateSceneId] today. If a future feature
- * makes another index impossible to build (for example, two
- * `ChoiceId`s within the same scene — not the case today: choices are
- * looked up by id from the scene's own list, no map is built), add a new
- * variant. Keep this type small: it is **not** a general-purpose
- * validation error list. That is `Analyzer`'s job (Ф1.6).
+ * **What is here.** Scene/reference errors that make the runtime indexes
+ * or transitions impossible: [DuplicateSceneId], [MissingStartScene],
+ * [MissingNextScene], [MissingMergeSource] (Ф4.5), and the Ф4.7
+ * subroutine set ([DuplicateSubroutineId], [MissingSubroutine],
+ * [InvalidSubroutineCall], [SubroutineCycle]). If a future feature makes
+ * another index impossible to build (for example, two `ChoiceId`s within
+ * the same scene — not the case today: choices are looked up by id from
+ * the scene's own list, no map is built), add a new variant. Keep this
+ * type small: it is **not** a general-purpose validation error list. That
+ * is `Analyzer`'s job (Ф1.6).
  */
 public sealed class CompileError {
 
@@ -144,5 +148,88 @@ public sealed class CompileError {
         override val message: String =
             "Scene '${sceneId.value}' declares merge source " +
                     "'${mergeSourceId.value}', which does not exist in any chapter."
+    }
+
+    /**
+     * Ф4.7: two subroutines share the same id. The call site cannot resolve
+     * which body to execute, so this is a structural error. The parser
+     * already rejects duplicate ids in JSON; this variant covers
+     * programmatically built IR and keeps the compiler defensive.
+     */
+    public data class DuplicateSubroutineId(
+        public val subroutineId: String,
+    ) : CompileError() {
+        override val message: String =
+            "Duplicate subroutine id '$subroutineId'. Rename one of them."
+    }
+
+    /**
+     * Ф4.7: a `SubroutineCall` references an id with no matching
+     * [com.myapp.adventure.engine.ir.Subroutine].
+     *
+     * The caller is either a choice (`sceneId` + `choiceId` set) or a
+     * nested step inside another subroutine (`callerSubroutineId` set).
+     */
+    public data class MissingSubroutine(
+        public val subroutineId: String,
+        public val sceneId: SceneId? = null,
+        public val choiceId: ChoiceId? = null,
+        public val callerSubroutineId: String? = null,
+    ) : CompileError() {
+        override val message: String =
+            "Subroutine '$subroutineId' does not exist " +
+                    callerLabel(sceneId, choiceId, callerSubroutineId) + "."
+    }
+
+    /**
+     * Ф4.7: a call does not match the callee's declared signature — a
+     * missing input argument, an unknown argument/output name, or an
+     * unknown output id. Type mismatches are [com.myapp.adventure.engine.ir.types.TypeError]s,
+     * not compile errors.
+     *
+     * @property detail human-readable list of the exact mismatches.
+     */
+    public data class InvalidSubroutineCall(
+        public val subroutineId: String,
+        public val detail: String,
+        public val sceneId: SceneId? = null,
+        public val choiceId: ChoiceId? = null,
+        public val callerSubroutineId: String? = null,
+    ) : CompileError() {
+        override val message: String =
+            "Invalid call to subroutine '$subroutineId' " +
+                    callerLabel(sceneId, choiceId, callerSubroutineId) +
+                    ": $detail."
+    }
+
+    /**
+     * Ф4.7: subroutine calls form a cycle (`a -> b -> a`, including a
+     * self-call). N6.base does not allow recursion; a cycle would make
+     * `Engine.step` loop forever. The analyzer/compiler rejects the file
+     * before the reader can open it.
+     *
+     * @property path ids along the cycle, ending with the repeated id
+     *   (e.g. `["a", "b", "a"]`).
+     */
+    public data class SubroutineCycle(
+        public val path: List<String>,
+    ) : CompileError() {
+        override val message: String =
+            "Subroutine call cycle: " + path.joinToString(" -> ") +
+                    ". Recursion is not allowed in N6.base."
+    }
+
+    private companion object {
+        fun callerLabel(
+            sceneId: SceneId?,
+            choiceId: ChoiceId?,
+            callerSubroutineId: String?,
+        ): String = when {
+            sceneId != null && choiceId != null ->
+                "in scene '${sceneId.value}', choice '${choiceId.value}'"
+            callerSubroutineId != null ->
+                "inside subroutine '$callerSubroutineId'"
+            else -> "at an unknown call site"
+        }
     }
 }

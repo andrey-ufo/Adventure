@@ -36,12 +36,16 @@ class AnalyzerTest {
         choices: List<Choice> = emptyList(),
         effects: List<Effect> = emptyList(),
         isEnding: Boolean = false,
+        isMerge: Boolean = false,
+        mergeSources: List<SceneId> = emptyList(),
     ): Scene = Scene(
         id = SceneId(id),
         text = "text of $id",
         choices = choices,
         effects = effects,
         isEnding = isEnding,
+        isMerge = isMerge,
+        mergeSources = mergeSources,
     )
 
     private fun choice(
@@ -1012,6 +1016,116 @@ class AnalyzerTest {
         val issue = Analyzer.deadConditions(compiled).single()
         assertTrue(issue.kind is LintKind.DeadCondition)
         assertEquals(null, issue.sceneId)
+    }
+
+    // ---------- Ф4.6: merge conflicts ----------
+
+    @Test
+    fun `merge conflict - merge point with no incoming branches`() {
+        val m = scene("m", isMerge = true, isEnding = true)
+        val compiled = compile(adventure("m", chapter("ch", m)))
+
+        val issue = Analyzer.checkMerges(compiled).single()
+        assertEquals(SceneId("m"), issue.sceneId)
+        val kind = assertIs<LintKind.MergeConflict>(issue.kind)
+        assertEquals(LintKind.MergeConflict.Reason.NoIncomingBranches, kind.reason)
+        assertEquals(null, kind.sourceSceneId)
+        assertEquals(Severity.WARNING, issue.severity)
+        assertTrue(issue.message.contains("no choice"), issue.message)
+    }
+
+    @Test
+    fun `merge conflict - declared source does not lead here`() {
+        // Both sources are reachable, but only 'left' points at 'm'.
+        val left = scene("left", choices = listOf(choice("to_m", "m")))
+        val right = scene("right", isEnding = true)
+        val start = scene(
+            "start",
+            choices = listOf(choice("go_left", "left"), choice("go_right", "right")),
+        )
+        val m = scene(
+            "m",
+            isEnding = true,
+            isMerge = true,
+            mergeSources = listOf(SceneId("left"), SceneId("right")),
+        )
+        val compiled = compile(adventure("start", chapter("ch", start, left, right, m)))
+
+        val issue = Analyzer.checkMerges(compiled).single()
+        val kind = assertIs<LintKind.MergeConflict>(issue.kind)
+        assertEquals(LintKind.MergeConflict.Reason.SourceDoesNotLeadHere, kind.reason)
+        assertEquals(SceneId("right"), kind.sourceSceneId)
+        assertEquals(SceneId("m"), issue.sceneId)
+    }
+
+    @Test
+    fun `merge conflict - declared source is not reachable`() {
+        val start = scene("start", choices = listOf(choice("to_m", "m")))
+        val island = scene("island", choices = listOf(choice("to_m", "m")))
+        val m = scene(
+            "m",
+            isEnding = true,
+            isMerge = true,
+            mergeSources = listOf(SceneId("start"), SceneId("island")),
+        )
+        val compiled = compile(adventure("start", chapter("ch", start, island, m)))
+
+        val issue = Analyzer.checkMerges(compiled).single()
+        val kind = assertIs<LintKind.MergeConflict>(issue.kind)
+        assertEquals(LintKind.MergeConflict.Reason.SourceNotReachable, kind.reason)
+        assertEquals(SceneId("island"), kind.sourceSceneId)
+        assertEquals(SceneId("m"), issue.sceneId)
+        assertTrue(issue.message.contains("island"), issue.message)
+    }
+
+    @Test
+    fun `merge conflict - source neither leads here nor reachable is reported once`() {
+        // 'island' has no edge to 'm' and cannot be reached from 'start'.
+        // Only the actionable "does not lead here" warning is emitted;
+        // the reachability warning would be redundant noise.
+        val start = scene("start", choices = listOf(choice("to_m", "m")))
+        val island = scene("island", choices = listOf(choice("back", "start")))
+        val m = scene(
+            "m",
+            isEnding = true,
+            isMerge = true,
+            mergeSources = listOf(SceneId("start"), SceneId("island")),
+        )
+        val compiled = compile(adventure("start", chapter("ch", start, island, m)))
+
+        val issue = Analyzer.checkMerges(compiled).single()
+        val kind = assertIs<LintKind.MergeConflict>(issue.kind)
+        assertEquals(LintKind.MergeConflict.Reason.SourceDoesNotLeadHere, kind.reason)
+        assertEquals(SceneId("island"), kind.sourceSceneId)
+    }
+
+    @Test
+    fun `merge without conflicts - all sources lead here and are reachable`() {
+        val start = scene(
+            "start",
+            choices = listOf(choice("go_left", "left"), choice("go_right", "right")),
+        )
+        val left = scene("left", choices = listOf(choice("to_m", "m")))
+        val right = scene("right", choices = listOf(choice("to_m", "m")))
+        val m = scene(
+            "m",
+            isEnding = true,
+            isMerge = true,
+            mergeSources = listOf(SceneId("left"), SceneId("right")),
+        )
+        val compiled = compile(adventure("start", chapter("ch", start, left, right, m)))
+
+        assertEquals(emptyList(), Analyzer.checkMerges(compiled))
+        assertTrue(Analyzer.lint(compiled).none { it.kind is LintKind.MergeConflict })
+    }
+
+    @Test
+    fun `lint includes merge conflicts`() {
+        val m = scene("m", isMerge = true, isEnding = true)
+        val compiled = compile(adventure("m", chapter("ch", m)))
+
+        val mergeIssues = Analyzer.lint(compiled).filter { it.kind is LintKind.MergeConflict }
+        assertEquals(1, mergeIssues.size)
     }
 
     @Test

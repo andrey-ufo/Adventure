@@ -32,6 +32,11 @@ import kotlinx.serialization.Serializable
  *   explicitly). The type of each variable determines its default value
  *   (see [VarType] KDoc); an entry in [InitialState] overrides the
  *   default.
+ * @property subroutines Ф4.7: reusable atomic procedures. Empty means the
+ *   adventure has no calls. A [Choice] may invoke one via
+ *   [Choice.call]; a subroutine body may call another via
+ *   [SubroutineStep.call]. See [Subroutine] KDoc for the local-frame
+ *   model, input/output parameters and the no-recursion rule.
  * @property invariants global rules evaluated after every step. When
  *   an invariant's condition holds, its outcome fires (Ф3.5). Empty
  *   means "no explicit invariants" — the runtime falls back to the
@@ -61,6 +66,7 @@ public data class Adventure(
     public val variables: Map<String, VarDecl> = emptyMap(),
     @SerialName("choice_templates")
     public val choiceTemplates: List<ChoiceTemplate> = emptyList(),
+    public val subroutines: List<Subroutine> = emptyList(),
     public val invariants: List<Invariant> = emptyList(),
     public val tags: List<TagDefinition> = emptyList(),
     @SerialName("initial_state")
@@ -142,6 +148,12 @@ public data class Adventure(
          *   map (Ф4.10); runtime is a no-op (decision C1 in Ф4.5).
          *   **No version bump**: same reasoning as `variables` (Ф2.8),
          *   `invariants` (Ф3.5), `choice_templates` (Ф4.1).
+         * - Still `5` (Ф4.7) — `Adventure.subroutines: List<Subroutine>`
+         *   and `Choice.call: SubroutineCall?` added. Both optional,
+         *   empty/null defaults, identity migration. A subroutine is an
+         *   atomic local-frame procedure; see `Subroutine` KDoc.
+         *   **No version bump**: same reasoning as the optional fields
+         *   above; files without subroutines are unchanged.
          */
         public const val CURRENT_VERSION: Int = 5
     }

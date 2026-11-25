@@ -41,6 +41,7 @@ fun EditMetaRoute(
                 viewModel.description,
                 viewModel.variables,
                 viewModel.templates,
+                viewModel.subroutines,
                 viewModel.initialStateTags,
                 viewModel.scenes,
             )

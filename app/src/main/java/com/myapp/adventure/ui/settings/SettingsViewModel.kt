@@ -19,6 +19,8 @@ import com.myapp.adventure.service.StepCounterService
 import com.myapp.adventure.step.HealthConnectStepSource
 import com.myapp.adventure.step.StepSourceManager
 import com.myapp.adventure.utils.FontManager
+import com.myapp.adventure.utils.FontScope
+import com.myapp.adventure.utils.FontSettings
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ThemeManager
 import kotlinx.coroutines.channels.Channel
@@ -30,23 +32,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Snapshot of the Settings screen. [pendingFontConfirmation] is non-null
- * only when the user picked a different font and the confirmation dialog
- * should be shown — it is UI state, but modeling it as state (rather than
- * a one-shot event) makes it survive rotation naturally.
+ * Snapshot of the Settings screen. Font changes are applied immediately
+ * via [FontManager]; no confirmation dialog or Activity recreation is
+ * needed because the Compose theme observes the font state.
  */
 data class SettingsUiState(
     val themeMode: ThemeManager.Mode = ThemeManager.Mode.SYSTEM,
-    val selectedFont: String = "",
+    val fontSettings: FontSettings = FontSettings.Default,
     val availableFonts: List<String> = emptyList(),
-    val fontSizePx: Int = FontManager.DEFAULT_FONT_SIZE_PX,
     val loggingEnabled: Boolean = false,
     val healthConnectAvailable: Boolean = false,
     val healthConnectEnabled: Boolean = false,
     val healthConnectActive: Boolean = false,
     val notificationGranted: Boolean = false,
     val activityGranted: Boolean = false,
-    val pendingFontConfirmation: String? = null,
 )
 
 sealed interface SettingsEvent {
@@ -55,7 +54,6 @@ sealed interface SettingsEvent {
     data object RequestNotificationPermission : SettingsEvent
     data object RequestActivityPermission : SettingsEvent
     data object OpenSystemSettings : SettingsEvent
-    data object RecreateActivity : SettingsEvent
 }
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -80,9 +78,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update {
             it.copy(
                 themeMode = ThemeManager.getMode(ctx),
-                selectedFont = FontManager.getSelectedFont(ctx),
+                fontSettings = FontManager.getSettings(ctx),
                 availableFonts = FontManager.getAvailableFonts(ctx),
-                fontSizePx = FontManager.getFontSizePx(ctx),
                 loggingEnabled = app.getSharedPreferences("adventure_prefs", 0)
                     .getBoolean("logging_enabled", false),
                 healthConnectAvailable = hcAvailable,
@@ -122,38 +119,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ----- Font size -----
+    // ----- Fonts -----
 
-    fun setFontSizePx(sizePx: Int) {
+    fun setFontName(scope: FontScope, fontName: String) {
         val app = getApplication<Application>()
-        val clamped = sizePx.coerceIn(
-            FontManager.MIN_FONT_SIZE_PX,
-            FontManager.MAX_FONT_SIZE_PX,
-        )
-        if (clamped != FontManager.getFontSizePx(app)) {
-            FontManager.setFontSizePx(app, clamped)
-            _uiState.update { it.copy(fontSizePx = clamped) }
+        if (fontName != FontManager.getSelectedFont(app, scope)) {
+            FontManager.setSelectedFont(app, scope, fontName)
+            _uiState.update { it.copy(fontSettings = FontManager.getSettings(app)) }
         }
     }
 
-    // ----- Font selection (confirmation dialog) -----
-
-    fun requestFontChange(fontName: String) {
-        if (fontName != _uiState.value.selectedFont) {
-            _uiState.update { it.copy(pendingFontConfirmation = fontName) }
-        }
-    }
-
-    fun confirmFontChange() {
-        val fontName = _uiState.value.pendingFontConfirmation ?: return
+    fun setFontSize(scope: FontScope, sizePx: Int) {
         val app = getApplication<Application>()
-        FontManager.setSelectedFont(app, fontName)
-        _uiState.update { it.copy(selectedFont = fontName, pendingFontConfirmation = null) }
-        viewModelScope.launch { _events.send(SettingsEvent.RecreateActivity) }
-    }
-
-    fun cancelFontChange() {
-        _uiState.update { it.copy(pendingFontConfirmation = null) }
+        val clamped = FontSettings.clamp(sizePx)
+        if (clamped != FontManager.getFontSizePx(app, scope)) {
+            FontManager.setFontSizePx(app, scope, clamped)
+            _uiState.update { it.copy(fontSettings = FontManager.getSettings(app)) }
+        }
     }
 
     // ----- Font adding -----

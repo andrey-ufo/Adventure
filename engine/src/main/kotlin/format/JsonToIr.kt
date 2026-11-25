@@ -16,12 +16,18 @@ import com.myapp.adventure.engine.ir.TagDefinition
 import com.myapp.adventure.engine.ir.Gate
 import com.myapp.adventure.engine.format.dto.ChoiceTemplateDto
 import com.myapp.adventure.engine.format.dto.InvariantDto
+import com.myapp.adventure.engine.format.dto.SubroutineCallDto
+import com.myapp.adventure.engine.format.dto.SubroutineDto
+import com.myapp.adventure.engine.format.dto.SubroutineStepDto
 import com.myapp.adventure.engine.format.dto.VarDeclDto
 import com.myapp.adventure.engine.format.dto.VariableDto
 import com.myapp.adventure.engine.ir.ChoiceTemplate
 import com.myapp.adventure.engine.ir.Condition
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.ir.Subroutine
+import com.myapp.adventure.engine.ir.SubroutineCall
+import com.myapp.adventure.engine.ir.SubroutineStep
 import com.myapp.adventure.engine.ir.types.VarDecl
 import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ConditionParser
@@ -220,6 +226,19 @@ public object JsonToIr {
                 path = "choice_templates",
             )
         }
+        val subroutines = dto.subroutines.mapIndexed { i, s ->
+            buildSubroutine(s, "subroutines[$i]", errors)
+        }
+        subroutines
+            .groupBy { it.id }
+            .filter { it.value.size > 1 }
+            .keys
+            .forEach { id ->
+                errors += ParseError.Structure(
+                    message = "Duplicate subroutine id '$id'",
+                    path = "subroutines",
+                )
+            }
         return Adventure(
             version = dto.version ?: Adventure.CURRENT_VERSION,
             title = dto.title,
@@ -229,6 +248,7 @@ public object JsonToIr {
                 VarDecl(name, vDto.toVarType())
             },
             choiceTemplates = choiceTemplates,
+            subroutines = subroutines,
             invariants = dto.invariants.mapIndexedNotNull { index, invDto ->
                 buildInvariant(invDto, index, errors)
             },
@@ -374,6 +394,7 @@ public object JsonToIr {
             nextScene = SceneId(dto.nextScene),
             condition = condition,
             effects = effects,
+            call = dto.call?.let { buildSubroutineCall(it, "$path.call", errors) },
         )
     }
 
@@ -574,6 +595,148 @@ public object JsonToIr {
             availabilityCondition = availabilityCondition,
             effects = effects,
             nextScene = SceneId(dto.nextScene),
+        )
+    }
+
+    /**
+     * Ф4.7: converts a [SubroutineDto] to the IR [Subroutine].
+     *
+     * **Structural validation (parser layer):**
+     * - blank `id`;
+     * - blank parameter names, duplicate names within `inputs` or within
+     *   `outputs`;
+     * - the same name in `inputs` and `outputs` with different types
+     *   (in-out parameters must agree);
+     * - unparseable step conditions;
+     * - blank call ids / blank argument names / blank source-target names.
+     *
+     * Cross-references (unknown subroutine id, missing/extra arguments,
+     * cycles) are `CompileError`s, not parse errors — same layer as
+     * `next_scene` references: the parser does not know the full subroutine
+     * table while building one choice.
+     */
+    private fun buildSubroutine(
+        dto: SubroutineDto,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): Subroutine {
+        if (dto.id.isBlank()) {
+            errors += ParseError.Structure(
+                message = "Subroutine id is blank",
+                path = path,
+            )
+        }
+        val inputs = buildVarDeclList(dto.inputs, "$path.inputs", errors)
+        val outputs = buildVarDeclList(dto.outputs, "$path.outputs", errors)
+        val inputsByName = inputs.associateBy { it.name }
+        for (output in outputs) {
+            val input = inputsByName[output.name] ?: continue
+            if (input.type != output.type) {
+                errors += ParseError.Structure(
+                    message = "Parameter '${output.name}' is declared with " +
+                            "different types in inputs and outputs",
+                    path = "$path.outputs",
+                )
+            }
+        }
+        val body = dto.body.mapIndexed { i, step ->
+            buildSubroutineStep(step, "$path.body[$i]", errors)
+        }
+        return Subroutine(
+            id = dto.id,
+            inputs = inputs,
+            outputs = outputs,
+            body = body,
+        )
+    }
+
+    private fun buildVarDeclList(
+        dtos: List<VarDeclDto>,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): List<VarDecl> {
+        val result = dtos.mapIndexed { i, p ->
+            if (p.name.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Parameter name is blank",
+                    path = "$path[$i]",
+                )
+            }
+            VarDecl(name = p.name, type = p.toVarType())
+        }
+        result
+            .groupBy { it.name }
+            .filter { it.value.size > 1 }
+            .keys
+            .forEach { name ->
+                errors += ParseError.Structure(
+                    message = "Duplicate parameter name '$name'",
+                    path = path,
+                )
+            }
+        return result
+    }
+
+    private fun buildSubroutineStep(
+        dto: SubroutineStepDto,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): SubroutineStep {
+        val condition = dto.condition?.let {
+            parseCondition(it, "$path.condition", errors)
+        }
+        val effects = buildEffects(dto.setFlags, dto.removeFlags, dto.modifyStats)
+        val call = dto.call?.let { buildSubroutineCall(it, "$path.call", errors) }
+        return SubroutineStep(
+            condition = condition,
+            effects = effects,
+            call = call,
+        )
+    }
+
+    private fun buildSubroutineCall(
+        dto: SubroutineCallDto,
+        path: String,
+        errors: MutableList<ParseError>,
+    ): SubroutineCall {
+        if (dto.subroutineId.isBlank()) {
+            errors += ParseError.Structure(
+                message = "Subroutine call id is blank",
+                path = path,
+            )
+        }
+        dto.args.forEach { (parameter, source) ->
+            if (parameter.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Subroutine argument name is blank",
+                    path = "$path.args",
+                )
+            }
+            if (source.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Subroutine argument source is blank for '$parameter'",
+                    path = "$path.args[$parameter]",
+                )
+            }
+        }
+        dto.outputs.forEach { (parameter, target) ->
+            if (parameter.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Subroutine output name is blank",
+                    path = "$path.outputs",
+                )
+            }
+            if (target.isBlank()) {
+                errors += ParseError.Structure(
+                    message = "Subroutine output target is blank for '$parameter'",
+                    path = "$path.outputs[$parameter]",
+                )
+            }
+        }
+        return SubroutineCall(
+            subroutineId = dto.subroutineId,
+            args = dto.args,
+            outputs = dto.outputs,
         )
     }
 

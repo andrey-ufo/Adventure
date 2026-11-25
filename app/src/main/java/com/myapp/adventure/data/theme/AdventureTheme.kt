@@ -5,6 +5,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,17 +29,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.data.theme.AppThemeConfig
 import com.myapp.adventure.data.theme.BuiltInThemes
 import com.myapp.adventure.utils.FontManager
+import com.myapp.adventure.utils.FontScope
+import com.myapp.adventure.utils.FontSettings
 import com.myapp.adventure.utils.ThemeManager
 
 /**
  * Root theme for all Compose screens. Reads the current [AppThemeConfig]
- * from [ThemeManager] and the selected font from [FontManager], then
- * applies them via [MaterialTheme].
+ * from [ThemeManager] and the three font scopes from [FontManager], then
+ * applies the interface scope via [MaterialTheme].
  *
- * Font scaling: the user's chosen scale (`FontManager.getFontScale`,
- * 0.85–1.3) is multiplied into `LocalDensity.fontScale`, mirroring what
- * Android does with SP values in the View world. DP values (padding,
- * corner radii) are not affected — same as on View screens.
+ * Font size is expressed as a base size in SP and is multiplied into
+ * `LocalDensity.fontScale`, mirroring what Android does with SP values.
+ * DP values (padding, corner radii) are not affected.
+ *
+ * The reader text and editor override the interface scope through
+ * [FontScopeProvider]. That provider resets the scale from
+ * [LocalAdventureBaseDensity], so a large interface font never leaks into
+ * the reader or editor.
  *
  * When [ThemeManager] is not initialized (previews, early composition),
  * `currentThemeSync()` returns [BuiltInThemes.DEFAULT].
@@ -55,25 +62,31 @@ fun AdventureTheme(
     val extendedColors = remember(config, isDark) { config.toExtendedColors(isDark) }
     val shapes = remember(config) { config.shapes.toShapes() }
 
-    val fontFamily = remember { FontManager.getFontFamily(context) }
-    val typography = remember(fontFamily) { Typography().withFontFamily(fontFamily) }
+    val fontSettings by FontManager.settings.collectAsStateWithLifecycle()
+    val interfaceFontFamily = remember(fontSettings.ui.fontName) {
+        FontManager.getFontFamily(context, fontSettings.ui.fontName)
+    }
+    val typography = remember(interfaceFontFamily) {
+        Typography().withFontFamily(interfaceFontFamily)
+    }
 
-    // Scale SP values by the user's chosen font size, like the View world does.
-    // DP values remain unaffected because LocalDensity.density is unchanged.
-    // Subscribing to the flow gives an instant preview while the slider moves,
-    // without recreating the Activity.
+    // Scale SP values by the user's chosen interface size. DP values remain
+    // unaffected because LocalDensity.density is unchanged. Subscribing to
+    // the flow gives an instant preview without recreating the Activity.
     val baseDensity = LocalDensity.current
-    val initialFontSizePx = remember { FontManager.getFontSizePx(context) }
-    val observedFontSizePx by FontManager.fontSizePx.collectAsStateWithLifecycle()
-    val fontSizePx = observedFontSizePx ?: initialFontSizePx
-    val userFontScale = fontSizePx / FontManager.DEFAULT_FONT_SIZE_PX.toFloat() *
-            config.typography.baseScale
-    val scaledDensity = remember(baseDensity, userFontScale) {
-        Density(baseDensity.density, baseDensity.fontScale * userFontScale)
+    val interfaceScale = fontSettings.ui.sizePx /
+            FontManager.DEFAULT_FONT_SIZE_PX.toFloat() * config.typography.baseScale
+    val scaledDensity = remember(baseDensity, interfaceScale) {
+        Density(baseDensity.density, baseDensity.fontScale * interfaceScale)
     }
 
     CompositionLocalProvider(
         LocalDensity provides scaledDensity,
+        // Bare `Text` calls have no explicit style; give them the interface
+        // font as well, not only the styles from `MaterialTheme.typography`.
+        LocalTextStyle provides typography.bodyMedium,
+        LocalAdventureBaseDensity provides baseDensity,
+        LocalAdventureFontSettings provides fontSettings,
         LocalAdventureThemeConfig provides config,
         LocalAdventureExtendedColors provides extendedColors,
     ) {
@@ -81,6 +94,48 @@ fun AdventureTheme(
             colorScheme = colorScheme,
             shapes = shapes,
             typography = typography,
+            content = content,
+        )
+    }
+}
+
+/**
+ * Applies one of the non-interface font scopes to its subtree.
+ *
+ * The density is rebuilt from [LocalAdventureBaseDensity] (the system
+ * density captured by [AdventureTheme]) rather than from the current
+ * density. This is what makes reader/editor sizes independent from the
+ * interface size when nested inside the root theme.
+ */
+@Composable
+fun FontScopeProvider(
+    scope: FontScope,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val settings = LocalAdventureFontSettings.current
+    val scopeSettings = settings[scope]
+    val fontFamily = remember(scopeSettings.fontName) {
+        FontManager.getFontFamily(context, scopeSettings.fontName)
+    }
+    val baseDensity = LocalAdventureBaseDensity.current ?: LocalDensity.current
+    val config = LocalAdventureThemeConfig.current
+    val scale = scopeSettings.sizePx /
+            FontManager.DEFAULT_FONT_SIZE_PX.toFloat() * config.typography.baseScale
+    val density = remember(baseDensity, scale) {
+        Density(baseDensity.density, baseDensity.fontScale * scale)
+    }
+    val baseTypography = MaterialTheme.typography
+    val scopedTypography = remember(baseTypography, fontFamily) {
+        baseTypography.withFontFamily(fontFamily)
+    }
+
+    CompositionLocalProvider(
+        LocalDensity provides density,
+        LocalTextStyle provides scopedTypography.bodyMedium,
+    ) {
+        MaterialTheme(
+            typography = scopedTypography,
             content = content,
         )
     }
@@ -118,6 +173,15 @@ data class AdventureExtendedColors(
     val statusInfo: Color,
     val statusNeutral: Color,
 )
+
+/**
+ * System density before any user font scaling. [FontScopeProvider] uses it
+ * to build independent reader/editor scales.
+ */
+val LocalAdventureBaseDensity = staticCompositionLocalOf<Density?> { null }
+
+/** Current snapshot of all three font scopes, published by [AdventureTheme]. */
+val LocalAdventureFontSettings = staticCompositionLocalOf { FontSettings.Default }
 
 val LocalAdventureThemeConfig = staticCompositionLocalOf<AppThemeConfig> {
     BuiltInThemes.DEFAULT

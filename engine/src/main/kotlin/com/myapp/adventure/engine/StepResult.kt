@@ -128,6 +128,22 @@ public sealed class RejectReason {
     ) : RejectReason()
 
     /**
+     * Ф4.7: an atomic subroutine call could not be executed — unknown
+     * callee, missing argument, unsupported parameter type, or nesting
+     * deeper than the safety limit.
+     *
+     * **Defensive.** `Engine.compile` rejects unknown ids, signature
+     * mismatches and cycles before the reader can open the file; this
+     * variant covers hand-built `CompiledAdventure`s and corrupted IR. It
+     * is a structural bug, not a "disabled choice": log it, do not render
+     * it as a player-facing reason.
+     */
+    public data class SubroutineFailure(
+        public val subroutineId: String,
+        public val reason: String,
+    ) : RejectReason()
+
+    /**
      * The choice exists but is blocked by one or more conditions.
      *
      * **Invariant:** [blockers] is never empty. `Engine.step` returns

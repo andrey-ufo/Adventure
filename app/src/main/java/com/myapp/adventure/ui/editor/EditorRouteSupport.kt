@@ -80,6 +80,8 @@ internal fun applyDraft(
     viewModel.variables.addAll(draft.variables.map { it.copy() })
     viewModel.templates.clear()
     viewModel.templates.addAll(draft.templates.map { it.deepCopy() })
+    viewModel.subroutines.clear()
+    viewModel.subroutines.addAll(draft.subroutines.orEmpty().map { it.deepCopy() })
     viewModel.initialStateTags.clear()
     viewModel.initialStateTags.addAll(draft.initialStateTags.map { it.copy() })
     viewModel.scenes.clear()
@@ -108,6 +110,7 @@ internal fun saveDraftImmediate(
         viewModel.description,
         viewModel.variables,
         viewModel.templates,
+        viewModel.subroutines,
         viewModel.initialStateTags,
         viewModel.scenes,
     )
@@ -132,6 +135,7 @@ internal fun saveDraftSilently(
         viewModel.description,
         viewModel.variables,
         viewModel.templates,
+        viewModel.subroutines,
         viewModel.initialStateTags,
         viewModel.scenes,
     )
@@ -170,6 +174,11 @@ internal fun loadAdventureFromUri(
         viewModel.templates.clear()
         adventure.choiceTemplates?.forEach { dto ->
             viewModel.templates.add(viewModel.editorTemplateFromDto(dto))
+        }
+
+        viewModel.subroutines.clear()
+        adventure.subroutines?.forEach { dto ->
+            viewModel.subroutines.add(viewModel.editorSubroutineFromDto(dto))
         }
         val typesMissing = viewModel.variables.isEmpty()
 
@@ -240,6 +249,13 @@ internal fun loadAdventureFromUri(
                             tags = extractChoiceTags(choice, tagDefs),
                             templateUid = choice.templateRef?.templateId,
                             templateArgs = choice.templateRef?.args ?: emptyMap(),
+                            subroutineCall = choice.call?.let { call ->
+                                com.myapp.adventure.data.EditorSubroutineCall(
+                                    subroutineId = call.subroutineId,
+                                    args = call.args ?: emptyMap(),
+                                    outputs = call.outputs ?: emptyMap(),
+                                )
+                            },
                         )
                     }?.toMutableList() ?: mutableListOf()
                 )

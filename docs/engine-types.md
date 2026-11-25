@@ -139,9 +139,13 @@ open the file, the editor shows the errors in the validation dialog.
 | `InRangeOnNonNumeric` | `X in a..b` where `X` is not numeric | (reserved for Ф3.2) | Use `has_X` or a `Compare` |
 | `InitialFlagOnNonBool` | A non-`Bool` name in `initial_state.flags` | `"flags": ["health"]` | Move to `initial_state.stats` |
 | `InitialStatOnNonNumeric` | A `Bool` / `ItemList` name in `initial_state.stats` | `"stats": {"has_key": 1}` | Move to `initial_state.flags` |
+| `InSubroutine` | Wrapper around an error inside a subroutine body (Ф4.7); `cause` is the original `TypeError` | body uses `ghost` but the frame declares only `health` | Pass the value as an input or fix the local name |
+| `InvalidSubroutineSignature` | Duplicate/in-out mismatched params, `ItemList` param, input-only write, or a call arg/output type mismatch (Ф4.7) | `outputs` says `health: Bool`, `inputs` says `health: IntMin` | Make the local types agree; write only to outputs |
 
 Every error is scoped to a scene (`sceneId`) except `InitialState` ones
-which have `sceneId == null` and appear first in the sorted output.
+and subroutine-body/call errors that have no scene (`sceneId == null`);
+those appear first in the sorted output. `InSubroutine` keeps the
+`cause` for the editor title mapping.
 
 ### Error ordering
 
