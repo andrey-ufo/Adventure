@@ -841,6 +841,26 @@ class JsonToIrTest {
         assertEquals(listOf(SceneId("s1"), SceneId("s2")), m.mergeSources)
     }
 
+    // ---------- Ф4.10: choice visibility + template_ref ----------
+
+    @Test
+    fun `choice visibility condition and template_ref parse`() {
+        val json = """
+            {"title":"T","start_scene":"s1","chapters":[{"id":"c1","scenes":[
+              {"id":"s1","text":"Hi","choices":[
+                {"text":"Hidden","next_scene":"s1",
+                 "visibility_condition":"false",
+                 "template_ref":{"template_id":"greet","args":{"name":"hero"}}}
+              ]}
+            ]}]}
+        """.trimIndent()
+        val choice = success(json).chapters[0].scenes[0].choices.single()
+
+        assertEquals(Condition.Literal(false), choice.visibilityCondition)
+        assertEquals("greet", choice.templateRef?.templateId)
+        assertEquals(mapOf("name" to "hero"), choice.templateRef?.args)
+    }
+
     // ---------- Ф4.7: subroutines ----------
 
     @Test

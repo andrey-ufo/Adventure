@@ -9,5 +9,7 @@ data class EditorDraft(
     val subroutines: List<EditorSubroutine> = emptyList(),
     val initialStateTags: List<EditorTag> = emptyList(),
     val scenes: List<EditorScene> = emptyList(),
+    /** Ф4.13: the one-scene editor restores the last worked-on scene. */
+    val activeSceneUid: String? = null,
     val savedAt: Long = System.currentTimeMillis(),
 )

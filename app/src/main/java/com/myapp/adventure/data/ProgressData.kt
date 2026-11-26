@@ -1,7 +1,28 @@
 package com.myapp.adventure.data
 
 data class ProgressData(
+    /**
+     * Ф5.3 (S6): on-disk schema version.
+     *
+     * `0` means "legacy v0, field absent in JSON" — `MigrationRegistry`
+     * upgrades it to [com.myapp.adventure.utils.ProgressMigration.CURRENT_VERSION]
+     * on read. New writes set the current version explicitly (see
+     * `AdventureReaderViewModel.saveProgress` / `ProgressManager`).
+     * Unknown/future versions are an explicit load error, never a silent
+     * restart.
+     */
+    val version: Int = 0,
     val adventureFileName: String,
+
+    /**
+     * Ф5.2b: operation-log base + operations since that base.
+     *
+     * Additive fields in the v1 envelope. `null` means "this entry was
+     * written before Ф5.2b"; the reader then falls back to the legacy
+     * current-state fields below. New writers populate both.
+     */
+    val baseSnapshot: ProgressSnapshot? = null,
+    val delta: List<StateDeltaDto>? = null,
     val currentChapterIndex: Int = 0,
     val currentSceneId: String = "",
     val flags: List<String> = emptyList(),

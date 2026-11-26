@@ -31,6 +31,11 @@ You extend the app, add features, or integrate new step sources.
   six `VarType` variants, `TypeChecker`, `inferTypes`, runtime clamp.
 - [Engine conditions](./engine-conditions.md) — the condition grammar
   (Ф3.2): `has_X`, `Compare`, `InRange`, `&&`, `||`, `!`, parentheses.
+- [Engine choices](./engine-choices.md) — the unified choice model (Ф4):
+  templates, disabled vs hidden, merge points, atomic subroutines,
+  execution order and examples.
+- [Engine saves](./engine-saves.md) — the Ф5 save model: operation log,
+  versions/migrations, manual slots and their folder layout.
 - [Documentation rules](./documentation-rules.md) — how docs are written.
 - [i18n policy](./i18n-policy.md) — where user-facing strings live and
   how they are named (Ф4-infra; full localization in Ф7).

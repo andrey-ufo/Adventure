@@ -33,7 +33,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.R
 import com.myapp.adventure.engine.ChoiceState
+import com.myapp.adventure.engine.Reason
 import com.myapp.adventure.engine.ir.Choice
+import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.step.StepSourceManager
 import com.myapp.adventure.ui.theme.FontScopeProvider
@@ -379,6 +381,45 @@ private fun GateBanner(
 // Choices
 // =====================================================================
 
+/**
+ * Ф4.4 / gate Ф4: the player sees why a choice is disabled. The engine
+ * returns structured [Reason]s; this is the app-side, localized wording.
+ */
+@Composable
+private fun formatChoiceDisabledReason(reason: Reason): String = when (reason) {
+    is Reason.HasFailed -> stringResource(R.string.reader_choice_reason_need_fmt, reason.name)
+    is Reason.VarRefFailed -> stringResource(R.string.reader_choice_reason_need_fmt, reason.name)
+    is Reason.LiteralFailed -> stringResource(R.string.reader_choice_reason_literal)
+    is Reason.CompareFailed -> stringResource(
+        R.string.reader_choice_reason_compare_fmt,
+        reason.varName,
+        compareSymbol(reason.op),
+        reason.expectedValue,
+        reason.actualValue,
+    )
+    is Reason.InRangeFailed -> stringResource(
+        R.string.reader_choice_reason_range_fmt,
+        reason.varName,
+        reason.min,
+        reason.max,
+        reason.actualValue,
+    )
+    is Reason.NotFailed -> stringResource(R.string.reader_choice_reason_not)
+    is Reason.AndFailed -> formatChoiceDisabledReason(reason.failedReason)
+    is Reason.OrFailed -> formatChoiceDisabledReason(reason.leftReason) +
+            stringResource(R.string.reader_choice_reason_or) +
+            formatChoiceDisabledReason(reason.rightReason)
+}
+
+private fun compareSymbol(op: CompareOp): String = when (op) {
+    CompareOp.LT -> "<"
+    CompareOp.LE -> "<="
+    CompareOp.GT -> ">"
+    CompareOp.GE -> ">="
+    CompareOp.EQ -> "=="
+    CompareOp.NE -> "!="
+}
+
 @Composable
 private fun ChoiceButton(
     choice: Choice,
@@ -393,7 +434,13 @@ private fun ChoiceButton(
                 enabled = false,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(choice.text)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(choice.text)
+                    Text(
+                        text = stringResource(R.string.reader_choice_gate_reason),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
             }
         }
         state is ChoiceState.Disabled -> {
@@ -405,7 +452,10 @@ private fun ChoiceButton(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(choice.text)
                     Text(
-                        text = stringResource(R.string.reader_choice_disabled),
+                        text = stringResource(
+                            R.string.reader_choice_disabled_reason_fmt,
+                            formatChoiceDisabledReason(state.reason),
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }

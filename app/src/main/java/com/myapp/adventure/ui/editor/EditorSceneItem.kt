@@ -4,16 +4,23 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,16 +29,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.myapp.adventure.R
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTemplate
@@ -52,8 +66,6 @@ fun EditorSceneItem(
     highlighted: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val expanded = scene.uid in state.expandedScenes
     val borderModifier = if (highlighted) {
         Modifier.border(
             width = 2.dp,
@@ -75,8 +87,6 @@ fun EditorSceneItem(
             SceneHeader(
                 scene = scene,
                 viewModel = viewModel,
-                expanded = expanded,
-                onToggleExpanded = { viewModel.toggleSceneExpanded(scene.uid) },
                 onDelete = onRequestDelete,
                 onDirty = onDirty,
             )
@@ -85,13 +95,12 @@ fun EditorSceneItem(
                 onRebuildId = onRequestRebuildId,
                 onPreview = onRequestPreview,
             )
-            if (expanded) {
-                SceneBody(
-                    scene = scene,
-                    viewModel = viewModel,
-                    onDirty = onDirty,
-                )
-            }
+            IncomingScenesRow(scene = scene, viewModel = viewModel)
+            SceneBody(
+                scene = scene,
+                viewModel = viewModel,
+                onDirty = onDirty,
+            )
         }
     }
 }
@@ -100,8 +109,6 @@ fun EditorSceneItem(
 private fun SceneHeader(
     scene: EditorScene,
     viewModel: AdventureEditorViewModel,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
     onDelete: () -> Unit,
     onDirty: (structural: Boolean) -> Unit,
 ) {
@@ -121,13 +128,6 @@ private fun SceneHeader(
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = if (expanded) "▼" else "▶",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier
-                .clickable(onClick = onToggleExpanded)
-                .padding(8.dp),
-        )
         BasicTextField(
             value = localTitle,
             onValueChange = { localTitle = it },
@@ -217,6 +217,96 @@ private fun SceneInfoRow(
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
+        if (scene.isMerge) {
+            Text(
+                text = stringResource(
+                    R.string.item_editor_scene_merge_badge,
+                    scene.mergeSources.size,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Ф4.13: a small navigation block at the top of the active scene. Lists
+ * scenes that have a choice pointing here; click switches the editor to
+ * that scene. A popup avoids pushing the long scene body down.
+ */
+@Composable
+private fun IncomingScenesRow(
+    scene: EditorScene,
+    viewModel: AdventureEditorViewModel,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    val incoming = if (scene.id.isBlank()) {
+        emptyList()
+    } else {
+        viewModel.scenes.filter { candidate ->
+            candidate.uid != scene.uid &&
+                    candidate.choices.any { it.nextSceneId == scene.id }
+        }
+    }
+    val titleFallback = stringResource(R.string.label_without_title)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 32.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (incoming.isEmpty()) {
+                stringResource(R.string.editor_incoming_scenes_none)
+            } else {
+                stringResource(R.string.editor_incoming_scenes_fmt, incoming.size)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (incoming.isEmpty()) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier
+                .clickable(enabled = incoming.isNotEmpty()) { showDialog = true }
+                .padding(vertical = 4.dp),
+        )
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(stringResource(R.string.editor_incoming_scenes_title)) },
+            text = {
+                if (incoming.isEmpty()) {
+                    Text(stringResource(R.string.editor_incoming_scenes_empty))
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items(incoming, key = { it.uid }) { candidate ->
+                            Text(
+                                text = candidate.title.ifBlank { titleFallback },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.setActiveScene(candidate.uid)
+                                        showDialog = false
+                                    }
+                                    .padding(vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(R.string.dialog_close))
+                }
+            },
+        )
     }
 }
 
@@ -237,6 +327,63 @@ private fun SceneBody(
             viewModel.updateSceneText(scene.uid, localText)
             onDirty(false)
         }
+    }
+
+    var showFullscreenText by rememberSaveable(scene.uid) { mutableStateOf(false) }
+    var fullscreenValue by rememberSaveable(
+        scene.uid,
+        stateSaver = TextFieldValue.Saver,
+    ) {
+        mutableStateOf(
+            TextFieldValue(
+                localText,
+                TextRange(localText.length, localText.length),
+            )
+        )
+    }
+
+    // Autosave while the fullscreen editor is open; the dialog survives
+    // rotation (rememberSaveable), and a process death is covered by the
+    // draft debounce triggered via onDirty.
+    LaunchedEffect(showFullscreenText, fullscreenValue.text) {
+        if (showFullscreenText && fullscreenValue.text != scene.text) {
+            delay(300)
+            viewModel.updateSceneText(scene.uid, fullscreenValue.text)
+            onDirty(false)
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Text(
+            text = "⤢",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clickable {
+                    fullscreenValue = TextFieldValue(
+                        localText,
+                        TextRange(localText.length, localText.length),
+                    )
+                    showFullscreenText = true
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
+
+    if (showFullscreenText) {
+        SceneTextFullscreenDialog(
+            value = fullscreenValue,
+            onValueChange = { fullscreenValue = it },
+            onSave = {
+                localText = fullscreenValue.text
+                viewModel.updateSceneText(scene.uid, fullscreenValue.text)
+                onDirty(false)
+                showFullscreenText = false
+            },
+        )
     }
 
     BasicTextField(
@@ -351,6 +498,7 @@ private fun SceneSettingsBlock(
                 },
             )
             SceneGateRow(scene = scene, viewModel = viewModel, onDirty = onDirty)
+            SceneMergeRow(scene = scene, viewModel = viewModel, onDirty = onDirty)
             CheckRow(
                 label = stringResource(R.string.item_editor_scene_ending),
                 checked = scene.isEnding,
@@ -437,6 +585,94 @@ private fun SceneGateRow(
     }
 }
 
+/**
+ * Ф4.10: merge point editor. The flag is metadata; the source list is
+ * optional (the analyzer can collect incoming edges). Both round-trip as
+ * `merge` / `merge_sources`.
+ */
+@Composable
+private fun SceneMergeRow(
+    scene: EditorScene,
+    viewModel: AdventureEditorViewModel,
+    onDirty: (structural: Boolean) -> Unit,
+) {
+    var showPicker by remember { mutableStateOf(false) }
+
+    CheckRow(
+        label = stringResource(R.string.item_editor_scene_merge),
+        checked = scene.isMerge,
+        onCheckedChange = {
+            viewModel.setSceneMerge(scene.uid, it)
+            onDirty(true)
+        },
+    )
+    if (scene.isMerge) {
+        Column(modifier = Modifier.padding(start = 16.dp)) {
+            Text(
+                text = stringResource(R.string.item_editor_scene_merge_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            Text(
+                text = stringResource(R.string.item_editor_scene_merge_sources),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (scene.mergeSources.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.item_editor_scene_merge_none),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            scene.mergeSources.forEach { sourceId ->
+                val sourceTitle = viewModel.scenes
+                    .firstOrNull { it.id == sourceId }
+                    ?.title
+                    ?.ifBlank { sourceId }
+                    ?: sourceId
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = sourceTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 4.dp),
+                    )
+                    Text(
+                        text = "✕",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .clickable {
+                                viewModel.removeSceneMergeSource(scene.uid, sourceId)
+                                onDirty(true)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            TextButton(onClick = { showPicker = true }) {
+                Text(stringResource(R.string.item_editor_scene_merge_add))
+            }
+        }
+    }
+
+    if (showPicker) {
+        ScenePickerDialog(
+            scenes = viewModel.scenes,
+            initialSceneId = "",
+            allowSelf = false,
+            onPicked = { sourceId ->
+                viewModel.addSceneMergeSource(scene.uid, sourceId)
+                onDirty(true)
+                showPicker = false
+            },
+            onDismiss = { showPicker = false },
+        )
+    }
+}
+
 @Composable
 private fun SceneDeathRow(
     scene: EditorScene,
@@ -516,6 +752,59 @@ private fun SceneDeathRow(
             },
             onDismiss = { pendingReplacePreviousTitle = null },
         )
+    }
+}
+
+@Composable
+private fun SceneTextFullscreenDialog(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    onSave: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
+    Dialog(
+        // No "Cancel": edits are autosaved while typing; closing keeps them.
+        onDismissRequest = onSave,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.editor_scene_text_fullscreen_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    placeholder = { Text(stringResource(R.string.item_editor_scene_text_hint)) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(vertical = 8.dp)
+                        .focusRequester(focusRequester),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onSave) {
+                        Text(stringResource(R.string.dialog_save))
+                    }
+                }
+            }
+        }
     }
 }
 

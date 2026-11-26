@@ -5,11 +5,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,7 +42,9 @@ fun InitialStateSection(
     onTagCategoryChanged: (Int, TagCategory) -> Unit,
     onTagVisibleChanged: (Int, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    collapsible: Boolean = true,
 ) {
+    var pendingRemoveIndex by remember { mutableStateOf<Int?>(null) }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small,
@@ -49,13 +56,18 @@ fun InitialStateSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onToggleExpanded),
+                    .then(
+                        if (collapsible) Modifier.clickable(onClick = onToggleExpanded)
+                        else Modifier
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = if (state.initialStateExpanded) "▼" else "▶",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (collapsible) {
+                    Text(
+                        text = if (state.initialStateExpanded) "▼" else "▶",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
                 Text(
                     text = stringResource(R.string.item_initial_state_title),
                     style = MaterialTheme.typography.titleSmall,
@@ -79,7 +91,7 @@ fun InitialStateSection(
                 )
             }
 
-            if (state.initialStateExpanded) {
+            if (!collapsible || state.initialStateExpanded) {
                 Text(
                     text = stringResource(R.string.item_initial_state_description),
                     style = MaterialTheme.typography.bodySmall,
@@ -94,7 +106,7 @@ fun InitialStateSection(
                         onDisplayChanged = { onTagDisplayChanged(index, it) },
                         onCategoryChanged = { onTagCategoryChanged(index, it) },
                         onVisibleChanged = { onTagVisibleChanged(index, it) },
-                        onDelete = { onRemoveTag(index) },
+                        onDelete = { pendingRemoveIndex = index },
                     )
                 }
                 TextButton(onClick = onAddTag) {
@@ -102,5 +114,34 @@ fun InitialStateSection(
                 }
             }
         }
+    }
+
+    pendingRemoveIndex?.let { index ->
+        val name = state.initialStateTags.getOrNull(index)?.name.orEmpty()
+        AlertDialog(
+            onDismissRequest = { pendingRemoveIndex = null },
+            title = { Text(stringResource(R.string.initial_state_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.initial_state_delete_message_fmt,
+                        name.ifBlank { stringResource(R.string.initial_state_untitled) },
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRemoveTag(index)
+                    pendingRemoveIndex = null
+                }) {
+                    Text(stringResource(R.string.dialog_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveIndex = null }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
     }
 }

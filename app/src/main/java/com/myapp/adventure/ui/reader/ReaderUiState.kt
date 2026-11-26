@@ -2,7 +2,9 @@ package com.myapp.adventure.ui.reader
 
 import android.net.Uri
 import com.myapp.adventure.data.PlayerStateSnapshot
+import com.myapp.adventure.data.ProgressSnapshot
 import com.myapp.adventure.engine.CompiledAdventure
+import com.myapp.adventure.engine.StateDelta
 import com.myapp.adventure.engine.analyze.LintIssue
 import com.myapp.adventure.engine.ir.Adventure
 
@@ -62,4 +64,10 @@ data class ReaderUiState(
     val cachedPlayerWarnings: List<LintIssue> = emptyList(),
     val currentWarningsFingerprint: String = "",
     val savedWarningsFingerprint: String = "",
+
+    // ----- Ф5.2b operation log -----
+    /** Base snapshot for [operationLog]; `null` until normal/persisted state is ready. */
+    val saveBaseSnapshot: ProgressSnapshot? = null,
+    /** Player-state operations since [saveBaseSnapshot]. */
+    val operationLog: List<StateDelta> = emptyList(),
 )

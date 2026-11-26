@@ -44,6 +44,7 @@ fun EditMetaRoute(
                 viewModel.subroutines,
                 viewModel.initialStateTags,
                 viewModel.scenes,
+                viewModel.activeSceneUid,
             )
             viewModel.setHasUnsavedChanges(false)
             viewModel.setSaveStatus(SaveStatus.SAVED)

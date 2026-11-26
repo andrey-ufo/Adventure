@@ -19,10 +19,9 @@ import kotlinx.serialization.Serializable
  * only the expanded content. The reference is inert from the gameplay
  * point of view.
  *
- * **Not serialized to the adventure JSON in Ф4.2.1.** The choice's JSON
- * form (`ChoiceDto`) does not have a `template_ref` field yet; parsing
- * `template_ref` from JSON is Ф4.3. In the IR, the field is
- * `@Serializable` so that `IrToJson` (Ф8) can carry it consistently.
+ * **Serialized since Ф4.10.** `ChoiceDto.template_ref` is parsed by
+ * `JsonToIr`, so a hand-edited file and the editor's round-trip both keep
+ * the reference in the IR. The runtime still ignores it.
  *
  * @property templateId the `ChoiceTemplate.id` this choice was expanded
  *   from.

@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,8 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.myapp.adventure.R
@@ -43,19 +42,20 @@ fun EditorToolbar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onAddScene: () -> Unit,
+    onVariables: () -> Unit,
+    onInitialState: () -> Unit,
     onSave: () -> Unit,
     onLoad: () -> Unit,
     onEditMeta: () -> Unit,
     onValidate: () -> Unit,
-    onSearch: () -> Unit,
     onStats: () -> Unit,
     onTemplates: () -> Unit,
     onSubroutines: () -> Unit,
+    onHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         TopRow(
-            title = state.title,
             saveStatus = state.saveStatus,
             menuExpanded = state.menuExpanded,
             onMenuClick = onMenuClick,
@@ -68,14 +68,16 @@ fun EditorToolbar(
                 onUndo = onUndo,
                 onRedo = onRedo,
                 onAddScene = onAddScene,
+                onVariables = onVariables,
+                onInitialState = onInitialState,
                 onSave = onSave,
                 onLoad = onLoad,
                 onEditMeta = onEditMeta,
                 onValidate = onValidate,
-                onSearch = onSearch,
                 onStats = onStats,
                 onTemplates = onTemplates,
                 onSubroutines = onSubroutines,
+                onHelp = onHelp,
             )
         }
     }
@@ -83,7 +85,6 @@ fun EditorToolbar(
 
 @Composable
 private fun TopRow(
-    title: String,
     saveStatus: SaveStatus,
     menuExpanded: Boolean,
     onMenuClick: () -> Unit,
@@ -99,16 +100,7 @@ private fun TopRow(
         TextButton(onClick = onMenuClick) {
             Text(stringResource(R.string.action_menu))
         }
-        Text(
-            text = title.ifBlank { stringResource(R.string.editor_title_untitled) },
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 8.dp),
-        )
+        Spacer(modifier = Modifier.weight(1f))
         Text(
             text = stringResource(saveStatusLabel(saveStatus)),
             color = saveStatusColor(saveStatus),
@@ -128,14 +120,16 @@ private fun ActionsRow(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onAddScene: () -> Unit,
+    onVariables: () -> Unit,
+    onInitialState: () -> Unit,
     onSave: () -> Unit,
     onLoad: () -> Unit,
     onEditMeta: () -> Unit,
     onValidate: () -> Unit,
-    onSearch: () -> Unit,
     onStats: () -> Unit,
     onTemplates: () -> Unit,
     onSubroutines: () -> Unit,
+    onHelp: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -160,14 +154,16 @@ private fun ActionsRow(
         )
         SmallDivider()
         ToolbarTextButton(stringResource(R.string.editor_add_scene), onAddScene)
+        ToolbarTextButton(stringResource(R.string.variables_header_title), onVariables)
+        ToolbarTextButton(stringResource(R.string.item_initial_state_title), onInitialState)
         ToolbarTextButton(stringResource(R.string.dialog_save), onSave)
         ToolbarTextButton(stringResource(R.string.editor_load), onLoad)
         ToolbarTextButton(stringResource(R.string.editor_edit_meta), onEditMeta)
         ToolbarTextButton(stringResource(R.string.editor_validate), onValidate)
-        ToolbarTextButton(stringResource(R.string.editor_search), onSearch)
         ToolbarTextButton(stringResource(R.string.menu_statistics), onStats)
         ToolbarTextButton(stringResource(R.string.editor_templates_button), onTemplates)
         ToolbarTextButton(stringResource(R.string.editor_subroutines_button), onSubroutines)
+        ToolbarTextButton(stringResource(R.string.editor_help_button), onHelp)
     }
 }
 

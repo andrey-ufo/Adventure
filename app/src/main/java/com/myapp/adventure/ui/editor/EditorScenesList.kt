@@ -1,27 +1,33 @@
 package com.myapp.adventure.ui.editor
 
 import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.myapp.adventure.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myapp.adventure.R
 import com.myapp.adventure.data.EditorScene
-import com.myapp.adventure.data.TagCategory
+import kotlinx.coroutines.delay
 
+/**
+ * Ф4.13: the main editor shows **one** scene — the last one the author
+ * worked on — always expanded. Navigation to neighbours is provided by
+ * the incoming-scenes popup and the per-choice jump button; global search
+ * lives inline above this pane.
+ */
 @Composable
 fun EditorScenesList(
     viewModel: AdventureEditorViewModel,
@@ -34,19 +40,11 @@ fun EditorScenesList(
 
     var pendingDeleteScene by remember { mutableStateOf<EditorScene?>(null) }
     var pendingRebuildScene by remember { mutableStateOf<EditorScene?>(null) }
-
-    // Phase 3.1c-iii-c: scroll + highlight on jump request from child
-    // editor screens (search / validation click-through).
     var highlightedUid by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.pendingJumpToSceneUid) {
         val uid = state.pendingJumpToSceneUid ?: return@LaunchedEffect
-        val sceneIndex = state.scenes.indexOfFirst { it.uid == uid }
-        if (sceneIndex >= 0) {
-            // +2: item 0 = variables section, item 1 = initial-state section
-            listState.animateScrollToItem(sceneIndex + 2)
-            highlightedUid = uid
-        }
+        highlightedUid = uid
         viewModel.clearPendingJumpToScene()
     }
 
@@ -57,59 +55,49 @@ fun EditorScenesList(
         }
     }
 
+    val active = state.scenes.firstOrNull { it.uid == state.activeSceneUid }
+        ?: state.scenes.firstOrNull()
+    var lastActiveUid by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(active?.uid) {
+        // Reset the scroll when the author navigates to another scene, but
+        // leave the initial position at the top so the search is visible.
+        if (lastActiveUid != null && lastActiveUid != active?.uid && active != null) {
+            listState.scrollToItem(1)
+        }
+        lastActiveUid = active?.uid
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "variables") {
-            VariablesSection(
-                state = state,
-                onToggleExpanded = { viewModel.toggleVariablesExpanded() },
-                onAddVariable = {
-                    viewModel.addVariable()
-                    onDirty(true)
-                },
-                onRemoveVariable = { idx ->
-                    viewModel.removeVariable(idx)
-                    onDirty(true)
-                },
-                onNameChanged = { idx, v -> viewModel.updateVariableName(idx, v); onDirty(false) },
-                onKindChanged = { idx, v -> viewModel.updateVariableKind(idx, v); onDirty(false) },
-                onMinChanged = { idx, v -> viewModel.updateVariableMin(idx, v); onDirty(false) },
-                onMaxChanged = { idx, v -> viewModel.updateVariableMax(idx, v); onDirty(false) },
+        // Ф4.13a: search scrolls with the scene instead of being pinned.
+        item(key = "scene_search") {
+            SceneSearchBlock(
+                scenes = state.scenes,
+                onOpenScene = { uid -> viewModel.setActiveScene(uid) },
             )
         }
-        item(key = "initial_state") {
-            InitialStateSection(
-                state = state,
-                onToggleExpanded = { viewModel.updateInitialStateExpanded(!state.initialStateExpanded) },
-                onAddTag = {
-                    viewModel.addInitialStateTag()
-                    onDirty(true)
-                },
-                onRemoveTag = { idx ->
-                    viewModel.removeInitialStateTag(idx)
-                    onDirty(true)
-                },
-                onTagNameChanged = { idx, v -> viewModel.updateInitialStateTagName(idx, v); onDirty(false) },
-                onTagValueChanged = { idx, v -> viewModel.updateInitialStateTagValue(idx, v); onDirty(false) },
-                onTagDisplayChanged = { idx, v -> viewModel.updateInitialStateTagDisplay(idx, v); onDirty(false) },
-                onTagCategoryChanged = { idx, v -> viewModel.updateInitialStateTagCategory(idx, v); onDirty(false) },
-                onTagVisibleChanged = { idx, v -> viewModel.updateInitialStateTagVisible(idx, v); onDirty(false) },
-            )
-        }
-        items(state.scenes, key = { it.uid }) { scene ->
-            EditorSceneItem(
-                scene = scene,
-                viewModel = viewModel,
-                onDirty = onDirty,
-                onRequestDelete = { pendingDeleteScene = scene },
-                onRequestRebuildId = { pendingRebuildScene = scene },
-                onRequestPreview = { onPreviewScene(scene.uid) },
-                highlighted = scene.uid == highlightedUid,
-            )
+        if (active == null) {
+            item(key = "__no_scenes__") {
+                Text(
+                    text = stringResource(R.string.editor_no_scenes_hint),
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        } else {
+            item(key = active.uid) {
+                EditorSceneItem(
+                    scene = active,
+                    viewModel = viewModel,
+                    onDirty = onDirty,
+                    onRequestDelete = { pendingDeleteScene = active },
+                    onRequestRebuildId = { pendingRebuildScene = active },
+                    onRequestPreview = { onPreviewScene(active.uid) },
+                    highlighted = active.uid == highlightedUid,
+                )
+            }
         }
     }
 

@@ -56,6 +56,7 @@ import com.myapp.adventure.engine.parse.ConditionParser
 import com.myapp.adventure.engine.parse.ConditionWriter
 import com.myapp.adventure.engine.parse.ParseError
 import com.myapp.adventure.engine.parse.ParseResult
+import com.myapp.adventure.utils.EditorDraftManager
 import com.myapp.adventure.utils.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,11 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val rawCanUndo = canUndo()
         val undoEnabled = rawCanUndo || (prev.hasUnsavedChanges && isHistoryInitialized())
         val redoEnabled = canRedo()
+        // Keep the single-scene editor on a real scene. A delete, undo or
+        // load may remove the active uid; fall back to the first scene.
+        activeSceneUid = activeSceneUid?.takeIf { uid ->
+            scenes.any { it.uid == uid }
+        } ?: scenes.firstOrNull()?.uid
         _uiState.value = EditorUiState(
             title = title,
             author = author,
@@ -97,6 +103,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             subroutines = subroutines.map { it.deepCopy() },
             initialStateTags = initialStateTags.map { it.copy() },
             scenes = scenes.map { it.deepCopy() },
+            activeSceneUid = activeSceneUid,
             expandedScenes = expandedScenes.toSet(),
             expandedSceneSettings = expandedSceneSettings.toSet(),
             expandedChoices = expandedChoices.toSet(),
@@ -199,6 +206,14 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * acceptable for pre-alpha.
      */
     var editingTemplate: EditorTemplate? = null
+
+    /**
+     * Ф4.13: the scene shown by the one-scene editor. Kept outside the
+     * undo snapshot (undoing scene content should not jump the author to
+     * another scene); `commitState` falls back to the first scene when the
+     * active uid disappears (delete/load/undo).
+     */
+    var activeSceneUid: String? = null
 
     private val expandedScenes = mutableSetOf<String>()
     private val expandedChoices = mutableSetOf<String>()
@@ -508,6 +523,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val newScene = EditorScene()
         scenes.add(newScene)
         expandedScenes.add(newScene.uid)
+        activeSceneUid = newScene.uid
         Logger.log(context, "Добавлена сцена, индекс: ${scenes.size - 1}")
         commitState()
     }
@@ -523,6 +539,7 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         }
         scenes.add(newScene)
         expandedScenes.add(newScene.uid)
+        activeSceneUid = newScene.uid
         Logger.log(context, "Добавлена сцена '${trimmed.ifEmpty { "(без названия)" }}', индекс: ${scenes.size - 1}")
         commitState()
         return newScene
@@ -1764,6 +1781,41 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         scenes.find { it.uid == uid }?.let { if (it.deathAllowAdventureRestart != value) it.deathAllowAdventureRestart = value }
     }
 
+    /**
+     * Ф4.10: mark/unmark a scene as a declared merge point. Disabling
+     * clears `merge_sources` too, so the file never has sources without
+     * the merge flag. The analyzer reports declaration-vs-graph warnings.
+     */
+    fun setSceneMerge(uid: String, value: Boolean) {
+        val scene = scenes.find { it.uid == uid } ?: return
+        if (scene.isMerge == value) return
+        scene.isMerge = value
+        if (!value) scene.mergeSources = emptyList()
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    fun addSceneMergeSource(uid: String, sourceSceneId: String) {
+        val clean = sourceSceneId.trim()
+        if (clean.isEmpty()) return
+        val scene = scenes.find { it.uid == uid } ?: return
+        if (clean in scene.mergeSources) return
+        scene.mergeSources = scene.mergeSources + clean
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
+    fun removeSceneMergeSource(uid: String, sourceSceneId: String) {
+        val scene = scenes.find { it.uid == uid } ?: return
+        if (sourceSceneId !in scene.mergeSources) return
+        scene.mergeSources = scene.mergeSources - sourceSceneId
+        _uiState.value = _uiState.value.copy(
+            scenes = scenes.map { it.deepCopy() },
+        )
+    }
+
     fun setSceneGate(uid: String, steps: Int, repeatable: Boolean) {
         val s = scenes.find { it.uid == uid } ?: return
         if (s.gateRequiredSteps == steps && s.gateRepeatable == repeatable) return
@@ -1834,12 +1886,51 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
      * `commitState()` (one for expand, one for pending uid).
      */
     fun requestJumpToScene(uid: String) {
+        if (scenes.none { it.uid == uid }) return
+        activeSceneUid = uid
         expandedScenes.add(uid)
         pendingJumpToSceneUid = uid
         _uiState.value = _uiState.value.copy(
+            activeSceneUid = activeSceneUid,
             expandedScenes = expandedScenes.toSet(),
             pendingJumpToSceneUid = uid,
         )
+        persistActiveSceneDraft()
+    }
+
+    /** Ф4.13: switch the single-scene editor to [uid]. */
+    fun setActiveScene(uid: String) {
+        if (scenes.none { it.uid == uid }) return
+        activeSceneUid = uid
+        commitState()
+        persistActiveSceneDraft()
+    }
+
+    /**
+     * Ф4.13: navigation between scenes is authoring work too; write the
+     * draft immediately so "last worked-on scene" survives process death,
+     * not only a later text edit.
+     */
+    private fun persistActiveSceneDraft() {
+        EditorDraftManager.saveDraft(
+            context,
+            title,
+            author,
+            description,
+            variables,
+            templates,
+            subroutines,
+            initialStateTags,
+            scenes,
+            activeSceneUid,
+        )
+    }
+
+    /** Ф4.13: switch by the scene's JSON id (choice `next_scene`). */
+    fun openSceneById(sceneId: String): Boolean {
+        val scene = scenes.firstOrNull { it.id == sceneId } ?: return false
+        setActiveScene(scene.uid)
+        return true
     }
 
     /** Called by `EditorScenesList` after the jump animation has started. */
@@ -1862,6 +1953,25 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
         val scene = scenes.find { it.uid == sceneUid } ?: return
         scene.choices.find { it.uid == choiceUid }?.let {
             if (it.conditionTag != condition) it.conditionTag = condition
+        }
+    }
+
+    /**
+     * Ф4.10: "show this choice?" condition. Distinct from
+     * [updateChoiceCondition] ("enable"). Persisted as
+     * `visibility_condition` and used by `Evaluator.choiceState` for
+     * `ChoiceState.Hidden`.
+     */
+    fun updateChoiceVisibilityCondition(
+        sceneUid: String,
+        choiceUid: String,
+        condition: String,
+    ) {
+        val scene = scenes.find { it.uid == sceneUid } ?: return
+        scene.choices.find { it.uid == choiceUid }?.let {
+            if (it.visibilityConditionTag != condition) {
+                it.visibilityConditionTag = condition
+            }
         }
     }
 

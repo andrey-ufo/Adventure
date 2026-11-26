@@ -47,6 +47,7 @@ fun SubroutineCallDialog(
     onApply: (EditorSubroutineCall) -> Unit,
     onDismiss: () -> Unit,
     onClear: (() -> Unit)? = null,
+    showChoiceAvailabilityHint: Boolean = false,
 ) {
     val usable = remember(subroutines) {
         subroutines.filter { it.id.isNotBlank() }
@@ -145,6 +146,10 @@ fun SubroutineCallDialog(
                         if (sub.inputs.isEmpty() && sub.outputs.isEmpty()) {
                             Hint(stringResource(R.string.subroutine_call_no_parameters))
                         }
+                    }
+
+                    if (showChoiceAvailabilityHint) {
+                        Hint(stringResource(R.string.subroutine_call_choice_availability_hint))
                     }
 
                     if (onClear != null && initial != null) {

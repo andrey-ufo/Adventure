@@ -136,10 +136,13 @@ public object TypeChecker {
                 for (scene in chapter.scenes) {
                     checkEffects(scene.effects, scene.id, typeTable, errors)
                     for (choice in scene.choices) {
-                        choice.condition?.let {
-                            checkCondition(it, scene.id, typeTable, errors)
-                        }
-                        checkEffects(choice.effects, scene.id, typeTable, errors)
+                    choice.condition?.let {
+                        checkCondition(it, scene.id, typeTable, errors)
+                    }
+                    choice.visibilityCondition?.let {
+                        checkCondition(it, scene.id, typeTable, errors)
+                    }
+                    checkEffects(choice.effects, scene.id, typeTable, errors)
                         choice.call?.let {
                             checkTopLevelSubroutineCall(
                                 call = it,

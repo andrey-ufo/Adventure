@@ -54,6 +54,7 @@ class EngineStepTest {
         id: String,
         next: String,
         condition: Condition? = null,
+        visibilityCondition: Condition? = null,
         effects: List<Effect> = emptyList(),
         call: SubroutineCall? = null,
     ): Choice = Choice(
@@ -61,6 +62,7 @@ class EngineStepTest {
         text = "choice $id",
         nextScene = SceneId(next),
         condition = condition,
+        visibilityCondition = visibilityCondition,
         effects = effects,
         call = call,
     )
@@ -601,6 +603,151 @@ class EngineStepTest {
         assertEquals(SceneId("merge"), fromRight.currentScene.id)
         assertEquals(105, fromRight.state.stats["health"])
         assertEquals(setOf("chose_right"), fromRight.state.flags)
+    }
+
+    // ---------- Ф5.2: appliedDeltas ----------
+
+    @Test
+    fun `success exposes replayable appliedDeltas`() {
+        val start = scene(
+            "start",
+            choices = listOf(
+                choice(
+                    "go",
+                    next = "start",
+                    effects = listOf(
+                        Effect.SetFlag("took"),
+                        Effect.RemoveFlag("old"),
+                        Effect.ModifyStat("health", -5),
+                        Effect.Set("gold", 7),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(adventure(chapter("ch", start)))
+        val initial = state(
+            flags = setOf("old"),
+            stats = mapOf("health" to 3),
+        )
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("start"), ChoiceId("go")),
+        )
+
+        assertEquals(
+            listOf(
+                StateDelta.SetFlag("took"),
+                StateDelta.RemoveFlag("old"),
+                StateDelta.SubStat("health", 5),
+                StateDelta.SetStat("gold", 7),
+            ),
+            result.appliedDeltas,
+        )
+        // The log replays to exactly the state the engine returned,
+        // including the clamp of health at 0.
+        assertEquals(result.state, applyDeltas(initial, result.appliedDeltas))
+    }
+
+    @Test
+    fun `subroutine output writes are part of appliedDeltas`() {
+        val consume = consumeSubroutine()
+        val s = scene(
+            "s",
+            choices = listOf(
+                choice(
+                    id = "use",
+                    next = "s",
+                    call = SubroutineCall(
+                        subroutineId = "consume",
+                        args = mapOf("item" to "potion", "health" to "health"),
+                        outputs = mapOf("item" to "potion", "health" to "health"),
+                    ),
+                ),
+            ),
+        )
+        val compiled = compile(
+            adventure(chapter("ch", s), subroutines = listOf(consume)),
+        )
+        val initial = state(stats = mapOf("potion" to 1, "health" to 10))
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(compiled, initial, SceneId("s"), ChoiceId("use")),
+        )
+
+        assertEquals(
+            listOf(
+                StateDelta.SetStat("potion", 0),
+                StateDelta.SetStat("health", 15),
+            ),
+            result.appliedDeltas,
+        )
+        assertEquals(result.state, applyDeltas(initial, result.appliedDeltas))
+    }
+
+    // ---------- Ф4.9: disabledChoices ----------
+
+    @Test
+    fun `success lists visible but disabled choices in target scene`() {
+        val target = scene(
+            "target",
+            choices = listOf(
+                choice("enabled", "start"),
+                choice("disabled", "start", condition = Condition.Literal(false)),
+                choice(
+                    "hidden",
+                    "start",
+                    visibilityCondition = Condition.Literal(false),
+                ),
+            ),
+        )
+        val start = scene("start", choices = listOf(choice("go", "target")))
+        val compiled = compile(adventure(chapter("ch", start, target)))
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(compiled, state(), SceneId("start"), ChoiceId("go")),
+        )
+        val disabled = result.disabledChoices.single()
+        assertEquals(ChoiceId("disabled"), disabled.choiceId)
+        assertIs<Reason.LiteralFailed>(disabled.reason)
+    }
+
+    @Test
+    fun `disabledChoices reflect subroutine outputs`() {
+        val target = scene(
+            "target",
+            choices = listOf(
+                choice("needs_sword", "target", condition = Condition.Has("sword")),
+            ),
+        )
+        val start = scene(
+            "start",
+            choices = listOf(
+                choice(
+                    id = "take_sword",
+                    next = "target",
+                    call = SubroutineCall(
+                        subroutineId = "give_sword",
+                        outputs = mapOf("out" to "sword"),
+                    ),
+                ),
+            ),
+        )
+        val giveSword = Subroutine(
+            id = "give_sword",
+            outputs = listOf(VarDecl("out", VarType.Bool)),
+            body = listOf(SubroutineStep(effects = listOf(Effect.SetFlag("out")))),
+        )
+        val compiled = compile(
+            adventure(
+                chapter("ch", start, target),
+                subroutines = listOf(giveSword),
+            ),
+        )
+
+        val result = assertIs<StepResult.Success>(
+            Engine.step(compiled, state(), SceneId("start"), ChoiceId("take_sword")),
+        )
+        assertEquals(emptyList(), result.disabledChoices)
     }
 
     // ---------- Ф4.7: subroutines ----------

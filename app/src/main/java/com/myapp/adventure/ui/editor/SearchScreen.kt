@@ -215,7 +215,7 @@ private fun FilterCheck(
 }
 
 @Composable
-private fun SearchRow(result: SearchResult, onClick: () -> Unit) {
+internal fun SearchRow(result: SearchResult, onClick: () -> Unit) {
     val colorScheme = MaterialTheme.colorScheme
     val detailText = if (result.detailArg != null) {
         stringResource(result.detailRes, result.detailArg)

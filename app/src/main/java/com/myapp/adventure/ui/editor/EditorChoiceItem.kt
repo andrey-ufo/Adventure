@@ -39,6 +39,8 @@ fun EditorChoiceItem(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val expanded = choice.uid in state.expandedChoices
+    val canOpenTarget = choice.nextSceneId.isNotBlank() &&
+            state.scenes.any { it.id == choice.nextSceneId }
     var pendingDelete by remember { mutableStateOf(false) }
     var showEffectsDialog by remember { mutableStateOf(false) }
 
@@ -53,6 +55,10 @@ fun EditorChoiceItem(
             ChoiceHeader(
                 choice = choice,
                 expanded = expanded,
+                canOpenTarget = canOpenTarget,
+                onOpenTarget = {
+                    if (canOpenTarget) viewModel.openSceneById(choice.nextSceneId)
+                },
                 onToggle = { viewModel.toggleChoiceExpanded(choice.uid) },
                 onEffectsClick = { showEffectsDialog = true },
                 onDeleteClick = { pendingDelete = true },
@@ -97,6 +103,8 @@ fun EditorChoiceItem(
 private fun ChoiceHeader(
     choice: EditorChoice,
     expanded: Boolean,
+    canOpenTarget: Boolean,
+    onOpenTarget: () -> Unit,
     onToggle: () -> Unit,
     onEffectsClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -131,7 +139,9 @@ private fun ChoiceHeader(
             if (choice.tags.isNotEmpty()) add("⚙ ${choice.tags.size}")
             if (choice.nextSceneId.isNotEmpty()) add("🔗")
             if (choice.conditionTag.isNotEmpty()) add("?")
+            if (choice.visibilityConditionTag.isNotEmpty()) add("👁")
             if (choice.subroutineCall != null) add("⚡")
+            if (choice.templateUid != null) add("📦")
         }.joinToString(" ")
         if (badges.isNotEmpty()) {
             Text(
@@ -141,6 +151,15 @@ private fun ChoiceHeader(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
+        Text(
+            text = "→",
+            color = if (canOpenTarget) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .clickable(enabled = canOpenTarget, onClick = onOpenTarget)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
         Text(
             text = "⚙",
             color = AdventureTheme.extendedColors.statusWarning,
@@ -194,6 +213,30 @@ private fun ChoiceBody(
         onDirty = onDirty,
     )
 
+    // Ф4.10: make the template origin explicit. The 📦 badge is easy to
+    // miss; this row answers "why does this choice exist without a
+    // subroutine call?".
+    choice.templateUid?.let { templateId ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.item_editor_choice_template_label),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = templateId,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+
     var localCondition by remember(choice.uid) { mutableStateOf(choice.conditionTag) }
     LaunchedEffect(choice.conditionTag) {
         if (choice.conditionTag != localCondition) localCondition = choice.conditionTag
@@ -209,6 +252,28 @@ private fun ChoiceBody(
         value = localCondition,
         onValueChange = { localCondition = it },
         placeholder = stringResource(R.string.item_editor_choice_condition_hint),
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    var localVisibility by remember(choice.uid) {
+        mutableStateOf(choice.visibilityConditionTag)
+    }
+    LaunchedEffect(choice.visibilityConditionTag) {
+        if (choice.visibilityConditionTag != localVisibility) {
+            localVisibility = choice.visibilityConditionTag
+        }
+    }
+    LaunchedEffect(localVisibility) {
+        if (localVisibility != choice.visibilityConditionTag) {
+            delay(CHOICE_COND_DEBOUNCE_MS)
+            viewModel.updateChoiceVisibilityCondition(sceneUid, choice.uid, localVisibility)
+            onDirty(false)
+        }
+    }
+    BareTextField(
+        value = localVisibility,
+        onValueChange = { localVisibility = it },
+        placeholder = stringResource(R.string.item_editor_choice_visibility_hint),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -360,6 +425,7 @@ private fun ChoiceSubroutineRow(
             outputTargets = globalNames,
             initial = choice.subroutineCall,
             title = stringResource(R.string.subroutine_call_dialog_choice_title),
+            showChoiceAvailabilityHint = true,
             onApply = { newCall ->
                 viewModel.setChoiceSubroutineCall(sceneUid, choice.uid, newCall)
                 onDirty(true)

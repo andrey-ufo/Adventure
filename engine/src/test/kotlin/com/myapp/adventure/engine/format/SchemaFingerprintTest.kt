@@ -16,9 +16,11 @@ import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.format.dto.VariableDto
 import com.myapp.adventure.engine.ir.Invariant
 import com.myapp.adventure.engine.ir.Outcome
+import com.myapp.adventure.engine.format.dto.ChoiceDto
 import com.myapp.adventure.engine.format.dto.SubroutineCallDto
 import com.myapp.adventure.engine.format.dto.SubroutineDto
 import com.myapp.adventure.engine.format.dto.SubroutineStepDto
+import com.myapp.adventure.engine.format.dto.TemplateRefDto
 import com.myapp.adventure.engine.format.dto.VarDeclDto
 import com.myapp.adventure.engine.ir.ChoiceTemplate
 import com.myapp.adventure.engine.ir.Subroutine
@@ -94,6 +96,11 @@ class SchemaFingerprintTest {
         "VarDecl" to setOf("name", "type"),
         "Gate" to setOf("required_steps", "repeatable"),
         "VariableDto" to setOf("type", "min", "max"),
+        "ChoiceDto" to setOf(
+            "id", "text", "next_scene", "condition", "visibility_condition",
+            "set_flags", "remove_flags", "modify_stats", "template_ref", "call",
+        ),
+        "TemplateRefDto" to setOf("template_id", "args"),
         "ChoiceTemplate" to setOf(
             "id", "parameters", "text",
             "visibility_condition", "availability_condition",
@@ -204,6 +211,8 @@ class SchemaFingerprintTest {
         assertFlat("VariableDto", VariableDto.serializer().descriptor)
         assertFlat("ChoiceTemplate", ChoiceTemplate.serializer().descriptor)
         assertFlat("VarDeclDto", VarDeclDto.serializer().descriptor)
+        assertFlat("ChoiceDto", ChoiceDto.serializer().descriptor)
+        assertFlat("TemplateRefDto", TemplateRefDto.serializer().descriptor)
         assertFlat("Subroutine", Subroutine.serializer().descriptor)
         assertFlat("SubroutineStep", SubroutineStep.serializer().descriptor)
         assertFlat("SubroutineCall", SubroutineCall.serializer().descriptor)

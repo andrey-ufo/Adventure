@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +55,9 @@ fun VariablesSection(
     onMinChanged: (Int, Int?) -> Unit,
     onMaxChanged: (Int, Int?) -> Unit,
     modifier: Modifier = Modifier,
+    collapsible: Boolean = true,
 ) {
+    var pendingRemoveIndex by remember { mutableStateOf<Int?>(null) }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small,
@@ -66,13 +69,18 @@ fun VariablesSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onToggleExpanded),
+                    .then(
+                        if (collapsible) Modifier.clickable(onClick = onToggleExpanded)
+                        else Modifier
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = if (state.variablesExpanded) "▼" else "▶",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (collapsible) {
+                    Text(
+                        text = if (state.variablesExpanded) "▼" else "▶",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
                 Text(
                     text = stringResource(R.string.variables_header_title),
                     style = MaterialTheme.typography.titleSmall,
@@ -96,7 +104,7 @@ fun VariablesSection(
                 )
             }
 
-            if (state.variablesExpanded) {
+            if (!collapsible || state.variablesExpanded) {
                 Text(
                     text = stringResource(R.string.variables_header_description),
                     style = MaterialTheme.typography.bodySmall,
@@ -111,7 +119,7 @@ fun VariablesSection(
                         onKindChanged = onKindChanged,
                         onMinChanged = onMinChanged,
                         onMaxChanged = onMaxChanged,
-                        onRemove = { onRemoveVariable(index) },
+                        onRemove = { pendingRemoveIndex = index },
                     )
                 }
                 TextButton(onClick = onAddVariable) {
@@ -119,6 +127,35 @@ fun VariablesSection(
                 }
             }
         }
+    }
+
+    pendingRemoveIndex?.let { index ->
+        val name = state.variables.getOrNull(index)?.name.orEmpty()
+        AlertDialog(
+            onDismissRequest = { pendingRemoveIndex = null },
+            title = { Text(stringResource(R.string.variable_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.variable_delete_message_fmt,
+                        name.ifBlank { stringResource(R.string.variable_untitled) },
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRemoveVariable(index)
+                    pendingRemoveIndex = null
+                }) {
+                    Text(stringResource(R.string.dialog_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveIndex = null }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
     }
 }
 

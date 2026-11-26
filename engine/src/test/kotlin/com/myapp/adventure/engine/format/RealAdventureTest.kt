@@ -165,10 +165,10 @@ class RealAdventureTest {
     }
 
     @Test
-    fun `start scene has seven choices`() {
+    fun `start scene has eight choices`() {
         val adv = parseRealFile()
         val start = adv.chapters[0].scenes.first { it.id == SceneId("start") }
-        assertEquals(7, start.choices.size)
+        assertEquals(8, start.choices.size)
     }
 
     @Test

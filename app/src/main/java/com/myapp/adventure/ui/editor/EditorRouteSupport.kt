@@ -86,6 +86,9 @@ internal fun applyDraft(
     viewModel.initialStateTags.addAll(draft.initialStateTags.map { it.copy() })
     viewModel.scenes.clear()
     viewModel.scenes.addAll(draft.scenes.map { it.deepCopy() })
+    viewModel.activeSceneUid = draft.activeSceneUid?.takeIf { uid ->
+        viewModel.scenes.any { it.uid == uid }
+    }
 
     viewModel.initHistory()
     viewModel.collapseAllScenes()
@@ -113,6 +116,7 @@ internal fun saveDraftImmediate(
         viewModel.subroutines,
         viewModel.initialStateTags,
         viewModel.scenes,
+        viewModel.activeSceneUid,
     )
     viewModel.setHasUnsavedChanges(false)
     viewModel.setSaveStatus(SaveStatus.SAVED)
@@ -138,6 +142,7 @@ internal fun saveDraftSilently(
         viewModel.subroutines,
         viewModel.initialStateTags,
         viewModel.scenes,
+        viewModel.activeSceneUid,
     )
 }
 
@@ -286,6 +291,10 @@ internal fun loadAdventureFromUri(
             }
         }
 
+        viewModel.activeSceneUid = adventure.startScene
+            ?.let { id -> viewModel.scenes.firstOrNull { it.id == id }?.uid }
+            ?: viewModel.scenes.firstOrNull { !it.isDeathScene }?.uid
+            ?: viewModel.scenes.firstOrNull()?.uid
         viewModel.initHistory()
         viewModel.collapseAllScenes()
         viewModel.collapseAllChoices()

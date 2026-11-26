@@ -55,6 +55,16 @@
     <!-- ============================================================ -->
     <string name="editor_title_untitled">Без названия</string>
     <string name="editor_add_scene">+ Сцена</string>
+    <string name="editor_no_scenes_hint">Сцен пока нет. Нажмите «+ Сцена» в меню.</string>
+    <string name="editor_scene_search_placeholder">Поиск сцены…</string>
+    <string name="editor_scene_search_nothing">Ничего не найдено.</string>
+    <string name="editor_scene_search_more_fmt">Ещё результатов: %1$d. Уточните запрос.</string>
+    <string name="editor_incoming_scenes_fmt">Входящие сцены (%1$d)</string>
+    <string name="editor_incoming_scenes_none">Входящие сцены: нет</string>
+    <string name="editor_incoming_scenes_title">Входящие сцены</string>
+    <string name="editor_incoming_scenes_empty">Нет входящих сцен.</string>
+    <string name="editor_scene_text_expand">⤢ Развернуть текст</string>
+    <string name="editor_scene_text_fullscreen_title">Текст сцены</string>
     <string name="editor_load">Загрузить</string>
     <string name="editor_edit_meta">Название</string>
     <string name="editor_validate">Проверить</string>
@@ -188,6 +198,9 @@
     <string name="variables_header_title">Переменные</string>
     <string name="variables_header_description">Объявления типов переменных. Если пусто — type checking работает в fallback-режиме (по tags + initial_state).</string>
     <string name="variables_header_add">+ Переменная</string>
+    <string name="variable_delete_title">Удалить переменную?</string>
+    <string name="variable_delete_message_fmt">Удалить переменную «%1$s»? Условия и эффекты, которые её используют, станут ошибкой валидации.</string>
+    <string name="variable_untitled">(без имени)</string>
     <string name="variable_name_hint">Имя переменной</string>
 
     <string name="var_kind_bool">Bool (флаг)</string>
@@ -274,6 +287,12 @@
     <string name="reader_broken_dialog_title">Не удалось открыть</string>
     <string name="reader_broken_dialog_intro_fmt">Файл повреждён (%1$d ошибок):\n\n</string>
     <string name="reader_type_errors_dialog_intro_fmt">Файл содержит %1$d ошибок в типах переменных:\n\n</string>
+    <string name="reader_parse_error_dialog_intro_fmt">Не удалось прочитать файл (%1$d ошибок):\n\n</string>
+    <string name="reader_compile_error_dialog_intro_fmt">Файл не прошёл проверку (%1$d ошибок):\n\n</string>
+    <string name="reader_no_data_dialog_intro">Нет данных приключения для открытия.\n\n</string>
+    <string name="reader_progress_error_title">Не удалось открыть сохранение</string>
+    <string name="reader_progress_error_intro">Сохранение этого приключения не удалось прочитать. Файл не будет перезаписан.\n\n</string>
+    <string name="dialog_close">Закрыть</string>
 
     <!-- Shared "and N more" suffix for warning / error lists -->
     <string name="reader_dialog_more_fmt">\n…и ещё %1$d</string>
@@ -500,6 +519,12 @@
     <string name="item_editor_scene_settings_toggle">Настройки сцены</string>
     <string name="item_editor_scene_chapter_end">Сделать концом главы</string>
     <string name="item_editor_scene_scene_gate">Шаговый гейт</string>
+    <string name="item_editor_scene_merge">Точка слияния</string>
+    <string name="item_editor_scene_merge_badge">🔀 Слияние</string>
+    <string name="item_editor_scene_merge_hint">Сцена, где сходятся ветки. Список можно не заполнять — анализатор проверит входящие переходы.</string>
+    <string name="item_editor_scene_merge_sources">Ветки, которые сходятся здесь:</string>
+    <string name="item_editor_scene_merge_none">Ветки не указаны.</string>
+    <string name="item_editor_scene_merge_add">+ Ветка</string>
     <string name="item_editor_scene_ending">Конец игры</string>
     <string name="item_editor_scene_death_scene">Сцена смерти</string>
     <string name="item_editor_scene_death_options_label">Какие кнопки видит игрок после смерти:</string>
@@ -513,6 +538,7 @@
     <string name="item_editor_choice_text_hint">Текст варианта</string>
     <string name="item_editor_choice_next_scene_label">След. сцена:</string>
     <string name="item_editor_choice_condition_hint">Условие (метка)</string>
+    <string name="item_editor_choice_visibility_hint">Показывать, если… (необязательно, скрывает кнопку)</string>
 
     <!-- Item: editor tag row -->
     <string name="item_editor_tag_name_hint">Имя метки (технич.)</string>
@@ -522,6 +548,9 @@
     <string name="item_initial_state_title">Начальное состояние</string>
     <string name="item_initial_state_description">Метки и статы, с которыми игрок входит в историю до первой сцены. Например, стартовое здоровье, инвентарь, флаги.</string>
     <string name="item_initial_state_add_tag">+ Метка</string>
+    <string name="initial_state_delete_title">Удалить метку?</string>
+    <string name="initial_state_delete_message_fmt">Удалить метку «%1$s» из начального состояния?</string>
+    <string name="initial_state_untitled">(без имени)</string>
 
     <!-- Item: empty hints -->
     <string name="item_empty_template_hint_text">Пока нет шаблонов.\nНажмите «+ Шаблон» в меню вверху.</string>
@@ -629,6 +658,14 @@
 
     <!-- Reader: disabled choice suffix -->
     <string name="reader_choice_disabled">(недоступно)</string>
+    <string name="reader_choice_disabled_reason_fmt">Недоступно: %1$s</string>
+    <string name="reader_choice_gate_reason">Сначала пройдите шаги</string>
+    <string name="reader_choice_reason_need_fmt">нужно: %1$s</string>
+    <string name="reader_choice_reason_compare_fmt">нужно: %1$s %2$s %3$d (сейчас %4$d)</string>
+    <string name="reader_choice_reason_range_fmt">нужно: %1$s от %2$d до %3$d (сейчас %4$d)</string>
+    <string name="reader_choice_reason_literal">условие не выполнено</string>
+    <string name="reader_choice_reason_not">условие уже выполнено</string>
+    <string name="reader_choice_reason_or"> или </string>
 
     <!-- Validation dialog: merge source missing -->
     <string name="validation_title_missing_merge_source">Источник слияния не найден</string>
@@ -657,6 +694,7 @@
     <string name="editor_subroutines_button">Подпрограммы</string>
     <string name="subroutine_list_title">Подпрограммы</string>
     <string name="subroutine_add">+ Добавить</string>
+    <string name="subroutine_duplicate">Копия</string>
     <string name="subroutine_untitled">(без id)</string>
     <string name="subroutine_empty_hint">Подпрограмм пока нет. Нажмите «Добавить», чтобы создать первую.</string>
     <string name="subroutine_summary_fmt">Входов: %1$d · выходов: %2$d · шагов: %3$d</string>
@@ -675,6 +713,15 @@
     <string name="subroutine_add_step">+ Шаг</string>
     <string name="subroutine_step_title_fmt">Шаг %1$d</string>
     <string name="subroutine_step_condition_hint">Условие (необязательно)</string>
+    <string name="subroutine_body_scope_fmt">В теле доступны только: %1$s. Глобальные переменные нужно передать через входы.</string>
+    <string name="subroutine_body_scope_empty">Сначала добавьте входы или выходы — тело увидит только их.</string>
+    <string name="subroutine_param_untitled">(без имени)</string>
+    <string name="subroutine_param_kind_input">вход</string>
+    <string name="subroutine_param_kind_output">выход</string>
+    <string name="subroutine_param_delete_title">Удалить параметр?</string>
+    <string name="subroutine_param_delete_message_fmt">Удалить %1$s «%2$s»? Эффекты и вызовы, которые его используют, станут ошибкой валидации.</string>
+    <string name="subroutine_step_delete_title">Удалить шаг?</string>
+    <string name="subroutine_step_delete_message_fmt">Удалить шаг %1$d со всеми эффектами и вложенным вызовом?</string>
     <string name="subroutine_step_effects_title">Эффекты шага</string>
     <string name="subroutine_step_effects_info">Эффекты применяются при выполнении шага «%1$s».</string>
     <string name="subroutine_step_effects_fmt">Эффектов: %1$d</string>
@@ -683,7 +730,8 @@
     <string name="subroutine_step_call_fmt">Вызов: %1$s</string>
     <string name="subroutine_step_no_call">Вызов: —</string>
     <string name="subroutine_step_call_button">Выбрать</string>
-    <string name="subroutine_choice_label">Подпрограмма:</string>
+    <string name="subroutine_choice_label">Подпрограмма (необязательно):</string>
+    <string name="item_editor_choice_template_label">Из шаблона:</string>
     <string name="subroutine_call_dialog_choice_title">Использовать подпрограмму</string>
     <string name="subroutine_call_no_subroutines">Подпрограмм пока нет. Создайте подпрограмму на экране «Подпрограммы».</string>
     <string name="subroutine_call_pick">Подпрограмма</string>
@@ -695,4 +743,36 @@
     <string name="subroutine_call_no_scope">Нет переменных в области видимости. Объявите переменные на экране редактора сцен.</string>
     <string name="subroutine_call_no_targets">Нет выходных параметров в области видимости.</string>
     <string name="subroutine_call_no_parameters">Без параметров.</string>
+    <string name="subroutine_call_choice_availability_hint">Если действие должно стать недоступным, добавьте условие на сам выбор. Подпрограмма не управляет доступностью кнопки.</string>
+    <string name="subroutine_unsaved_title">Есть несохранённые изменения</string>
+    <string name="subroutine_unsaved_message_fmt">Изменения подпрограммы «%1$s» не сохранены. Сохранить перед выходом?</string>
+    <string name="subroutine_unsaved_no_id">У подпрограммы не задан ID — сохранить её нельзя. Задайте ID или выйдите без сохранения.</string>
+    <string name="subroutine_unsaved_discard">Выйти без сохранения</string>
+
+    <string name="editor_help_button">Справка</string>
+    <string name="help_title">Справка</string>
+    <string name="help_intro_title">Как устроен редактор</string>
+    <string name="help_intro_body">Редактор собирает книгу-игру из сцен. В сцене есть текст и варианты действий — кнопки, которые видит читатель. У каждого варианта можно задать, куда он ведёт и что меняется в истории. Программировать не нужно: вы заполняете карточки и проверяете результат.</string>
+    <string name="help_scenes_title">Сцены и варианты действий</string>
+    <string name="help_scenes_body">Сцена — это страница книги. Вариант действия — кнопка под текстом. У варианта есть текст, следующая сцена и два необязательных условия. «Показывать, если…» скрывает вариант целиком; «Условие» оставляет его видимым, но недоступным. Например, «показать вариант, только если у читателя есть ключ».</string>
+    <string name="help_variables_title">Переменные</string>
+    <string name="help_variables_body">Переменные — это памятки истории: сколько здоровья, сколько зелий, найден ли ключ. Объявите переменную заранее и выберите её тип: число, флаг «да/нет» или счётчик предметов. Тогда редактор сможет подсказывать ошибки, а подпрограммы — понимать, с чем они работают.</string>
+    <string name="help_templates_title">Шаблоны выбора</string>
+    <string name="help_templates_body">Шаблон — это заготовка кнопки: текст, условие, эффекты и переход. Вы применяете шаблон в сцене, и получается обычный выбор; в редакторе у него остаётся пометка «Из шаблона». Шаблон не выполняет действие сам — действие делает развёрнутый выбор. Это не подпрограмма: подпрограмма — общая инструкция, а шаблон — готовый вариант действия.</string>
+    <string name="help_merge_title">Слияния</string>
+    <string name="help_merge_body">Иногда несколько веток должны сойтись в одной сцене. Включите «Точка слияния» в настройках этой сцены. Список веток можно не заполнять: анализатор сам проверит входящие переходы и предупредит, если объявленная ветка не ведёт сюда. На чтение этот флаг не влияет — это подсказка автору и проверкам.</string>
+    <string name="help_subroutines_title">Подпрограммы</string>
+    <string name="help_subroutines_intro">Подпрограмма — это общая инструкция, которую можно вызывать из разных сцен. Представьте рецепт: «выпить зелье» — проверить, что зелье есть, убрать одну штуку и добавить здоровье. Рецепт записывается один раз, а использовать его можно в любой сцене. Для читателя это выглядит как обычное действие: он выбирает вариант и сразу видит результат.</string>
+    <string name="help_subroutines_when_title">Когда это полезно</string>
+    <string name="help_subroutines_when_body">• Одна и та же механика повторяется в разных местах: выпить зелье, потратить предмет, получить награду, пройти проверку.\n• Нужно, чтобы правила не расходились между сценами: изменили рецепт один раз — он одинаково работает везде.\n• Хочется собрать сложное действие из нескольких шагов, но не показывать читателю промежуточные экраны.</string>
+    <string name="help_subroutines_how_title">Как она устроена</string>
+    <string name="help_subroutines_how_body">• ID — короткое имя подпрограммы для ссылок. Лучше латиницей, без пробелов: например, consume.\n• Входы — что подпрограмма должна знать. Например, какой предмет использовать и сколько сейчас здоровья.\n• Выходы — что она меняет. Например, количество предмета и здоровье. Если имя есть и во входах, и в выходах, подпрограмма берёт текущее значение и записывает новое. Ненужный выход можно не привязывать — значение просто не сохранится.\n• Тело — шаги, которые выполняются по порядку.\n• Шаг — условие (когда он срабатывает) и эффекты (что меняется). Условие можно не заполнять.\n• Эффекты — изменения: прибавить или убрать здоровье, потратить предмет, поставить флаг.</string>
+    <string name="help_subroutines_example_title">Пример: «Выпить зелье»</string>
+    <string name="help_subroutines_example_body">1. Объявите переменные potion (счётчик предмета) и health (число, минимум 0).\n2. Создайте подпрограмму consume. Входы: item и health. Выходы: item и health.\n3. Добавьте шаг: условие «item больше 0», эффекты «item минус 1» и «health плюс 5».\n4. В двух разных сценах добавьте вариант «Выпить зелье» и привяжите к нему consume: item → potion, health → health.\nТеперь в обеих сценах работает одно и то же правило. Читатель не видит отдельных экранов подпрограммы — она выполняется сразу после выбора.</string>
+    <string name="help_subroutines_limits_title">Чего в подпрограмме нет</string>
+    <string name="help_subroutines_limits_body">• Это не сцена: внутри нельзя показать текст или новые варианты. Для сюжетных вставок используйте обычные сцены.\n• Нет циклов и счётчиков: шаги выполняются один раз, по порядку.\n• Подпрограмма видит только свои входы и выходы. Она не может незаметно менять другие переменные — так правила остаются предсказуемыми.\n• Вложенные вызовы других подпрограмм допустимы, но подпрограмма не может вызывать саму себя.</string>
+    <string name="help_subroutines_errors_title">Частые ошибки</string>
+    <string name="help_subroutines_errors_body">• Не заполнен вход — кнопка сохранения вызова остаётся неактивной. Выберите переменную для каждого входа.\n• Не совпали типы — «Проверить» покажет ошибку подпрограммы. Например, предмет нельзя привязать к флагу «да/нет».\n• Кнопка остаётся доступной, хотя предметы кончились — подпрограмма не управляет доступностью кнопки. Добавьте такое же условие на сам выбор, например «potion > 0».\n• Переименовали ID подпрограммы — старые вызовы перестанут её находить. Проверьте вызовы после переименования.\n• Забыли сохранить подпрограмму — редактор предупредит при выходе и предложит сохранить или выйти без сохранения.</string>
+    <string name="help_tip_title">Совет</string>
+    <string name="help_tip_body">Начните с одной короткой подпрограммы и одного вызова. Проверьте её в «Проверить», затем добавьте второй вызов в другую сцену. Если правило станет сложным, разбейте его на две подпрограммы с понятными названиями.</string>
 </resources>

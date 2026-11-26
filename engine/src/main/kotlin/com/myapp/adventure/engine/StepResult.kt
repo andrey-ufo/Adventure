@@ -78,6 +78,31 @@ public sealed class StepResult {
         public val state: PlayerState,
         public val currentScene: Scene,
         public val outcome: Outcome? = null,
+        /**
+         * Ф4.9 (N4): choices in [currentScene] that are visible but
+         * disabled by their `condition`, with the structured reason from
+         * [Evaluator.choiceState].
+         *
+         * Hidden choices are excluded (`visibilityCondition == false`);
+         * enabled choices are excluded. A scene-level gate is **not**
+         * duplicated here — the reader disables all choices uniformly
+         * while the gate is active (see `Scene.gate` / `Blocker.GateNotPassed`).
+         *
+         * Computed against the **post-step** state, so a subroutine call
+         * that changes a flag is reflected immediately. Defaults to an
+         * empty list for callers that only need the old fields.
+         */
+        public val disabledChoices: List<DisabledChoice> = emptyList(),
+        /**
+         * Ф5.2 (S5): the player-state operation log applied by this step —
+         * choice effects first, then top-level subroutine output writes.
+         *
+         * The scene transition / gate / item order are not player-state
+         * deltas; they stay in the save cursor. Callers that only need
+         * the new state can ignore this field (empty default for old
+         * call sites/tests).
+         */
+        public val appliedDeltas: List<StateDelta> = emptyList(),
     ) : StepResult() {
 
         /**
@@ -100,6 +125,19 @@ public sealed class StepResult {
      */
     public data class Rejected(public val reason: RejectReason) : StepResult()
 }
+
+/**
+ * Ф4.9 (N4): a visible-but-disabled choice in the **target** scene after a
+ * successful step.
+ *
+ * `reason` is the structured [ChoiceState.Disabled.reason]; formatting the
+ * player-facing text is an `:app` concern (same split as
+ * [com.myapp.adventure.engine.ir.types.TypeError]).
+ */
+public data class DisabledChoice(
+    public val choiceId: ChoiceId,
+    public val reason: Reason,
+)
 
 /**
  * Why a step was rejected.

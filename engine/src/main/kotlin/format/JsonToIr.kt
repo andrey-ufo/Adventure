@@ -19,6 +19,7 @@ import com.myapp.adventure.engine.format.dto.InvariantDto
 import com.myapp.adventure.engine.format.dto.SubroutineCallDto
 import com.myapp.adventure.engine.format.dto.SubroutineDto
 import com.myapp.adventure.engine.format.dto.SubroutineStepDto
+import com.myapp.adventure.engine.format.dto.TemplateRefDto
 import com.myapp.adventure.engine.format.dto.VarDeclDto
 import com.myapp.adventure.engine.format.dto.VariableDto
 import com.myapp.adventure.engine.ir.ChoiceTemplate
@@ -28,6 +29,7 @@ import com.myapp.adventure.engine.ir.Outcome
 import com.myapp.adventure.engine.ir.Subroutine
 import com.myapp.adventure.engine.ir.SubroutineCall
 import com.myapp.adventure.engine.ir.SubroutineStep
+import com.myapp.adventure.engine.ir.TemplateRef
 import com.myapp.adventure.engine.ir.types.VarDecl
 import com.myapp.adventure.engine.ir.types.VarType
 import com.myapp.adventure.engine.parse.ConditionParser
@@ -384,6 +386,9 @@ public object JsonToIr {
         val condition = dto.condition?.let { raw ->
             parseCondition(raw, "$path.condition", errors)
         }
+        val visibilityCondition = dto.visibilityCondition?.let { raw ->
+            parseCondition(raw, "$path.visibility_condition", errors)
+        }
         val effects = buildEffects(dto.setFlags, dto.removeFlags, dto.modifyStats)
         val choiceId = dto.id?.takeIf { it.isNotBlank() }
             ?.let { ChoiceId(it) }
@@ -393,7 +398,14 @@ public object JsonToIr {
             text = dto.text,
             nextScene = SceneId(dto.nextScene),
             condition = condition,
+            visibilityCondition = visibilityCondition,
             effects = effects,
+            templateRef = dto.templateRef?.let { ref ->
+                TemplateRef(
+                    templateId = ref.templateId,
+                    args = ref.args,
+                )
+            },
             call = dto.call?.let { buildSubroutineCall(it, "$path.call", errors) },
         )
     }

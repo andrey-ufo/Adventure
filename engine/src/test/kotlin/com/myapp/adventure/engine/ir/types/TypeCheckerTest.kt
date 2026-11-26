@@ -79,6 +79,7 @@ class TypeCheckerTest {
         id: String = "c1",
         next: String = "start",
         condition: Condition? = null,
+        visibilityCondition: Condition? = null,
         effects: List<Effect> = emptyList(),
         call: SubroutineCall? = null,
     ): Choice = Choice(
@@ -86,6 +87,7 @@ class TypeCheckerTest {
         text = "go",
         nextScene = SceneId(next),
         condition = condition,
+        visibilityCondition = visibilityCondition,
         effects = effects,
         call = call,
     )
@@ -520,6 +522,32 @@ class TypeCheckerTest {
         )
         val errors = TypeChecker.check(adv)
         assertIs<TypeError.UnknownVariable>(errors.single())
+    }
+
+    // ---------- Ф4.10: choice visibility ----------
+
+    @Test
+    fun `choice visibility condition is type checked`() {
+        val adv = adventure(
+            variables = variables("health" to VarType.IntMin(0)),
+            scenes = arrayOf(
+                scene(
+                    "start",
+                    choices = listOf(
+                        choice(
+                            visibilityCondition = Condition.Compare(
+                                "ghost",
+                                CompareOp.GT,
+                                0,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val error = assertIs<TypeError.UnknownVariable>(TypeChecker.check(adv).single())
+        assertEquals("ghost", error.name)
+        assertEquals(SceneId("start"), error.sceneId)
     }
 
     // ---------- Ф4.7: subroutines ----------

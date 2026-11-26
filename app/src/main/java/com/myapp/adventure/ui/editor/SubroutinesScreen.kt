@@ -38,6 +38,8 @@ import com.myapp.adventure.data.EditorSubroutineStep
 import com.myapp.adventure.data.EditorVarDecl
 import com.myapp.adventure.data.VarKind
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.data.uniqueSubroutineId
+import java.util.UUID
 
 /**
  * Ф4.8: subroutines destination.
@@ -70,17 +72,47 @@ fun SubroutinesScreen(
     var working by remember {
         mutableStateOf(viewModel.editingSubroutine?.deepCopy())
     }
+    var baseline by remember {
+        mutableStateOf(
+            viewModel.editingSubroutine?.let { editing ->
+                viewModel.subroutines.firstOrNull { it.uid == editing.uid }?.deepCopy()
+                    ?: EditorSubroutine(uid = editing.uid)
+            }
+        )
+    }
     var pendingDelete by remember { mutableStateOf<EditorSubroutine?>(null) }
+    var showUnsavedDialog by remember { mutableStateOf(false) }
 
     fun open(subroutine: EditorSubroutine) {
         val copy = subroutine.deepCopy()
         viewModel.editingSubroutine = copy
+        baseline = subroutine.deepCopy()
+        working = copy
+    }
+
+    fun openNew() {
+        val copy = EditorSubroutine()
+        viewModel.editingSubroutine = copy
+        baseline = EditorSubroutine(uid = copy.uid)
         working = copy
     }
 
     fun closeEditor() {
+        showUnsavedDialog = false
         viewModel.editingSubroutine = null
+        baseline = null
         working = null
+    }
+
+    fun hasUnsavedChanges(): Boolean =
+        working != null && working != baseline
+
+    fun requestClose() {
+        if (hasUnsavedChanges()) {
+            showUnsavedDialog = true
+        } else {
+            closeEditor()
+        }
     }
 
     fun update(block: (EditorSubroutine) -> Unit) {
@@ -93,6 +125,22 @@ fun SubroutinesScreen(
     fun persistAndRefresh() {
         viewModel.commitState()
         onPersist()
+    }
+
+    fun duplicate(source: EditorSubroutine) {
+        val copy = source.deepCopy().copy(
+            uid = UUID.randomUUID().toString(),
+            id = uniqueSubroutineId(
+                source.id,
+                viewModel.subroutines.map { it.id }.toSet(),
+            ),
+        )
+        // The duplicate is a real list item immediately (not a phantom
+        // working copy): it is persisted before the editor opens, so
+        // backing out leaves the copy intact.
+        viewModel.subroutines.add(copy)
+        persistAndRefresh()
+        open(copy)
     }
 
     fun save() {
@@ -108,25 +156,37 @@ fun SubroutinesScreen(
         persistAndRefresh()
     }
 
-    BackHandler(enabled = working != null) { closeEditor() }
+    BackHandler(enabled = working != null) { requestClose() }
 
     if (working == null) {
         SubroutineList(
             subroutines = state.subroutines,
             onBack = onBack,
-            onAdd = {
-                open(EditorSubroutine())
-            },
+            onAdd = ::openNew,
             onEdit = ::open,
+            onDuplicate = ::duplicate,
             onDelete = { pendingDelete = it },
         )
     } else {
         SubroutineEditor(
             subroutine = working!!,
             allSubroutines = state.subroutines,
-            onCancel = ::closeEditor,
+            onCancel = ::requestClose,
             onSave = ::save,
             onUpdate = ::update,
+        )
+    }
+
+    if (showUnsavedDialog) {
+        UnsavedSubroutineDialog(
+            subroutineId = working?.id.orEmpty(),
+            canSave = working?.id?.isNotBlank() == true,
+            onSave = {
+                showUnsavedDialog = false
+                save()
+            },
+            onDiscard = ::closeEditor,
+            onDismiss = { showUnsavedDialog = false },
         )
     }
 
@@ -173,6 +233,7 @@ private fun SubroutineList(
     onBack: () -> Unit,
     onAdd: () -> Unit,
     onEdit: (EditorSubroutine) -> Unit,
+    onDuplicate: (EditorSubroutine) -> Unit,
     onDelete: (EditorSubroutine) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -235,6 +296,14 @@ private fun SubroutineList(
                                 )
                             }
                             Text(
+                                text = stringResource(R.string.subroutine_duplicate),
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .clickable { onDuplicate(subroutine) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                            Text(
                                 text = "✕",
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier
@@ -272,6 +341,8 @@ private fun SubroutineEditor(
 
     var effectsStepIndex by remember { mutableStateOf<Int?>(null) }
     var callStepIndex by remember { mutableStateOf<Int?>(null) }
+    var pendingParamRemoval by remember { mutableStateOf<ParamRemoval?>(null) }
+    var pendingStepRemoval by remember { mutableStateOf<Int?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         SectionBar(
@@ -321,7 +392,13 @@ private fun SubroutineEditor(
                     title = stringResource(R.string.subroutine_inputs_title),
                     parameters = subroutine.inputs,
                     onAdd = { onUpdate { it.inputs.add(EditorVarDecl()) } },
-                    onRemove = { index -> onUpdate { it.inputs.removeAt(index) } },
+                    onRemove = { index ->
+                        pendingParamRemoval = ParamRemoval(
+                            isInput = true,
+                            index = index,
+                            name = subroutine.inputs[index].name,
+                        )
+                    },
                     onNameChanged = { index, value ->
                         onUpdate { it.inputs[index] = it.inputs[index].copy(name = value) }
                     },
@@ -342,7 +419,13 @@ private fun SubroutineEditor(
                     title = stringResource(R.string.subroutine_outputs_title),
                     parameters = subroutine.outputs,
                     onAdd = { onUpdate { it.outputs.add(EditorVarDecl()) } },
-                    onRemove = { index -> onUpdate { it.outputs.removeAt(index) } },
+                    onRemove = { index ->
+                        pendingParamRemoval = ParamRemoval(
+                            isInput = false,
+                            index = index,
+                            name = subroutine.outputs[index].name,
+                        )
+                    },
                     onNameChanged = { index, value ->
                         onUpdate { it.outputs[index] = it.outputs[index].copy(name = value) }
                     },
@@ -359,17 +442,32 @@ private fun SubroutineEditor(
             }
 
             item(key = "steps_header") {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SectionTitle(
-                        text = stringResource(R.string.subroutine_steps_title),
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = { onUpdate { it.body.add(EditorSubroutineStep()) } }) {
-                        Text(stringResource(R.string.subroutine_add_step))
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SectionTitle(
+                            text = stringResource(R.string.subroutine_steps_title),
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { onUpdate { it.body.add(EditorSubroutineStep()) } }) {
+                            Text(stringResource(R.string.subroutine_add_step))
+                        }
                     }
+                    Text(
+                        text = if (localNames.isEmpty()) {
+                            stringResource(R.string.subroutine_body_scope_empty)
+                        } else {
+                            stringResource(
+                                R.string.subroutine_body_scope_fmt,
+                                localNames.joinToString(", "),
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
                 }
             }
 
@@ -383,7 +481,7 @@ private fun SubroutineEditor(
                     onEditEffects = { effectsStepIndex = index },
                     onPickCall = { callStepIndex = index },
                     onClearCall = { onUpdate { it.body[index].call = null } },
-                    onDelete = { onUpdate { it.body.removeAt(index) } },
+                    onDelete = { pendingStepRemoval = index },
                 )
             }
         }
@@ -442,7 +540,88 @@ private fun SubroutineEditor(
             callStepIndex = null
         }
     }
+
+    pendingParamRemoval?.let { removal ->
+        val kind = stringResource(
+            if (removal.isInput) R.string.subroutine_param_kind_input
+            else R.string.subroutine_param_kind_output,
+        )
+        AlertDialog(
+            onDismissRequest = { pendingParamRemoval = null },
+            title = { Text(stringResource(R.string.subroutine_param_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.subroutine_param_delete_message_fmt,
+                        kind,
+                        removal.name.ifBlank {
+                            stringResource(R.string.subroutine_param_untitled)
+                        },
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onUpdate { current ->
+                        if (removal.isInput) {
+                            current.inputs.getOrNull(removal.index)?.let {
+                                current.inputs.removeAt(removal.index)
+                            }
+                        } else {
+                            current.outputs.getOrNull(removal.index)?.let {
+                                current.outputs.removeAt(removal.index)
+                            }
+                        }
+                    }
+                    pendingParamRemoval = null
+                }) {
+                    Text(stringResource(R.string.dialog_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingParamRemoval = null }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
+    }
+
+    pendingStepRemoval?.let { index ->
+        AlertDialog(
+            onDismissRequest = { pendingStepRemoval = null },
+            title = { Text(stringResource(R.string.subroutine_step_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.subroutine_step_delete_message_fmt,
+                        index + 1,
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onUpdate { current ->
+                        if (index in current.body.indices) current.body.removeAt(index)
+                    }
+                    pendingStepRemoval = null
+                }) {
+                    Text(stringResource(R.string.dialog_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingStepRemoval = null }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
+    }
 }
+
+private data class ParamRemoval(
+    val isInput: Boolean,
+    val index: Int,
+    val name: String,
+)
 
 @Composable
 private fun ParameterSection(
@@ -596,6 +775,61 @@ private fun SubroutineStepCard(
             }
         }
     }
+}
+
+/**
+ * Ф4.8a: leaving the subroutine editor with unsaved fields must be
+ * explicit. "Сохранить" is disabled while the id is blank (the file cannot
+ * reference it); the author can still discard or go back to editing.
+ */
+@Composable
+private fun UnsavedSubroutineDialog(
+    subroutineId: String,
+    canSave: Boolean,
+    onSave: () -> Unit,
+    onDiscard: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.subroutine_unsaved_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(
+                        R.string.subroutine_unsaved_message_fmt,
+                        subroutineId.ifBlank { stringResource(R.string.subroutine_untitled) },
+                    )
+                )
+                if (!canSave) {
+                    Text(
+                        text = stringResource(R.string.subroutine_unsaved_no_id),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canSave,
+                onClick = onSave,
+            ) {
+                Text(stringResource(R.string.dialog_save))
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDiscard) {
+                    Text(stringResource(R.string.subroutine_unsaved_discard))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        },
+    )
 }
 
 // =====================================================================

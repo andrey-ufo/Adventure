@@ -135,6 +135,8 @@ fun EditorRoute(
                 viewModel.commitSnapshot()
                 markDirty()
             },
+            onVariables = { onNavigate(EditorDestination.Variables) },
+            onInitialState = { onNavigate(EditorDestination.InitialState) },
             onSave = {
                 debounceHandler.removeCallbacks(saveRunnable)
                 saveAdventureToFile(context, viewModel)
@@ -142,10 +144,10 @@ fun EditorRoute(
             onLoad = { openFileLauncher.launch(arrayOf("application/json")) },
             onEditMeta = { onNavigate(EditorDestination.Meta) },
             onValidate = { onNavigate(EditorDestination.Validation) },
-            onSearch = { onNavigate(EditorDestination.Search) },
             onStats = { onNavigate(EditorDestination.Stats) },
             onTemplates = { onNavigate(EditorDestination.Templates) },
             onSubroutines = { onNavigate(EditorDestination.Subroutines) },
+            onHelp = { onNavigate(EditorDestination.Help) },
         )
 
         EditorScenesList(
@@ -177,8 +179,8 @@ fun EditorRoute(
     if (showTypesMissing) {
         TypesMissingDialog(
             onDeclare = {
-                viewModel.updateVariablesExpanded(true)
                 showTypesMissing = false
+                onNavigate(EditorDestination.Variables)
             },
             onDismiss = { showTypesMissing = false },
         )

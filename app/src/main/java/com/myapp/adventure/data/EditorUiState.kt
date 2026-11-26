@@ -37,6 +37,12 @@ data class EditorUiState(
     val subroutines: List<EditorSubroutine> = emptyList(),
     val initialStateTags: List<EditorTag> = emptyList(),
     val scenes: List<EditorScene> = emptyList(),
+    /**
+     * Ф4.13: the only scene shown by the main editor. Persisted in the
+     * draft so reopening the editor returns to the last edited scene.
+     * `null` only when there are no scenes.
+     */
+    val activeSceneUid: String? = null,
     val expandedScenes: Set<String> = emptySet(),
     val expandedSceneSettings: Set<String> = emptySet(),
     val expandedChoices: Set<String> = emptySet(),

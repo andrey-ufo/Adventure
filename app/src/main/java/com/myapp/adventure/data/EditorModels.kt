@@ -344,3 +344,22 @@ fun EditorSubroutineCall.deepCopy(): EditorSubroutineCall = copy(
     args = args.toMap(),
     outputs = outputs.toMap(),
 )
+
+/**
+ * Ф4.8c: a stable id for a duplicated subroutine.
+ *
+ * Keeps the source id when it is free; otherwise appends `_2`, `_3`, …
+ * (or `subroutine_2` for a blank source). If the source already ends in a
+ * numeric suffix (`consume_2`), the suffix is replaced rather than stacked
+ * (`consume_3`). This is deliberately predictable for non-programmers —
+ * the new card is immediately visible and can be renamed.
+ */
+fun uniqueSubroutineId(baseId: String, existingIds: Set<String>): String {
+    val clean = baseId.trim()
+    if (clean.isNotEmpty() && clean !in existingIds) return clean
+    val root = clean.replace(Regex("_\\d+$"), "").ifEmpty { "subroutine" }
+    if (root !in existingIds) return root
+    var n = 2
+    while ("${root}_$n" in existingIds) n++
+    return "${root}_$n"
+}

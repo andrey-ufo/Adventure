@@ -28,6 +28,42 @@
     "quest_started": { "type": "bool" },
     "quest_completed": { "type": "bool" }
   },
+  "subroutines": [
+    {
+      "id": "drink_potion",
+      "inputs": [
+        { "name": "item", "type": "item_count" },
+        { "name": "health", "type": "int_min", "min": 0 }
+      ],
+      "outputs": [
+        { "name": "item", "type": "item_count" },
+        { "name": "health", "type": "int_min", "min": 0 }
+      ],
+      "body": [
+        {
+          "condition": "item > 0",
+          "modify_stats": { "item": -1, "health": 25 }
+        }
+      ]
+    },
+    {
+      "id": "drink_potion_strong",
+      "inputs": [
+        { "name": "item", "type": "item_count" },
+        { "name": "health", "type": "int_min", "min": 0 }
+      ],
+      "outputs": [
+        { "name": "item", "type": "item_count" },
+        { "name": "health", "type": "int_min", "min": 0 }
+      ],
+      "body": [
+        {
+          "condition": "item >= 2",
+          "modify_stats": { "item": -2, "health": 50 }
+        }
+      ]
+    }
+  ],
   "death_scene": {
     "id": "death_scene",
     "text": "💀 Вы погибли.",
@@ -37,6 +73,18 @@
   },
   "invariants": [
     { "condition": "health <= 0", "outcome": "death" }
+  ],
+  "choice_templates": [
+    {
+      "id": "rest",
+      "parameters": [
+        { "name": "stat", "type": "int_min", "min": 0 }
+      ],
+      "text": "Отдохнуть через шаблон rest (+5 к {stat})",
+      "visibility_condition": "stat < 100",
+      "modify_stats": { "stat": 5 },
+      "next_scene": "@self"
+    }
   ],
   "tags": [
     { "name": "health", "display_name": "Здоровье", "category": "HEALTH", "visible": true },
@@ -58,9 +106,16 @@
       "scenes": [
         {
           "id": "start",
-          "text": "Добро пожаловать в тестовое приключение.",
+          "text": "Добро пожаловать в тестовое приключение. В нём показаны: шаблон rest («Отдохнуть»), подпрограммы drink_potion и drink_potion_strong («Выпить зелье»), точка слияния merge_test и обычные выборы с условиями.",
           "choices": [
             { "text": "Проверить здоровье", "next_scene": "health_test", "modify_stats": {"health": 10} },
+            {
+              "text": "Отдохнуть через шаблон rest (+5 к health)",
+              "next_scene": "start",
+              "visibility_condition": "health < 100",
+              "modify_stats": { "health": 5 },
+              "template_ref": { "template_id": "rest", "args": { "stat": "health" } }
+            },
             { "text": "Проверить предметы", "next_scene": "items_test", "modify_stats": {"potion": 2} },
             { "text": "Проверить журнал", "next_scene": "journal_test", "set_flags": ["visited_forest", "knows_secret"] },
             { "text": "Проверить условие (нужен меч)", "next_scene": "has_item_test", "condition": "sword > 0" },
@@ -75,7 +130,35 @@
           "choices": [
             { "text": "Съесть мухомор (-30 здоровья)", "next_scene": "health_test", "modify_stats": {"health": -30} },
             { "text": "Выпить лекарство (+50 здоровья)", "next_scene": "health_test", "modify_stats": {"health": 50} },
+            {
+              "text": "Выпить зелье через подпрограмму drink_potion (+25 здоровья, -1 зелье)",
+              "next_scene": "health_test",
+              "condition": "potion > 0",
+              "call": {
+                "subroutine_id": "drink_potion",
+                "args": { "item": "potion", "health": "health" },
+                "outputs": { "item": "potion", "health": "health" }
+              }
+            },
+            {
+              "text": "Выпить двойное зелье через подпрограмму drink_potion_strong (+50 здоровья, -2 зелья)",
+              "next_scene": "health_test",
+              "condition": "potion >= 2",
+              "call": {
+                "subroutine_id": "drink_potion_strong",
+                "args": { "item": "potion", "health": "health" },
+                "outputs": { "item": "potion", "health": "health" }
+              }
+            },
             { "text": "Получить удар тапком (урон -999)", "next_scene": "health_test", "modify_stats": {"health": -999} },
+            {
+              "text": "Отдохнуть через шаблон rest (+5 к stamina)",
+              "next_scene": "health_test",
+              "visibility_condition": "stamina < 100",
+              "modify_stats": { "stamina": 5 },
+              "template_ref": { "template_id": "rest", "args": { "stat": "stamina" } }
+            },
+            { "text": "Перейти в точку слияния merge_test", "next_scene": "merge_test" },
             { "text": "Назад", "next_scene": "start" }
           ]
         },
@@ -94,7 +177,40 @@
           "choices": [
             { "text": "Выбросить зелье (-1)", "next_scene": "items_test", "modify_stats": {"potion": -1} },
             { "text": "Добавить зелье (+1)", "next_scene": "items_test", "modify_stats": {"potion": 1} },
+            {
+              "text": "Выпить зелье через подпрограмму drink_potion (+25 здоровья, -1 зелье)",
+              "next_scene": "items_test",
+              "condition": "potion > 0",
+              "call": {
+                "subroutine_id": "drink_potion",
+                "args": { "item": "potion", "health": "health" },
+                "outputs": { "item": "potion", "health": "health" }
+              }
+            },
+            {
+              "text": "Обычный выбор: открыть набор зелий (условие potion >= 2)",
+              "next_scene": "items_test",
+              "condition": "potion >= 2",
+              "modify_stats": { "potion": -2, "health": 10 }
+            },
+            { "text": "Перейти в точку слияния merge_test", "next_scene": "merge_test" },
+            {
+              "text": "Отдохнуть через шаблон rest (+5 к health)",
+              "next_scene": "items_test",
+              "visibility_condition": "health < 100",
+              "modify_stats": { "health": 5 },
+              "template_ref": { "template_id": "rest", "args": { "stat": "health" } }
+            },
             { "text": "Назад", "next_scene": "start" }
+          ]
+        },
+        {
+          "id": "merge_test",
+          "text": "Вы пришли сюда из теста здоровья или теста предметов. Это явная точка слияния: обе ветки сходятся в этой сцене.",
+          "merge": true,
+          "merge_sources": ["health_test", "items_test"],
+          "choices": [
+            { "text": "Назад в старт", "next_scene": "start" }
           ]
         },
         {

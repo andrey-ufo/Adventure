@@ -27,8 +27,8 @@ import kotlinx.serialization.Serializable
  * both optional, defaults `null`):
  * - [visibilityCondition] — "show this choice?" (distinct from
  *   [condition], which is "enable this choice?"). Populated by
- *   `applyTemplate` from `ChoiceTemplate.visibilityCondition`;
- *   consumed by the reader in Ф4.4.
+ *   `applyTemplate` from `ChoiceTemplate.visibilityCondition` or parsed
+ *   from `visibility_condition` (Ф4.10); consumed by the reader in Ф4.4.
  * - [templateRef] — if this choice came from a `ChoiceTemplate`, the
  *   reference (id + args). Metadata for the editor (Ф4.3); never
  *   touched by the runtime or the analyzer. See `TemplateRef` KDoc.

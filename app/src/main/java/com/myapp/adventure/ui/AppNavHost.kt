@@ -16,6 +16,9 @@ import com.myapp.adventure.ui.editor.EditMetaRoute
 import com.myapp.adventure.ui.editor.EditorDestination
 import com.myapp.adventure.ui.editor.EditorPreviewRequest
 import com.myapp.adventure.ui.editor.EditorRoute
+import com.myapp.adventure.ui.editor.HelpRoute
+import com.myapp.adventure.ui.editor.InitialStateRoute
+import com.myapp.adventure.ui.editor.VariablesRoute
 import com.myapp.adventure.ui.editor.SearchRoute
 import com.myapp.adventure.ui.editor.StoryStatsRoute
 import com.myapp.adventure.ui.editor.SubroutinesRoute
@@ -48,8 +51,11 @@ object AppRoutes {
     @Serializable @SerialName("settings") data object Settings
     @Serializable @SerialName("editor") data object Editor
     @Serializable @SerialName("editor_meta") data object EditMeta
+    @Serializable @SerialName("editor_variables") data object Variables
+    @Serializable @SerialName("editor_initial_state") data object InitialState
     @Serializable @SerialName("editor_templates") data object Templates
     @Serializable @SerialName("editor_subroutines") data object Subroutines
+    @Serializable @SerialName("editor_help") data object Help
     @Serializable @SerialName("editor_validation") data object Validation
     @Serializable @SerialName("editor_search") data object Search
     @Serializable @SerialName("editor_stats") data object StoryStats
@@ -133,8 +139,11 @@ fun AppNavHost(
                     onNavigate = { destination ->
                         when (destination) {
                             EditorDestination.Menu -> navController.navigate(AppRoutes.Menu)
+                            EditorDestination.Variables -> navController.navigate(AppRoutes.Variables)
+                            EditorDestination.InitialState -> navController.navigate(AppRoutes.InitialState)
                             EditorDestination.Templates -> navController.navigate(AppRoutes.Templates)
                             EditorDestination.Subroutines -> navController.navigate(AppRoutes.Subroutines)
+                            EditorDestination.Help -> navController.navigate(AppRoutes.Help)
                             EditorDestination.Meta -> navController.navigate(AppRoutes.EditMeta)
                             EditorDestination.Validation -> navController.navigate(AppRoutes.Validation)
                             EditorDestination.Search -> navController.navigate(AppRoutes.Search)
@@ -167,12 +176,36 @@ fun AppNavHost(
             }
         }
 
+        composable<AppRoutes.Variables> {
+            FontScopeProvider(FontScope.EDITOR) {
+                VariablesRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+
+        composable<AppRoutes.InitialState> {
+            FontScopeProvider(FontScope.EDITOR) {
+                InitialStateRoute(
+                    viewModel = activityEditorViewModel(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+
         composable<AppRoutes.Subroutines> {
             FontScopeProvider(FontScope.EDITOR) {
                 SubroutinesRoute(
                     viewModel = activityEditorViewModel(),
                     onBack = { navController.popBackStack() },
                 )
+            }
+        }
+
+        composable<AppRoutes.Help> {
+            FontScopeProvider(FontScope.EDITOR) {
+                HelpRoute(onBack = { navController.popBackStack() })
             }
         }
 

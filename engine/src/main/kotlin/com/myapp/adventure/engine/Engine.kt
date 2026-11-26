@@ -389,6 +389,7 @@ public object Engine {
 
         // 5. Apply choice effects (target scene's effects are reader's job).
         var stateAfterChoice = EffectsApplier.apply(state, choice.effects)
+        val appliedDeltas = effectsToDeltas(choice.effects).toMutableList()
 
         // 6. Ф4.7: atomic subroutine call. The call sees the state after
         //    choice effects and returns the post-call global state. A
@@ -396,7 +397,10 @@ public object Engine {
         //    it); surface it as Rejected rather than crashing the reader.
         choice.call?.let { call ->
             when (val result = SubroutineExecutor.execute(compiled.adventure, call, stateAfterChoice)) {
-                is SubroutineExecutor.Result.Success -> stateAfterChoice = result.state
+                is SubroutineExecutor.Result.Success -> {
+                    stateAfterChoice = result.state
+                    appliedDeltas += result.globalDeltas
+                }
                 is SubroutineExecutor.Result.Failure -> return StepResult.Rejected(
                     RejectReason.SubroutineFailure(
                         subroutineId = result.subroutineId,
@@ -412,10 +416,21 @@ public object Engine {
         //    the caller proceeds to enter the target scene and re-checks after
         //    applying scene effects (a scene's entry effects can fire an
         //    invariant too; Engine.step does not apply them, so it cannot know).
+        // 8. Ф4.9 (N4): visible-but-disabled choices in the target scene,
+        //    computed against the post-step state (subroutine outputs
+        //    included). Hidden choices are not listed; a scene gate is a
+        //    scene-level concern handled by the reader.
+        val disabledChoices = nextScene.choices.mapNotNull { candidate ->
+            (Evaluator.choiceState(candidate, stateAfterChoice) as? ChoiceState.Disabled)
+                ?.let { DisabledChoice(candidate.id, it.reason) }
+        }
+
         return StepResult.Success(
             state = stateAfterChoice,
             currentScene = nextScene,
             outcome = evaluateInvariants(compiled.adventure, stateAfterChoice),
+            disabledChoices = disabledChoices,
+            appliedDeltas = appliedDeltas,
         )
     }
 

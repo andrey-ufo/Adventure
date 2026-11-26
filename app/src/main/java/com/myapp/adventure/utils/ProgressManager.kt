@@ -45,6 +45,13 @@ object ProgressManager {
     /** True when [cache] has unsaved changes that must be flushed. */
     @Volatile private var dirty = false
 
+    /**
+     * Ф5.3: entries that failed migration (unknown/future version).
+     * They are not put into [cache]; loading them throws explicitly so the
+     * reader can show a blocking error instead of silently restarting.
+     */
+    @Volatile private var invalidEntries: Map<String, String> = emptyMap()
+
     /** Set while a debounced flush is already scheduled. */
     private val flushScheduled = AtomicBoolean(false)
 
@@ -59,6 +66,11 @@ object ProgressManager {
     fun loadProgress(context: Context, adventureFileUri: Uri): ProgressData? {
         val fileName = getFileNameFromUri(context, adventureFileUri) ?: return null
         ensureLoaded(context)
+        invalidEntries[fileName]?.let { reason ->
+            throw ProgressMigrationException(
+                "Не удалось открыть сохранение '$fileName': $reason",
+            )
+        }
         return cache?.get(fileName)
     }
 
@@ -68,12 +80,18 @@ object ProgressManager {
      */
     fun saveProgress(context: Context, adventureFileUri: Uri, progress: ProgressData) {
         val fileName = getFileNameFromUri(context, adventureFileUri) ?: return
+        val normalized = try {
+            ProgressMigration.migrate(progress)
+        } catch (e: ProgressMigrationException) {
+            Logger.log(context, "Refusing to save progress: ${e.message}")
+            return
+        }
         val logged = synchronized(cacheLock) {
             ensureLoaded(context)
             val updated = (cache ?: emptyMap()).toMutableMap()
             val previous = updated[fileName]
-            if (previous == progress) return  // No-op, keep cache clean.
-            updated[fileName] = progress
+            if (previous == normalized) return  // No-op, keep cache clean.
+            updated[fileName] = normalized
             cache = updated
             dirty = true
             true
@@ -148,9 +166,23 @@ object ProgressManager {
                 emptyMap()
             } else {
                 val type = object : TypeToken<Map<String, ProgressData>>() {}.type
-                val map = gson.fromJson<Map<String, ProgressData>>(json, type) ?: emptyMap()
-                Logger.log(context, "Progress cache loaded: ${map.size} entries")
-                map
+                val raw = gson.fromJson<Map<String, ProgressData>>(json, type) ?: emptyMap()
+                val valid = mutableMapOf<String, ProgressData>()
+                val invalid = mutableMapOf<String, String>()
+                for ((name, data) in raw) {
+                    try {
+                        valid[name] = ProgressMigration.migrate(data)
+                    } catch (e: ProgressMigrationException) {
+                        invalid[name] = e.message ?: "unknown migration error"
+                        Logger.log(context, "Progress migration failed for $name: ${e.message}")
+                    }
+                }
+                invalidEntries = invalid
+                Logger.log(
+                    context,
+                    "Progress cache loaded: ${valid.size} valid, ${invalid.size} invalid entries",
+                )
+                valid
             }
         } catch (e: Exception) {
             Logger.log(context, "Failed to read progress.json: ${e.message}")

@@ -15,6 +15,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,19 @@ fun EditorTagRow(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Keep the raw text while the author is typing. Without this, deleting
+    // "1" immediately wrote 0 back into the field; typing 5 then produced
+    // "05"/"50" and "-" could not be entered. Empty / "-" / "+" are valid
+    // intermediate states; the parsed value (or 0 for an empty draft) is
+    // committed on every keystroke.
+    var rawValue by remember { mutableStateOf(formatTagValue(tag.value)) }
+    LaunchedEffect(tag.value) {
+        val parsed = rawValue.toIntOrNull()
+        if (parsed != null && parsed != tag.value) {
+            rawValue = formatTagValue(tag.value)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -57,8 +71,12 @@ fun EditorTagRow(
                 modifier = Modifier.weight(1f),
             )
             BareTextField(
-                value = tag.value.toString(),
-                onValueChange = { onValueChanged(it.toIntOrNull() ?: 0) },
+                value = rawValue,
+                onValueChange = { text ->
+                    if (!isNumericDraft(text)) return@BareTextField
+                    rawValue = text
+                    onValueChanged(text.toIntOrNull() ?: 0)
+                },
                 placeholder = stringResource(R.string.item_editor_tag_value_hint),
                 modifier = Modifier.width(72.dp),
             )
@@ -166,3 +184,15 @@ private fun categoryLabelRes(cat: TagCategory): Int = when (cat) {
     TagCategory.ITEM -> R.string.editor_tag_category_item
     TagCategory.JOURNAL -> R.string.editor_tag_category_journal
 }
+
+/** Positive stat changes show a leading `+`; negative values keep `-`. */
+private fun formatTagValue(value: Int): String =
+    if (value > 0) "+$value" else value.toString()
+
+/**
+ * Allows an empty field and a lone sign while the author is typing. A
+ * complete number (including `+5` / `-1`) commits; an incomplete draft is
+ * kept in the UI without being written back as a different number.
+ */
+private fun isNumericDraft(text: String): Boolean =
+    text.isEmpty() || text == "-" || text == "+" || text.toIntOrNull() != null

@@ -48,7 +48,11 @@ internal object SubroutineExecutor {
     internal const val MAX_DEPTH: Int = 64
 
     internal sealed class Result {
-        internal data class Success(val state: PlayerState) : Result()
+        internal data class Success(
+            val state: PlayerState,
+            /** Ф5.2: top-level output writes as player-state operations. */
+            val globalDeltas: List<StateDelta> = emptyList(),
+        ) : Result()
         internal data class Failure(val subroutineId: String, val reason: String) : Result()
     }
 
@@ -81,6 +85,7 @@ internal object SubroutineExecutor {
         }
 
         var state = globalState
+        val globalDeltas = mutableListOf<StateDelta>()
         val stack = ArrayDeque<Frame>()
         stack.addLast(root)
 
@@ -88,7 +93,9 @@ internal object SubroutineExecutor {
             val frame = stack.last()
             if (frame.stepIndex >= frame.subroutine.body.size) {
                 if (frame.parent == null) {
-                    state = writeOutputsToGlobal(frame, state)
+                    val (newState, deltas) = writeOutputsToGlobal(frame, state)
+                    state = newState
+                    globalDeltas += deltas
                 } else {
                     writeOutputsToParent(frame)
                 }
@@ -131,7 +138,7 @@ internal object SubroutineExecutor {
             }
         }
 
-        return Result.Success(state)
+        return Result.Success(state, globalDeltas)
     }
 
     // ---------- frames ----------
@@ -253,13 +260,30 @@ internal object SubroutineExecutor {
             is VarType.ItemList -> locals
         }
 
-    private fun writeOutputsToGlobal(frame: Frame, global: PlayerState): PlayerState {
+    private fun writeOutputsToGlobal(
+        frame: Frame,
+        global: PlayerState,
+    ): Pair<PlayerState, List<StateDelta>> {
         var state = global
+        val deltas = mutableListOf<StateDelta>()
         for (output in frame.subroutine.outputs) {
             val target = frame.outputTargets[output.name] as? OutputTarget.Global ?: continue
+            when (output.type) {
+                is VarType.Bool -> deltas += if (output.name in frame.locals.flags) {
+                    StateDelta.SetFlag(target.name)
+                } else {
+                    StateDelta.RemoveFlag(target.name)
+                }
+                is VarType.Integer, is VarType.IntMin, is VarType.IntRange, is VarType.ItemCount ->
+                    deltas += StateDelta.SetStat(
+                        target.name,
+                        frame.locals.stats[output.name] ?: 0,
+                    )
+                is VarType.ItemList -> Unit
+            }
             state = writeOut(state, output, target.name, frame.locals)
         }
-        return state
+        return state to deltas
     }
 
     private fun writeOutputsToParent(frame: Frame) {

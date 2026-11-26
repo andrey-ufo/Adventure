@@ -33,6 +33,7 @@ object EditorDraftManager {
         subroutines: List<EditorSubroutine>,
         initialStateTags: List<EditorTag>,
         scenes: List<EditorScene>,
+        activeSceneUid: String?,
     ) {
         try {
             val draft = EditorDraft(
@@ -44,6 +45,7 @@ object EditorDraftManager {
                 subroutines = subroutines.map { it.deepCopy() },
                 initialStateTags = initialStateTags.map { it.copy() },
                 scenes = scenes.map { it.deepCopy() },
+                activeSceneUid = activeSceneUid,
             )
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putString(KEY_DRAFT, gson.toJson(draft)).apply()

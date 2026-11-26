@@ -144,6 +144,13 @@ internal data class ChoiceDto(
     @SerialName("next_scene")
     val nextScene: String,
     val condition: String? = null,
+    /**
+     * Ф4.2/Ф4.10: "show this choice?" — distinct from `condition`
+     * ("enable this choice?"). Parsed into `Choice.visibilityCondition`;
+     * the reader uses it for `ChoiceState.Hidden`.
+     */
+    @SerialName("visibility_condition")
+    val visibilityCondition: String? = null,
     @SerialName("set_flags")
     val setFlags: List<String> = emptyList(),
     @SerialName("remove_flags")
@@ -151,11 +158,25 @@ internal data class ChoiceDto(
     @SerialName("modify_stats")
     val modifyStats: Map<String, Int> = emptyMap(),
     /**
+     * Ф4.3.2b/Ф4.10: editor metadata recorded on an expanded choice.
+     * The runtime ignores it; the editor uses it for "this came from
+     * template X" and future update-all.
+     */
+    @SerialName("template_ref")
+    val templateRef: TemplateRefDto? = null,
+    /**
      * Ф4.7: optional atomic subroutine call. The choice keeps
      * `next_scene` as the **return target**; the call runs before the
      * transition.
      */
     val call: SubroutineCallDto? = null,
+)
+
+@Serializable
+internal data class TemplateRefDto(
+    @SerialName("template_id")
+    val templateId: String,
+    val args: Map<String, String> = emptyMap(),
 )
 
 @Serializable

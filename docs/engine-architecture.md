@@ -1,16 +1,20 @@
 # Engine architecture
 
-**Status:** draft. Describes the `:engine` module as of IR v5 (Ф4.7).
-Ф2 (types), Ф3 (evaluator, invariants, dead conditions) and Ф4.1–Ф4.7
+**Status:** draft. Describes the `:engine` module as of IR v5 (Ф4.10).
+Ф2 (types), Ф3 (evaluator, invariants, dead conditions) and Ф4.1–Ф4.10
 (choice templates, disabled choices, merge points/analysis, atomic
-subroutines) are implemented;
+subroutines, parser/editor round-trip for visibility + template refs) are
+implemented;
 sections marked "deferred" point at the phase that will pick each item
 up. See [`roadmap.md`](./roadmap.md) for the phase plan.
 
 This document is the **deep dive** into `:engine`: the IR, the parser,
 the runtime, the analyzer, and the entry points that `:app` calls. It
 is the companion to [`architecture.md`](./architecture.md), which
-describes the layers at a higher level.
+describes the layers at a higher level, and to
+[`engine-choices.md`](./engine-choices.md), the stable reference for the
+unified choice model (templates, disabled/hidden, merge, subroutines), and
+[`engine-saves.md`](./engine-saves.md), the save/migration/slot design.
 
 ## Module boundary
 
@@ -204,10 +208,17 @@ The core transition. Order of checks:
 6. If `choice.call` is present, run the subroutine **atomically**
    (`SubroutineExecutor`): a stack of local frames, nested calls write
    their outputs into the parent frame, the top-level frame writes into
-   globals. Then `Success(state, currentScene, outcome)` (Ф3.5 added
-   `outcome`; Ф4.7 adds the call). A runtime call failure is
+   globals. Then `Success(state, currentScene, outcome, disabledChoices)`
+   (Ф3.5 added `outcome`; Ф4.7 adds the call; Ф4.9 adds
+   `disabledChoices`). A runtime call failure is
    `Rejected(RejectReason.SubroutineFailure)` — structural, so compile
    normally prevents it.
+7. Ф4.9: compute `disabledChoices` for the **target scene** against the
+   post-step state via `Evaluator.choiceState`: visible choices whose
+   `condition` is false. `Hidden` choices are omitted; a scene-level gate
+   is not duplicated (the reader disables all choices uniformly while the
+   gate is active). This is an API convenience for non-Compose runtimes;
+   the reader still renders from `getChoiceStates()`.
 
 **Scene effects are not applied by `step`.** They are applied by the
 reader on first entry (`appliedSceneEffects` in progress). Doing it in
@@ -223,13 +234,23 @@ Ignored for scenes without a gate.
 ### `StepResult` and `RejectReason`
 
 ```
-StepResult.Success(state, currentScene, outcome: Outcome?)  ← Ф3.5
+StepResult.Success(
+  state, currentScene, outcome: Outcome?,               ← Ф3.5
+  disabledChoices: List<DisabledChoice> = emptyList(),  ← Ф4.9
+)
 StepResult.Rejected(
   ChoiceNotFound | SceneNotFound          ← structural bug, log
   | Blocked(blockers: List<Blocker>)      ← UI shows disabled + reasons
 )
 Blocker.ConditionNotMet | GateNotPassed
 ```
+
+`DisabledChoice(choiceId, reason: ChoiceState.Reason)` (Ф4.9) is the
+visible-but-disabled list for the target scene. It is computed from
+`Evaluator.choiceState`, so `Hidden` (visibility false) and enabled
+choices are excluded. The reader still uses `getChoiceStates()` for
+rendering; the field gives non-Compose consumers (future JS runtime) the
+same information without duplicating the evaluator.
 
 `Blocked` carries **all** blockers, in order: persistent (condition)
 before temporary (gate). UI (N4 / Ф4) shows them together on a
@@ -418,14 +439,15 @@ branch`.
   `start_scene`; reported only when the merge itself is reachable, so
   `UnreachableScene` is not duplicated). State compatibility
   ("incompatible states") needs Ф5 deltas and is not analysed yet.
-- **Editor (Ф4.10)** — visual join on the map; toggle / source editing.
-  Until then `merge` / `mergeSources` only round-trip through
-  `:app/data/Scene` and `EditorScene` so a hand-edited file is not lost
-  on save; the editor's validation dialog already shows the three
-  `MergeConflict` warnings through `Analyzer.lint`.
-- **Reference sample (Ф4.11)** — `test_adventure.json` gains a real
-  merge example together with templates, disabled choices and a
-  subroutine.
+- **Editor (Ф4.10)** — scene settings now have a "Точка слияния"
+  checkbox and a source list with a scene picker. A map-style visual join
+  is still a future polish; the data round-trips through
+  `:app/data/Scene` and `EditorScene`, and the validation dialog shows the
+  three `MergeConflict` warnings through `Analyzer.lint`.
+- **Reference sample (Ф4.11)** — `test_adventure.json` now has a real
+  merge example (`merge_test`), a template used in multiple scenes, a
+  disabled choice, and the `drink_potion` subroutine. `golden_ir.json`
+  contains all four constructs.
 
 No version bump: both fields are optional with defaults `false` /
 `[]`, so the migration is the identity (same reasoning as `variables`,
@@ -435,11 +457,10 @@ No version bump: both fields are optional with defaults `false` /
 
 **Status:** engine shipped — IR, JSON parsing, compile checks, type
 checking and `Engine.step` execution; editor UI + JSON/draft/snapshot
-round-trip shipped in Ф4.8. Reader integration (Ф4.9) and the
-full N6 integration/sample (Ф4.10 / Ф4.11) remain. The Compose reader
-currently applies effects directly instead of calling `Engine.step`, so
-a call declared today is validated and saved but does not run in the
-reader until Ф4.9 wires it in.
+round-trip shipped in Ф4.8; Compose reader integration shipped in Ф4.9.
+The reader now calls `Engine.step`, so a saved call applies its outputs
+in preview and in normal play. Full N6 integration/sample (Ф4.10 / Ф4.11)
+remain.
 
 **Editor (Ф4.8).** The toolbar opens a dedicated "Подпрограммы"
 destination: a list of subroutines plus a form for `id`, typed
@@ -547,6 +568,17 @@ No version bump: `Adventure.subroutines` defaults to `[]` and
 `Choice.call` to `null`, so existing files are unchanged (same reasoning
 as `variables`, `invariants`, `choice_templates`, `merge`).
 
+**Reader integration (Ф4.9).** `AdventureReaderViewModel.onChoicePicked`
+now calls `Engine.step` instead of applying choice effects by hand. The
+engine owns condition/gate checks, choice effects, the subroutine call
+and post-call invariants; the reader still owns target-scene effects
+(`appliedSceneEffects`), gate/ending flow and progress. Because the
+reader no longer sees individual effects, HUD `itemOrder` is synced by
+diffing ITEM stats before/after the step, so subroutine outputs that
+change an `ItemCount` keep a stable acquisition order. Old adventures
+without calls keep the same behaviour; a disabled click that slips
+through the UI is logged and ignored.
+
 **User benefit.** Authors get reusable mechanical blocks (consume an
 item, apply damage, run a common check) with explicit typed inputs and
 outputs, conditions and nested composition — without adding screens for
@@ -626,15 +658,19 @@ ints and is out of scope for Ф4.2; it can be added later if authors ask.
   template-only marker.
 ### Editor tracking
 
-`Choice.templateRef` is preserved on the expanded choice and
-round-trips through `:app/data/Choice.template_ref` (Ф4.3.2b). Without
-it, the editor could not distinguish "this choice was written by hand to
-look like the template" from "this choice came from the template".
+`Choice.templateRef` is preserved on the expanded choice, round-trips
+through `:app/data/Choice.template_ref`, and since Ф4.10 is parsed by
+`:engine` (`ChoiceDto.template_ref` → `Choice.templateRef`). Without it,
+the editor could not distinguish "this choice was written by hand to look
+like the template" from "this choice came from the template".
 
-Planned uses (not implemented today):
+Implemented:
 
-- Show "this choice uses template X" on the choice card — currently the
-  metadata is stored but not rendered.
+- The choice card shows a 📦 badge and an explicit
+  "Из шаблона: <id>" row when `templateUid != null`.
+
+Still planned (not implemented):
+
 - **"Update all uses"** when a template is edited: find every choice with
   `templateRef.templateId == X`, re-run `applyTemplate`, replace. This
   was proposed as 4.3.3 but is **not** in the Ф4.3 DoD and has no
@@ -684,9 +720,10 @@ tracked), and the template badge on a choice card.
 - **Placeholder validation** in `template.text`: `{foo}` with no declared
   `foo` parameter survives expansion literally. The realtime linter
   (Ф9.2) is the intended home.
-- **JSON-level `template_ref` re-expansion**: the editor and the reader
-  treat `template_ref` as metadata; `:engine` does not re-apply the
-  template on load. A hand-edited expanded choice is played as written.
+- **JSON-level `template_ref` re-expansion**: since Ф4.10 `:engine`
+  parses and preserves `template_ref` in the IR, but does not re-apply the
+  template on load. The expanded choice is authoritative; a hand-edited
+  choice is played as written.
 
 ## Testing strategy
 
@@ -696,26 +733,29 @@ tracked), and the template badge on a choice card.
   result, compares against `golden_ir.json` semantically. Regenerated
   via `./gradlew :engine:updateGolden` after an intentional IR change.
 - `SchemaFingerprintTest` — pins the **names** of every serialized
-  field. Catches added/removed fields with defaults (which
+  field, including `ChoiceDto` / `TemplateRefDto` (visibility +
+  template_ref, Ф4.10). Catches added/removed fields with defaults (which
   `GoldenIrTest` misses due to `encodeDefaults = false`).
 - `JsonToIrTest` — unit tests for the mapper: each error case, each
   migration, each boundary (`typo in flag name parses as Has — type
-  check is F2`).
+  check is F2`), plus choice-level `visibility_condition` /
+  `template_ref` (Ф4.10).
 - `ConditionParserTest` — unit tests for the condition grammar.
 - `EngineCompileTest` / `EngineStepTest` — runtime compile errors and
   transitions, including `MissingMergeSource`, the Ф4.5 delta test
   (two branches with different effects arrive at the same merge scene
   with their respective state), and Ф4.7 (one subroutine called from two
   scenes, nested frames, guarded step, invariants evaluated after
-  outputs).
+  outputs, and Ф4.9 `disabledChoices`: visible/condition-disabled listed,
+  hidden/enabled excluded, subroutine outputs reflected).
 - `EvaluatorTest` / `EffectsApplierTest` — the two single-source-of-
   truth objects, plus `Evaluator.choiceState` (Ф4.4).
 - `AnalyzerTest` — reachability and each `LintKind`, including the
   Ф4.6 merge-conflict reasons.
-- `TypeCheckerTest` — global type errors plus Ф4.7 subroutine scopes:
-  inputs/outputs are local, globals are invisible inside a body,
-  input-only writes are rejected, top-level and nested call types are
-  checked.
+- `TypeCheckerTest` — global type errors, Ф4.10 choice visibility
+  conditions, plus Ф4.7 subroutine scopes: inputs/outputs are local,
+  globals are invisible inside a body, input-only writes are rejected,
+  top-level and nested call types are checked.
 - `AdventureDtoTest` — DTO deserialization edge cases.
 
 CI runs `./gradlew :engine:test` on every push and PR. Test reports
