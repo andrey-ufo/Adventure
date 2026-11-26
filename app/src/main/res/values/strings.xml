@@ -239,10 +239,28 @@
     <!-- Menu -->
     <string name="reader_menu_title">Меню</string>
     <string name="reader_menu_main_menu">В главное меню</string>
+    <string name="reader_menu_slots">Сохранения</string>
     <string name="reader_menu_step_back">↩ Шаг назад</string>
     <string name="reader_menu_restart">Начать приключение заново</string>
     <string name="reader_menu_warnings_fmt">Предупреждения (%1$d)</string>
     <string name="reader_menu_settings">Настройки</string>
+
+    <!-- Manual slots (Ф5.5) -->
+    <string name="reader_slots_title">Сохранения</string>
+    <string name="reader_slots_create">Создать сохранение</string>
+    <string name="reader_slots_empty">Ручных сохранений пока нет.</string>
+    <string name="reader_slots_load">Загрузить</string>
+    <string name="reader_slots_delete">Удалить</string>
+    <string name="reader_slots_retry">Повторить</string>
+    <string name="reader_slots_default_name_fmt">Глава %1$d</string>
+    <string name="reader_slots_updated_fmt">Обновлено: %1$s</string>
+    <string name="reader_slots_limit_fmt">Лимит сохранений: %1$d. Удалите одно из старых.</string>
+    <string name="reader_slots_create_title">Новое сохранение</string>
+    <string name="reader_slots_name_hint">Название сохранения</string>
+    <string name="reader_slots_load_title">Загрузить сохранение?</string>
+    <string name="reader_slots_load_message">Текущий автосейв будет заменён состоянием из слота. Ручные сохранения не изменятся.</string>
+    <string name="reader_slots_delete_title">Удалить сохранение?</string>
+    <string name="reader_slots_delete_message_fmt">«%1$s» будет удалено без возможности отмены.</string>
 
     <!-- Restart dialog -->
     <string name="reader_restart_dialog_title">Начать заново?</string>

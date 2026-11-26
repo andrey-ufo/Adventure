@@ -59,6 +59,7 @@ private enum class ReaderOverlay(val key: String) {
     INVENTORY("inventory"),
     JOURNAL("journal"),
     MENU("menu"),
+    SLOTS("slots"),
     WARNINGS("warnings"),
     DEBUG("debug");
 
@@ -102,6 +103,14 @@ fun AdventureReaderScreen(
     val effectiveOverlayKey = if (closeOverlayPending) "" else overlayKey
     val overlay = ReaderOverlay.fromKey(effectiveOverlayKey)
 
+    // Ф5.5: loading a slot returns to the scene, not to the slots list.
+    LaunchedEffect(state.slotLoaded) {
+        if (state.slotLoaded) {
+            viewModel.consumeSlotLoaded()
+            overlayKey = ""
+        }
+    }
+
     if (overlay != null) {
         BackHandler { overlayKey = "" }
         when (overlay) {
@@ -138,6 +147,10 @@ fun AdventureReaderScreen(
                         viewModel.requestOverlayCloseOnNextResume()
                         onNavigateToMenu()
                     },
+                    onSlots = {
+                        overlayKey = ReaderOverlay.SLOTS.key
+                        viewModel.refreshSlots()
+                    },
                     onStepBack = {
                         overlayKey = ""
                         onStepBackClick()
@@ -151,6 +164,19 @@ fun AdventureReaderScreen(
                         viewModel.requestOverlayCloseOnNextResume()
                         onNavigateToSettings()
                     },
+                )
+            }
+            ReaderOverlay.SLOTS -> {
+                ReaderSlotsScreen(
+                    slots = state.manualSlots,
+                    loading = state.slotsLoading,
+                    error = state.slotsError,
+                    currentChapterNumber = viewModel.currentChapterNumber(),
+                    onBack = { overlayKey = "" },
+                    onCreate = viewModel::createSlot,
+                    onLoad = viewModel::loadSlot,
+                    onDelete = viewModel::deleteSlot,
+                    onRetry = viewModel::refreshSlots,
                 )
             }
             ReaderOverlay.WARNINGS -> {

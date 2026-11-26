@@ -3,6 +3,7 @@ package com.myapp.adventure.ui.reader
 import android.net.Uri
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressSnapshot
+import com.myapp.adventure.data.SaveSlot
 import com.myapp.adventure.engine.CompiledAdventure
 import com.myapp.adventure.engine.StateDelta
 import com.myapp.adventure.engine.analyze.LintIssue
@@ -70,4 +71,11 @@ data class ReaderUiState(
     val saveBaseSnapshot: ProgressSnapshot? = null,
     /** Player-state operations since [saveBaseSnapshot]. */
     val operationLog: List<StateDelta> = emptyList(),
+
+    // ----- Ф5.5 manual slots -----
+    val manualSlots: List<SaveSlot> = emptyList(),
+    val slotsLoading: Boolean = false,
+    val slotsError: String? = null,
+    /** One-shot: a slot was loaded; the slots overlay closes itself. */
+    val slotLoaded: Boolean = false,
 )

@@ -278,10 +278,10 @@
 
 | ID | Пункт | Статус | Файлы / проверка |
 |---|---|---|---|
-| P2 | Предкомпиляция IR при загрузке, bounded-аллокации в горячем пути | ☐ | сейчас Gson-парсинг при каждом открытии |
-| S1 | Ручные слоты сохранений | ☐ | `ProgressManager`, `ProgressData` |
-| S2 | Автосейв не перезаписывает ручной слот | ◐ | автосейв есть, слотов ещё нет |
-| S5 | Точное сохранение состояния (base + delta) | ◐ | есть `previousStepSnapshot`, `chapterStartSnapshot`; нет delta |
+| P2 | Предкомпиляция IR при загрузке, bounded-аллокации в горячем пути | ◐ | Ф5.7 ☑ (`AdventureLoads`, LRU 3); Ф5.8 (аллокации) — нет |
+| S1 | Ручные слоты сохранений | ☑ | `SaveSlot`, `SlotStore`, `saves/<adventureKey>/slot-<uuid>.json`, reader UI |
+| S2 | Автосейв не перезаписывает ручной слот | ☑ | paths split + `AutosaveSlotIsolationTest` (onPause/onStop flow) |
+| S5 | Точное сохранение состояния (base + delta) | ☑ | `StateDelta`/`apply`, `ProgressData.baseSnapshot + delta`, reader log |
 | S6 | Версионирование и миграция | ☑ | `ProgressData.version`, `ProgressMigration`, v0 → v1, explicit unknown-version error |
 | S3, S4, S7 | Undo / backlog / компактная история | → | Nice |
 
@@ -290,12 +290,12 @@
 | ID | Задача | Готово когда (проверяемо) | Зависит от | Статус |
 |---|---|---|---|---|
 | Ф5.1 | Спроектировать модель сохранения: `SaveState { version, baseSnapshot, delta: List<StateDelta>, manualSlots: List<SlotRef> }`; зафиксировать в `docs/engine-saves.md` (draft) | Схема описана; решение «operation log vs snapshot diff» зафиксировано (рекомендую operation log — нужен для S3/undo и N5/merge); поле `version` обязательно | Ф2.3 | ☑ |
-| Ф5.2 | **S5:** явная delta-модель: `StateDelta` (Set/Add/Sub/Flag), `apply(base, delta) → State`; заменить неявные `previousStepSnapshot`/`chapterStartSnapshot` | `ProgressData` содержит `baseSnapshot` + `delta`; `apply()` идемпотентен для одного delta; unit-тест: base + 3 delta = ожидаемое состояние; старые снимки мигрированы (Ф5.4) | Ф5.1 | ☐ |
+| Ф5.2 | **S5:** явная delta-модель: `StateDelta` (Set/Add/Sub/Flag), `apply(base, delta) → State`; заменить неявные `previousStepSnapshot`/`chapterStartSnapshot` | `ProgressData` содержит `baseSnapshot` + `delta`; `apply()` идемпотентен для одного delta; unit-тест: base + 3 delta = ожидаемое состояние; старые снимки мигрированы (Ф5.4) | Ф5.1 | ☑ |
 | Ф5.3 | **S6:** версионирование: поле `version` в `ProgressData`, реестр миграций `MigrationRegistry` | `ProgressData.version` присутствует; `MigrationRegistry.migrate(from, to)` работает; unit-тест: v0 (legacy без version) → v1; неизвестная версия → явная ошибка, не silent pass | Ф5.1 | ☑ |
 | Ф5.4 | **S6:** миграция legacy `progress.json` (без `version`, с `lastAbsoluteAtSave`) | При открытии старого файла — миграция в v1; `lastAbsoluteAtSave` (catch-up) сохраняется корректно; ручной smoke-тест: старый прогресс не теряется | Ф5.3 | ☑ |
-| Ф5.5 | **S1:** ручные слоты: `SaveSlot` (id, name, timestamp, SaveState), create/load/delete/list | Слот создаётся из читалки, загружается, удаляется; список слотов в UI (минимальный экран/диалог); слоты хранятся отдельными файлами (решение — в Ф5.1) | Ф5.2, Ф5.3 | ☐ |
-| Ф5.6 | **S2:** автосейв не перезаписывает ручной слот | Автосейв пишет только в `progress.json`; ручные слоты — отдельные файлы; unit-тест: после ручного сейва автосейв не меняет слот; интеграционный тест на onPause | Ф5.5 | ☐ |
-| Ф5.7 | **P2:** предкомпиляция IR при загрузке (in-memory cache) | `Adventure` не парсится из JSON при каждом открытии; IR компилируется один раз на приключение; повторное открытие — из кэша; замер: время открытия читалки не растёт линейно от числа открытий | Ф4 (гейт) | ☐ |
+| Ф5.5 | **S1:** ручные слоты: `SaveSlot` (id, name, timestamp, SaveState), create/load/delete/list | Слот создаётся из читалки, загружается, удаляется; список слотов в UI (минимальный экран/диалог); слоты хранятся отдельными файлами (решение — в Ф5.1) | Ф5.2, Ф5.3 | ☑ |
+| Ф5.6 | **S2:** автосейв не перезаписывает ручной слот | Автосейв пишет только в `progress.json`; ручные слоты — отдельные файлы; unit-тест: после ручного сейва автосейв не меняет слот; интеграционный тест на onPause | Ф5.5 | ☑ |
+| Ф5.7 | **P2:** предкомпиляция IR при загрузке (in-memory cache) | `Adventure` не парсится из JSON при каждом открытии; IR компилируется один раз на приключение; повторное открытие — из кэша; замер: время открытия читалки не растёт линейно от числа открытий | Ф4 (гейт) | ☑ |
 | Ф5.8 | **P2:** bounded-аллокации в горячем пути (переход, рендер строки) | В `step()` и рендере нет новых аллокаций на каждый вызов сверх bounded (измерено, например, через allocation profiler или ручной счётчик); нет роста памяти при 1000 переходах подряд | Ф5.7 | ☐ |
 | Ф5.9 | Тесты: обновление истории не ломает сохранение; ручной слот не перезаписывается | Integration-тест: серия шагов → сохранение → загрузка → состояние совпадает; автосейв после ручного сейва не меняет слот; тест в CI | Ф5.6, Ф5.8 | ☐ |
 | Ф5.10 | Документация: `docs/engine-saves.md` → stable | Документ stable: схема SaveState, delta, версии, миграции, слоты; примеры | Ф5.9 | ☐ |

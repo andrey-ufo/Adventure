@@ -225,6 +225,19 @@ folder. The options:
   effects feed the log; load replays base+delta for flags/stats and falls
   back to legacy fields when absent. Legacy current-state fields are
   still written so older readers and v0 files keep working.
+- **Implemented in Ф5.5:** `SlotManager` + `SaveSlotCodec` write
+  `saves/<adventureKey>/slot-<uuid>.json` with `format_version: 1` and the
+  same `ProgressData` state as the autosave. The reader's menu exposes
+  create/load/delete/list; autosave and slots share `buildProgressData`
+  and `applySavedProgress`, but never share a file. Manual slots store
+  `lastAbsoluteAtSave = -1` so loading does not deduct steps taken after
+  the save was created.
+- **Implemented in Ф5.6:** both layers now use `SaveStorage`
+  (`ProgressStore` for `progress.json`, `SlotStore` for
+  `saves/<adventureKey>/`). `AutosaveSlotIsolationTest` runs the exact
+  `ON_PAUSE` save + `ON_STOP` flush sequence over an in-memory tree and
+  asserts that the slot bytes are unchanged and only `progress.json` is
+  written. S2 is enforced by disjoint paths, not by a runtime branch.
 - `previousStepSnapshot` / `chapterStartSnapshot` are still serialized
   for the existing death/step-back/chapter-restart features; they are
   not the persistence source of truth. Reconstructing them from the log

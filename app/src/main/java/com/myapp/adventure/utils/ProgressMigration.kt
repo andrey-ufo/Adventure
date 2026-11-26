@@ -52,8 +52,11 @@ object ProgressMigration {
      * constructor, so fields absent from an old JSON can be `null` at
      * runtime despite their non-null Kotlin types. Normalise every
      * collection/string before the app compares or copies the object.
+     *
+     * Public for Ф5.5: slot files embed the same [ProgressData] state and
+     * need the exact same Gson null-safety before it reaches the reader.
      */
-    private fun normalize(data: ProgressData): ProgressData = ProgressData(
+    fun normalize(data: ProgressData): ProgressData = ProgressData(
         version = CURRENT_VERSION,
         adventureFileName = (data.adventureFileName as String?) ?: "",
         baseSnapshot = data.baseSnapshot?.let(::normalizeProgressSnapshot),

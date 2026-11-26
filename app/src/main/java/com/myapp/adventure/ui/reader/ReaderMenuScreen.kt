@@ -42,6 +42,7 @@ fun ReaderMenuScreen(
     warningsCount: Int,
     onBack: () -> Unit,
     onMainMenu: () -> Unit,
+    onSlots: () -> Unit,
     onStepBack: () -> Unit,
     onRestart: () -> Unit,
     onWarnings: () -> Unit,
@@ -62,6 +63,10 @@ fun ReaderMenuScreen(
         ReaderMenuItem(
             text = stringResource(R.string.reader_menu_main_menu),
             onClick = onMainMenu,
+        )
+        ReaderMenuItem(
+            text = stringResource(R.string.reader_menu_slots),
+            onClick = onSlots,
         )
         if (canStepBack) {
             ReaderMenuItem(

@@ -3,16 +3,12 @@ package com.myapp.adventure.utils
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.myapp.adventure.data.ProgressData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -26,31 +22,21 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Disk is written at most once per [SAVE_DEBOUNCE_MS] when progress changes.
  * - Logging happens only on real state changes (save with different value, delete of existing entry,
  *   flush that actually wrote) to keep the log meaningful.
+ *
+ * Ф5.6: the cache/file logic lives in [ProgressStore] over [SaveStorage];
+ * this object only owns the Android context, debounce scope and file-name
+ * resolution. That keeps the exact `onPause`/`onStop` save/flush sequence
+ * unit-testable.
  */
 object ProgressManager {
 
-    private const val PROGRESS_FILE_NAME = "progress.json"
     private const val SAVE_DEBOUNCE_MS = 2_000L
 
-    private val gson = Gson()
-    private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val storeLock = Any()
 
-    /** Guards reads/writes of [cache] and [dirty]. */
-    private val cacheLock = Any()
-
-    /** In-memory copy of progress.json keyed by adventure file name. */
-    @Volatile private var cache: Map<String, ProgressData>? = null
-
-    /** True when [cache] has unsaved changes that must be flushed. */
-    @Volatile private var dirty = false
-
-    /**
-     * Ф5.3: entries that failed migration (unknown/future version).
-     * They are not put into [cache]; loading them throws explicitly so the
-     * reader can show a blocking error instead of silently restarting.
-     */
-    @Volatile private var invalidEntries: Map<String, String> = emptyMap()
+    @Volatile private var store: ProgressStore? = null
+    @Volatile private var storeTreeUri: String? = null
 
     /** Set while a debounced flush is already scheduled. */
     private val flushScheduled = AtomicBoolean(false)
@@ -64,14 +50,8 @@ object ProgressManager {
      * Prefer [warmUp] during app startup so this fast path is already primed.
      */
     fun loadProgress(context: Context, adventureFileUri: Uri): ProgressData? {
-        val fileName = getFileNameFromUri(context, adventureFileUri) ?: return null
-        ensureLoaded(context)
-        invalidEntries[fileName]?.let { reason ->
-            throw ProgressMigrationException(
-                "Не удалось открыть сохранение '$fileName': $reason",
-            )
-        }
-        return cache?.get(fileName)
+        val fileName = getFileNameFromUri(adventureFileUri) ?: return null
+        return store(context)?.load(fileName)
     }
 
     /**
@@ -79,24 +59,9 @@ object ProgressManager {
      * synchronously; a batched flush happens within [SAVE_DEBOUNCE_MS] or at the next [flush].
      */
     fun saveProgress(context: Context, adventureFileUri: Uri, progress: ProgressData) {
-        val fileName = getFileNameFromUri(context, adventureFileUri) ?: return
-        val normalized = try {
-            ProgressMigration.migrate(progress)
-        } catch (e: ProgressMigrationException) {
-            Logger.log(context, "Refusing to save progress: ${e.message}")
-            return
-        }
-        val logged = synchronized(cacheLock) {
-            ensureLoaded(context)
-            val updated = (cache ?: emptyMap()).toMutableMap()
-            val previous = updated[fileName]
-            if (previous == normalized) return  // No-op, keep cache clean.
-            updated[fileName] = normalized
-            cache = updated
-            dirty = true
-            true
-        }
-        if (!logged) return
+        val fileName = getFileNameFromUri(adventureFileUri) ?: return
+        val target = store(context) ?: return
+        if (!target.save(fileName, progress)) return
 
         Logger.log(
             context,
@@ -110,18 +75,9 @@ object ProgressManager {
 
     /** Removes progress for [adventureFileUri]. No-op if nothing was saved. */
     fun deleteProgress(context: Context, adventureFileUri: Uri) {
-        val fileName = getFileNameFromUri(context, adventureFileUri) ?: return
-        val removed = synchronized(cacheLock) {
-            ensureLoaded(context)
-            val current = cache ?: return
-            if (!current.containsKey(fileName)) return
-            val updated = current.toMutableMap()
-            updated.remove(fileName)
-            cache = updated
-            dirty = true
-            true
-        }
-        if (!removed) return
+        val fileName = getFileNameFromUri(adventureFileUri) ?: return
+        val target = store(context) ?: return
+        if (!target.delete(fileName)) return
 
         Logger.log(context, "Progress deleted for $fileName")
         scheduleFlush(context.applicationContext)
@@ -133,7 +89,7 @@ object ProgressManager {
      */
     suspend fun flush(context: Context) {
         val appContext = context.applicationContext
-        withContext(Dispatchers.IO) { flushLocked(appContext) }
+        withContext(Dispatchers.IO) { store(appContext)?.flush() }
     }
 
     /**
@@ -142,51 +98,32 @@ object ProgressManager {
      */
     suspend fun warmUp(context: Context) {
         val appContext = context.applicationContext
-        withContext(Dispatchers.IO) { ensureLoaded(appContext) }
+        withContext(Dispatchers.IO) { store(appContext)?.warmUp() }
     }
 
     // ==================== Internal ====================
 
-    private fun ensureLoaded(context: Context) {
-        if (cache != null) return
-        synchronized(cacheLock) {
-            if (cache != null) return
-            cache = readFromDisk(context)
-        }
-    }
-
-    private fun readFromDisk(context: Context): Map<String, ProgressData> {
-        val fileUri = getProgressFileUri(context) ?: return emptyMap()
-        return try {
-            val json = context.contentResolver.openInputStream(fileUri)
-                ?.bufferedReader()
-                ?.use { it.readText() }
-            if (json.isNullOrBlank()) {
-                Logger.log(context, "Progress cache loaded: empty file")
-                emptyMap()
-            } else {
-                val type = object : TypeToken<Map<String, ProgressData>>() {}.type
-                val raw = gson.fromJson<Map<String, ProgressData>>(json, type) ?: emptyMap()
-                val valid = mutableMapOf<String, ProgressData>()
-                val invalid = mutableMapOf<String, String>()
-                for ((name, data) in raw) {
-                    try {
-                        valid[name] = ProgressMigration.migrate(data)
-                    } catch (e: ProgressMigrationException) {
-                        invalid[name] = e.message ?: "unknown migration error"
-                        Logger.log(context, "Progress migration failed for $name: ${e.message}")
-                    }
-                }
-                invalidEntries = invalid
-                Logger.log(
-                    context,
-                    "Progress cache loaded: ${valid.size} valid, ${invalid.size} invalid entries",
-                )
-                valid
+    /**
+     * Returns the cache for the currently selected adventure folder,
+     * recreating it when the user picks a different folder.
+     */
+    private fun store(context: Context): ProgressStore? {
+        val appContext = context.applicationContext
+        val storage = SafSaveStorage.forBaseFolder(appContext) ?: return null
+        synchronized(storeLock) {
+            val current = store
+            if (current != null && storeTreeUri == storage.treeUriString) return current
+            if (current != null) {
+                // The user picked another folder: do not lose pending
+                // debounced writes in the previous cache.
+                scope.launch { current.flush() }
             }
-        } catch (e: Exception) {
-            Logger.log(context, "Failed to read progress.json: ${e.message}")
-            emptyMap()
+            val created = ProgressStore(storage) { message ->
+                Logger.log(appContext, message)
+            }
+            store = created
+            storeTreeUri = storage.treeUriString
+            return created
         }
     }
 
@@ -195,88 +132,15 @@ object ProgressManager {
         scope.launch {
             delay(SAVE_DEBOUNCE_MS)
             flushScheduled.set(false)
-            flushLocked(appContext)
+            store(appContext)?.flush()
         }
     }
 
-    /** Writes the cache to disk if dirty. Safe for concurrent calls (serialised by [mutex]). */
-    private suspend fun flushLocked(context: Context) {
-        mutex.withLock {
-            val snapshot: Map<String, ProgressData>
-            synchronized(cacheLock) {
-                if (!dirty) return
-                snapshot = cache ?: return
-            }
-            val fileUri = getOrCreateProgressFile(context)
-            if (fileUri == null) {
-                Logger.log(context, "Cannot create or access progress.json")
-                return
-            }
-            try {
-                val json = gson.toJson(snapshot)
-                context.contentResolver.openOutputStream(fileUri, "wt")?.use { out ->
-                    out.write(json.toByteArray())
-                }
-                synchronized(cacheLock) { dirty = false }
-                Logger.log(context, "Progress cache flushed: ${snapshot.size} entries")
-            } catch (e: Exception) {
-                Logger.log(context, "Failed to write progress.json: ${e.message}")
-            }
-        }
-    }
-
-    // ==================== File access ====================
-
-    private fun getOrCreateProgressFile(context: Context): Uri? {
-        val existing = getProgressFileUri(context)
-        if (existing != null) return existing
-        val folderUri = getBaseFolderUri(context) ?: return null
-        val parentDocId = DocumentsContract.getTreeDocumentId(folderUri)
-        val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(folderUri, parentDocId)
-        return try {
-            DocumentsContract.createDocument(
-                context.contentResolver,
-                rootDocUri,
-                "application/json",
-                PROGRESS_FILE_NAME
-            )
-        } catch (e: Exception) {
-            Logger.log(context, "Failed to create progress.json: ${e.message}")
-            null
-        }
-    }
-
-    private fun getProgressFileUri(context: Context): Uri? {
-        val folderUri = getBaseFolderUri(context) ?: return null
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            folderUri,
-            DocumentsContract.getTreeDocumentId(folderUri)
-        )
-        val cursor = context.contentResolver.query(childrenUri, null, null, null, null)
-        cursor?.use {
-            while (it.moveToNext()) {
-                val name = it.getString(
-                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                )
-                if (name == PROGRESS_FILE_NAME) {
-                    val docId = it.getString(
-                        it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                    )
-                    return DocumentsContract.buildDocumentUriUsingTree(folderUri, docId)
-                }
-            }
-        }
-        return null
-    }
-
-    private fun getFileNameFromUri(context: Context, uri: Uri): String? {
-        val docId = DocumentsContract.getDocumentId(uri)
-        return docId.substringAfterLast("/").substringAfterLast(":")
-    }
-
-    private fun getBaseFolderUri(context: Context): Uri? {
-        val prefs = context.getSharedPreferences("adventure_prefs", Context.MODE_PRIVATE)
-        val uriString = prefs.getString("adventure_folder_uri", null) ?: return null
-        return Uri.parse(uriString)
+    private fun getFileNameFromUri(uri: Uri): String? = try {
+        DocumentsContract.getDocumentId(uri)
+            .substringAfterLast("/")
+            .substringAfterLast(":")
+    } catch (e: Exception) {
+        null
     }
 }

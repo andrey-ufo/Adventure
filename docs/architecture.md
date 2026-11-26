@@ -40,11 +40,23 @@ Engine.compile          (runtime indexes, :engine)
 Analyzer.lint           (semantic checks, :engine)
   │  List<LintIssue>
   ▼
-AdventureReaderFragment (reader, :app)
+ReaderRoute / AdventureReaderViewModel (Compose reader, :app)
   │  Engine.step() on choice
   ▼
 PlayerState             (immutable, :engine)
 ```
+
+**Ф5.7 app-side cache.** The reader does not call the pipeline above on
+every open. `AdventureLoads` (in `:app`) keys a bounded LRU (3 entries)
+by the SHA-256 of the JSON:
+- hit → reuse `Adventure`, `CompiledAdventure` and lazily cached
+  `Analyzer.lint` issues;
+- miss → run `JsonToIr.parse` → `Engine.compile` → `Analyzer.lint`, then
+  store the successful result.
+The file is still read on each open to compute the fingerprint, so an
+edited adventure is a miss even when its URI is unchanged. Parse/compile
+failures are not cached. The cache is process-wide and shared by reader
+and editor preview.
 
 ### Step sensor → gameplay
 

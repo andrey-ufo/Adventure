@@ -4,14 +4,17 @@ import android.app.Application
 import android.net.Uri
 import android.os.Bundle
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.myapp.adventure.data.AdventureLoadResult
+import com.myapp.adventure.data.AdventureLoads
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
 import com.myapp.adventure.data.ProgressSnapshot
+import com.myapp.adventure.data.SaveSlotException
+import com.myapp.adventure.data.SaveSlotPaths
 import com.myapp.adventure.data.toDomainOrNull
 import com.myapp.adventure.data.toDto
 import com.myapp.adventure.engine.ChoiceState
-import com.myapp.adventure.engine.CompileResult
-import com.myapp.adventure.engine.CompiledAdventure
 import com.myapp.adventure.engine.EffectsApplier
 import com.myapp.adventure.engine.Engine
 import com.myapp.adventure.engine.Evaluator
@@ -20,11 +23,9 @@ import com.myapp.adventure.engine.StateDelta
 import com.myapp.adventure.engine.StepResult
 import com.myapp.adventure.engine.applyDeltas
 import com.myapp.adventure.engine.effectsToDeltas
-import com.myapp.adventure.engine.analyze.Analyzer
 import com.myapp.adventure.engine.analyze.LintIssue
 import com.myapp.adventure.engine.analyze.LintKind
 import com.myapp.adventure.engine.analyze.Severity
-import com.myapp.adventure.engine.format.JsonToIr
 import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.Effect
@@ -34,14 +35,15 @@ import com.myapp.adventure.engine.ir.Scene
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.engine.ir.TagCategory
 import com.myapp.adventure.engine.ir.types.TypeError
-import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ProgressManager
 import com.myapp.adventure.utils.ProgressMigration
 import com.myapp.adventure.utils.ProgressMigrationException
+import com.myapp.adventure.utils.SlotManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Adventure reader state holder (Phase 3.4 complete).
@@ -78,26 +80,32 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             ?: arguments?.getString("adventure_json")
             ?: return ReaderInitResult.NoAdventureData
 
-        val adventure: Adventure = when (val parseResult = JsonToIr.parse(adventureJson)) {
-            is ParseResult.Failure -> {
-                if (parseResult.typeErrors.isNotEmpty()) {
-                    return ReaderInitResult.TypeErrors(parseResult.typeErrors)
-                }
-                val messages = parseResult.errors.map { it.message }
+        val loaded = when (val loadResult = AdventureLoads.load(adventureJson)) {
+            is AdventureLoadResult.ParseFailure -> {
+                val messages = loadResult.errors.map { it.message }
                     .ifEmpty { listOf("unknown error") }
                 return ReaderInitResult.ParseError(messages)
             }
-            is ParseResult.Success -> parseResult.value
-        }
-
-        val compiled: CompiledAdventure = when (val compileResult = Engine.compile(adventure)) {
-            is CompileResult.Failure -> {
-                val messages = compileResult.errors.map { it.message }
+            is AdventureLoadResult.TypeFailure ->
+                return ReaderInitResult.TypeErrors(loadResult.errors)
+            is AdventureLoadResult.CompileFailure -> {
+                val messages = loadResult.errors.map { it.message }
                     .ifEmpty { listOf("unknown error") }
                 return ReaderInitResult.CompileError(messages)
             }
-            is CompileResult.Success -> compileResult.compiled
+            is AdventureLoadResult.Success -> loadResult
         }
+
+        Logger.log(
+            app,
+            "Reader IR ${if (loaded.fromCache) "cache hit" else "cache miss"}: " +
+                    "total=${loaded.totalMs}ms parse=${loaded.parseMs}ms " +
+                    "compile=${loaded.compileMs}ms " +
+                    "fingerprint=${loaded.loaded.fingerprint.take(12)}",
+        )
+
+        val adventure = loaded.loaded.adventure
+        val compiled = loaded.loaded.compiled
 
         val previewMode = arguments?.getBoolean("preview_mode", false) ?: false
         val previewStartSceneId = arguments?.getString("preview_scene_id") ?: ""
@@ -107,7 +115,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         var cachedPlayerWarnings: List<LintIssue> = emptyList()
         var currentWarningsFingerprint = ""
         if (!previewMode) {
-            val allIssues = Analyzer.lint(compiled)
+            val allIssues = loaded.loaded.lintIssues()
             val errors = allIssues.filter { it.severity == Severity.ERROR }
             if (errors.isNotEmpty()) {
                 return ReaderInitResult.BrokenAdventure(errors)
@@ -654,12 +662,17 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         val state = _state.value
         if (state.previewMode) return
         val uri = state.adventureFileUri ?: return
-        val compiled = state.compiled ?: return
+        ProgressManager.saveProgress(app, uri, buildProgressData(state))
+    }
+
+    /** Shared by the autosave and manual slots (same exact-state shape). */
+    private fun buildProgressData(state: ReaderUiState): ProgressData {
+        val compiled = state.compiled ?: return ProgressData(adventureFileName = "")
 
         val abs = if (com.myapp.adventure.service.StepCounterService.hasFirstEvent)
             com.myapp.adventure.service.StepCounterService.absoluteSteps else -1
 
-        val progress = ProgressData(
+        return ProgressData(
             version = ProgressMigration.CURRENT_VERSION,
             adventureFileName = "",
             baseSnapshot = state.saveBaseSnapshot ?: captureProgressSnapshot(state),
@@ -678,12 +691,132 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             warningsFingerprint = state.savedWarningsFingerprint,
             passedGates = state.passedGates.toList(),
         )
-        ProgressManager.saveProgress(app, uri, progress)
     }
 
     /** Called from `ReaderRoute`'s ON_STOP observer; flushes to disk. */
     suspend fun flushProgress() {
         ProgressManager.flush(app)
+    }
+
+    // ==================================================================
+    // Manual slots (Ф5.5 / S1)
+    // ==================================================================
+
+    /** 1-based chapter number used as the default slot name. */
+    fun currentChapterNumber(): Int {
+        val state = _state.value
+        val index = state.compiled?.chapterIndexBySceneId
+            ?.get(SceneId(state.currentSceneId)) ?: 0
+        return index + 1
+    }
+
+    fun refreshSlots() {
+        val state = _state.value
+        if (state.previewMode) return
+        val uri = state.adventureFileUri ?: return
+        _state.value = state.copy(slotsLoading = true, slotsError = null)
+        viewModelScope.launch {
+            try {
+                val slots = SlotManager.listSlots(app, uri)
+                _state.value = _state.value.copy(
+                    manualSlots = slots,
+                    slotsLoading = false,
+                    slotsError = null,
+                )
+            } catch (e: Exception) {
+                onSlotsFailure("Не удалось прочитать сохранения", e)
+            }
+        }
+    }
+
+    fun createSlot(name: String) {
+        val state = _state.value
+        if (state.previewMode || state.slotsLoading) return
+        val uri = state.adventureFileUri ?: return
+        if (state.manualSlots.size >= SaveSlotPaths.MAX_SLOTS_PER_ADVENTURE) {
+            _state.value = state.copy(
+                slotsError = "Достигнут лимит сохранений " +
+                        "(${SaveSlotPaths.MAX_SLOTS_PER_ADVENTURE}). Удалите одно из старых.",
+            )
+            return
+        }
+        val progress = buildProgressData(state)
+        _state.value = state.copy(slotsLoading = true, slotsError = null)
+        viewModelScope.launch {
+            try {
+                val created = SlotManager.createSlot(app, uri, name, progress)
+                val slots = SlotManager.listSlots(app, uri)
+                _state.value = _state.value.copy(
+                    manualSlots = slots,
+                    slotsLoading = false,
+                    slotsError = null,
+                )
+                Logger.log(app, "Manual slot '${created.id}' saved")
+            } catch (e: Exception) {
+                onSlotsFailure("Не удалось создать сохранение", e)
+            }
+        }
+    }
+
+    fun loadSlot(slotId: String) {
+        val state = _state.value
+        if (state.previewMode || state.slotsLoading) return
+        val uri = state.adventureFileUri ?: return
+        _state.value = state.copy(slotsLoading = true, slotsError = null)
+        viewModelScope.launch {
+            try {
+                val slot = SlotManager.loadSlot(app, uri, slotId)
+                    ?: throw SaveSlotException("Сохранение не найдено.")
+                val applied = applySavedProgress(_state.value, slot.state)
+                _state.value = applied.copy(
+                    slotsLoading = false,
+                    slotsError = null,
+                    slotLoaded = true,
+                )
+                // Loading a manual save replaces the current autosave;
+                // the slot file itself is never touched (S2).
+                saveProgress()
+                loadCurrentScene()
+                Logger.log(app, "Manual slot '${slot.id}' loaded")
+            } catch (e: Exception) {
+                onSlotsFailure("Не удалось загрузить сохранение", e)
+            }
+        }
+    }
+
+    fun deleteSlot(slotId: String) {
+        val state = _state.value
+        if (state.previewMode || state.slotsLoading) return
+        val uri = state.adventureFileUri ?: return
+        _state.value = state.copy(slotsLoading = true, slotsError = null)
+        viewModelScope.launch {
+            try {
+                SlotManager.deleteSlot(app, uri, slotId)
+                val slots = SlotManager.listSlots(app, uri)
+                _state.value = _state.value.copy(
+                    manualSlots = slots,
+                    slotsLoading = false,
+                    slotsError = null,
+                )
+            } catch (e: Exception) {
+                onSlotsFailure("Не удалось удалить сохранение", e)
+            }
+        }
+    }
+
+    /** One-shot acknowledgment for [ReaderUiState.slotLoaded]. */
+    fun consumeSlotLoaded() {
+        if (_state.value.slotLoaded) {
+            _state.value = _state.value.copy(slotLoaded = false)
+        }
+    }
+
+    private fun onSlotsFailure(prefix: String, error: Exception) {
+        Logger.log(app, "$prefix: ${error.message}")
+        _state.value = _state.value.copy(
+            slotsLoading = false,
+            slotsError = "$prefix: ${error.message ?: "неизвестная ошибка"}",
+        )
     }
 
     // ==================================================================
@@ -977,63 +1110,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         }
 
         if (saved != null) {
-            val rawDelta = saved.delta
-            val savedDelta = rawDelta
-                ?.mapNotNull { it.toDomainOrNull() }
-                ?.takeIf { it.size == rawDelta.size }
-            val replayed = if (saved.baseSnapshot != null && savedDelta != null) {
-                applyDeltas(
-                    PlayerState(
-                        flags = saved.baseSnapshot.flags.toSet(),
-                        stats = saved.baseSnapshot.stats,
-                    ),
-                    savedDelta,
-                )
-            } else {
-                null
-            }
-            val stats = replayed?.stats ?: saved.stats
-            val flags = replayed?.flags?.toList() ?: saved.flags
-            val itemOrder = if (saved.itemOrder.isNotEmpty()) {
-                saved.itemOrder.filter { (stats[it] ?: 0) > 0 }
-            } else {
-                rebuildItemOrderList(adventure, stats)
-            }
-            val baseSnapshot = saved.baseSnapshot ?: ProgressSnapshot(
-                currentChapterIndex = saved.currentChapterIndex,
-                currentSceneId = saved.currentSceneId,
-                flags = saved.flags,
-                stats = saved.stats,
-                itemOrder = itemOrder,
-                appliedSceneEffects = saved.appliedSceneEffects,
-                remainingSteps = saved.remainingSteps,
-                isGateActive = saved.isGateActive,
-                warningsFingerprint = saved.warningsFingerprint,
-                passedGates = saved.passedGates,
-            )
-            return base.copy(
-                currentSceneId = saved.currentSceneId,
-                flags = flags,
-                stats = stats,
-                itemOrder = itemOrder,
-                appliedSceneEffects = saved.appliedSceneEffects,
-                passedGates = saved.passedGates.toSet(),
-                isDead = false,
-                remainingSteps = saved.remainingSteps,
-                isGateActive = saved.isGateActive,
-                lastKnownAbsolute = -1,
-                lastAbsoluteAtSaveFromProgress = saved.lastAbsoluteAtSave,
-                previousStepSnapshot = saved.previousStepSnapshot,
-                chapterStartSnapshot = saved.chapterStartSnapshot,
-                savedWarningsFingerprint = saved.warningsFingerprint,
-                storyEndedMessage = null,
-                saveBaseSnapshot = baseSnapshot,
-                operationLog = if (savedDelta != null && saved.baseSnapshot != null) {
-                    savedDelta
-                } else {
-                    emptyList()
-                },
-            )
+            return applySavedProgress(base, saved)
         }
 
         val initial = adventure.initialState
@@ -1068,6 +1145,73 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             storyEndedMessage = null,
             saveBaseSnapshot = initialBase,
             operationLog = emptyList(),
+        )
+    }
+
+    /**
+     * Ф5.2b/Ф5.5: turns a persisted [ProgressData] (autosave or manual
+     * slot) into reader state. Replays `base + delta` when both are
+     * present; otherwise falls back to the legacy current-state fields
+     * and starts a fresh log from that state.
+     */
+    private fun applySavedProgress(base: ReaderUiState, saved: ProgressData): ReaderUiState {
+        val adventure = requireNotNull(base.adventure)
+        val rawDelta = saved.delta
+        val savedDelta = rawDelta
+            ?.mapNotNull { it.toDomainOrNull() }
+            ?.takeIf { it.size == rawDelta.size }
+        val replayed = if (saved.baseSnapshot != null && savedDelta != null) {
+            applyDeltas(
+                PlayerState(
+                    flags = saved.baseSnapshot.flags.toSet(),
+                    stats = saved.baseSnapshot.stats,
+                ),
+                savedDelta,
+            )
+        } else {
+            null
+        }
+        val stats = replayed?.stats ?: saved.stats
+        val flags = replayed?.flags?.toList() ?: saved.flags
+        val itemOrder = if (saved.itemOrder.isNotEmpty()) {
+            saved.itemOrder.filter { (stats[it] ?: 0) > 0 }
+        } else {
+            rebuildItemOrderList(adventure, stats)
+        }
+        val baseSnapshot = saved.baseSnapshot ?: ProgressSnapshot(
+            currentChapterIndex = saved.currentChapterIndex,
+            currentSceneId = saved.currentSceneId,
+            flags = saved.flags,
+            stats = saved.stats,
+            itemOrder = itemOrder,
+            appliedSceneEffects = saved.appliedSceneEffects,
+            remainingSteps = saved.remainingSteps,
+            isGateActive = saved.isGateActive,
+            warningsFingerprint = saved.warningsFingerprint,
+            passedGates = saved.passedGates,
+        )
+        return base.copy(
+            currentSceneId = saved.currentSceneId,
+            flags = flags,
+            stats = stats,
+            itemOrder = itemOrder,
+            appliedSceneEffects = saved.appliedSceneEffects,
+            passedGates = saved.passedGates.toSet(),
+            isDead = false,
+            remainingSteps = saved.remainingSteps,
+            isGateActive = saved.isGateActive,
+            lastKnownAbsolute = -1,
+            lastAbsoluteAtSaveFromProgress = saved.lastAbsoluteAtSave,
+            previousStepSnapshot = saved.previousStepSnapshot,
+            chapterStartSnapshot = saved.chapterStartSnapshot,
+            savedWarningsFingerprint = saved.warningsFingerprint,
+            storyEndedMessage = null,
+            saveBaseSnapshot = baseSnapshot,
+            operationLog = if (savedDelta != null && saved.baseSnapshot != null) {
+                savedDelta
+            } else {
+                emptyList()
+            },
         )
     }
 
