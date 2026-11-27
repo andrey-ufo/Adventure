@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,11 +29,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.ui.theme.AdventureTheme
 
 @Composable
 fun AdventureListScreen(
-    onNavigateToMenu: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
     onOpenAdventure: (Uri) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AdventureListViewModel = viewModel(),
@@ -76,9 +78,11 @@ fun AdventureListScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onNavigateToMenu) {
-                Text(stringResource(R.string.action_menu))
-            }
+            GlobalMenuButton(
+                current = AppSection.Library,
+                canOpenReader = canOpenReader,
+                onNavigate = onNavigateGlobal,
+            )
         }
 
         if (state.isLoading && state.items.isEmpty()) {

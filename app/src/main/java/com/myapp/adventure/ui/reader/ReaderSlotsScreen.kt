@@ -26,14 +26,29 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
 import com.myapp.adventure.data.SaveSlot
 import com.myapp.adventure.data.SaveSlotPaths
+import com.myapp.adventure.ui.AppSection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/** Stable semantics tags shared by Robolectric and instrumented UI tests. */
+internal object ReaderSlotsTestTags {
+    const val CREATE = "slots_create"
+    const val NAME_FIELD = "slots_name"
+    const val CREATE_CONFIRM = "slots_create_confirm"
+    const val LOAD_CONFIRM = "slots_load_confirm"
+    const val DELETE_CONFIRM = "slots_delete_confirm"
+    const val RETRY = "slots_retry"
+
+    fun load(slotId: String): String = "slots_load_$slotId"
+    fun delete(slotId: String): String = "slots_delete_$slotId"
+}
 
 /**
  * Ф5.5: manual save slots for the current adventure.
@@ -50,6 +65,9 @@ fun ReaderSlotsScreen(
     error: String?,
     currentChapterNumber: Int,
     onBack: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
     onCreate: (String) -> Unit,
     onLoad: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -70,6 +88,9 @@ fun ReaderSlotsScreen(
         ReaderOverlayHeader(
             title = stringResource(R.string.reader_slots_title),
             onBack = onBack,
+            currentSection = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
         )
 
         Column(
@@ -82,7 +103,9 @@ fun ReaderSlotsScreen(
             Button(
                 onClick = { showCreateDialog = true },
                 enabled = canCreate,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ReaderSlotsTestTags.CREATE),
             ) {
                 Text(stringResource(R.string.reader_slots_create))
             }
@@ -106,7 +129,11 @@ fun ReaderSlotsScreen(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-                TextButton(onClick = onRetry, enabled = !loading) {
+                TextButton(
+                    onClick = onRetry,
+                    enabled = !loading,
+                    modifier = Modifier.testTag(ReaderSlotsTestTags.RETRY),
+                ) {
                     Text(stringResource(R.string.reader_slots_retry))
                 }
             }
@@ -160,7 +187,9 @@ fun ReaderSlotsScreen(
                     onValueChange = { name = it },
                     label = { Text(stringResource(R.string.reader_slots_name_hint)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ReaderSlotsTestTags.NAME_FIELD),
                 )
             },
             confirmButton = {
@@ -170,6 +199,7 @@ fun ReaderSlotsScreen(
                         onCreate(name.trim())
                     },
                     enabled = name.isNotBlank(),
+                    modifier = Modifier.testTag(ReaderSlotsTestTags.CREATE_CONFIRM),
                 ) {
                     Text(stringResource(R.string.dialog_create))
                 }
@@ -188,11 +218,14 @@ fun ReaderSlotsScreen(
             title = { Text(stringResource(R.string.reader_slots_load_title)) },
             text = { Text(stringResource(R.string.reader_slots_load_message)) },
             confirmButton = {
-                TextButton(onClick = {
-                    val id = slotToLoadId
-                    slotToLoadId = null
-                    if (id != null) onLoad(id)
-                }) {
+                TextButton(
+                    onClick = {
+                        val id = slotToLoadId
+                        slotToLoadId = null
+                        if (id != null) onLoad(id)
+                    },
+                    modifier = Modifier.testTag(ReaderSlotsTestTags.LOAD_CONFIRM),
+                ) {
                     Text(stringResource(R.string.reader_slots_load))
                 }
             },
@@ -213,11 +246,14 @@ fun ReaderSlotsScreen(
                 Text(stringResource(R.string.reader_slots_delete_message_fmt, slotName))
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val id = slotToDeleteId
-                    slotToDeleteId = null
-                    if (id != null) onDelete(id)
-                }) {
+                TextButton(
+                    onClick = {
+                        val id = slotToDeleteId
+                        slotToDeleteId = null
+                        if (id != null) onDelete(id)
+                    },
+                    modifier = Modifier.testTag(ReaderSlotsTestTags.DELETE_CONFIRM),
+                ) {
                     Text(stringResource(R.string.dialog_delete))
                 }
             },
@@ -256,10 +292,18 @@ private fun SlotRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(modifier = Modifier.fillMaxWidth()) {
-            TextButton(onClick = onLoadClick, enabled = enabled) {
+            TextButton(
+                onClick = onLoadClick,
+                enabled = enabled,
+                modifier = Modifier.testTag(ReaderSlotsTestTags.load(slot.id)),
+            ) {
                 Text(stringResource(R.string.reader_slots_load))
             }
-            TextButton(onClick = onDeleteClick, enabled = enabled) {
+            TextButton(
+                onClick = onDeleteClick,
+                enabled = enabled,
+                modifier = Modifier.testTag(ReaderSlotsTestTags.delete(slot.id)),
+            ) {
                 Text(stringResource(R.string.reader_slots_delete))
             }
         }

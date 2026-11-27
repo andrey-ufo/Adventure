@@ -14,7 +14,7 @@ import com.myapp.adventure.utils.StoryValidator
 
 /**
  * Phase 4-c: Compose destinations that replace the old thin editor child
- * screens (EditMeta, Validation, Search, Stats). They share the
+ * screens (EditMeta, Validation, Stats). They share the
  * Activity-scoped [AdventureEditorViewModel] injected by `AppNavHost`.
  */
 
@@ -72,23 +72,6 @@ fun ValidationIssuesRoute(
             if (uid.isNotEmpty()) {
                 viewModel.requestJumpToScene(uid)
             }
-            onBack()
-        },
-    )
-}
-
-@Composable
-fun SearchRoute(
-    viewModel: AdventureEditorViewModel,
-    onBack: () -> Unit,
-) {
-    // Snapshot once: the editor is not mutated while this screen is on top.
-    val scenes = remember(viewModel) { viewModel.scenes.toList() }
-    SearchScreen(
-        scenes = scenes,
-        onBack = onBack,
-        onResultClick = { uid ->
-            viewModel.requestJumpToScene(uid)
             onBack()
         },
     )

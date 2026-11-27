@@ -125,26 +125,33 @@ internal class ProgressStore(
             log("Progress cache loaded: empty file")
             return emptyMap()
         }
-        return try {
-            val type = object : TypeToken<Map<String, ProgressData>>() {}.type
-            val raw = gson.fromJson<Map<String, ProgressData>>(json, type) ?: emptyMap()
-            val valid = mutableMapOf<String, ProgressData>()
-            val invalid = mutableMapOf<String, String>()
-            for ((name, data) in raw) {
-                try {
-                    valid[name] = ProgressMigration.migrate(data)
-                } catch (e: ProgressMigrationException) {
-                    invalid[name] = e.message ?: "unknown migration error"
-                    log("Progress migration failed for $name: ${e.message}")
-                }
-            }
-            invalidEntries = invalid
-            log("Progress cache loaded: ${valid.size} valid, ${invalid.size} invalid entries")
-            valid
+
+        val type = object : TypeToken<Map<String, ProgressData>>() {}.type
+        val raw = try {
+            gson.fromJson<Map<String, ProgressData>>(json, type)
         } catch (e: Exception) {
-            log("Failed to read progress.json: ${e.message}")
-            emptyMap()
+            throw ProgressMigrationException(
+                "Файл progress.json повреждён и не может быть прочитан: " +
+                        (e.message ?: "unknown parse error"),
+            )
+        } ?: throw ProgressMigrationException(
+            "Файл progress.json повреждён: ожидался объект с сохранениями.",
+        )
+
+        val valid = mutableMapOf<String, ProgressData>()
+        val invalid = mutableMapOf<String, String>()
+        for ((name, data) in raw) {
+            try {
+                valid[name] = ProgressMigration.migrate(data)
+            } catch (e: Exception) {
+                // One bad entry must not hide every other adventure.
+                invalid[name] = e.message ?: "unknown migration error"
+                log("Progress migration failed for $name: ${e.message}")
+            }
         }
+        invalidEntries = invalid
+        log("Progress cache loaded: ${valid.size} valid, ${invalid.size} invalid entries")
+        return valid
     }
 
     companion object {

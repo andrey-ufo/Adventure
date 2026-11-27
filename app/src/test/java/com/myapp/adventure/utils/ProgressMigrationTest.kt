@@ -103,6 +103,60 @@ class ProgressMigrationTest {
     }
 
     @Test
+    fun gsonNullsInNestedSnapshotsAndDeltaAreNormalized() {
+        val json = """
+            {
+              "version": 1,
+              "adventureFileName": "a.json",
+              "currentSceneId": "s",
+              "flags": null,
+              "stats": null,
+              "appliedSceneEffects": null,
+              "itemOrder": null,
+              "passedGates": null,
+              "baseSnapshot": {
+                "currentSceneId": "base",
+                "flags": null,
+                "stats": null,
+                "itemOrder": null,
+                "appliedSceneEffects": null,
+                "passedGates": null
+              },
+              "previousStepSnapshot": {
+                "sceneId": "prev",
+                "flags": null,
+                "stats": null,
+                "itemOrder": null,
+                "appliedSceneEffects": null
+              },
+              "delta": [null, {"type": "set_flag", "name": "x"}]
+            }
+        """.trimIndent()
+
+        val parsed = Gson().fromJson(json, ProgressData::class.java)
+        val migrated = ProgressMigration.migrate(parsed)
+
+        assertEquals(emptyList<String>(), migrated.flags)
+        assertEquals(emptyMap<String, Int>(), migrated.stats)
+        assertEquals(emptySet<String>(), migrated.appliedSceneEffects)
+        assertEquals(emptyList<String>(), migrated.passedGates)
+        assertEquals(1, migrated.delta?.size)
+        assertEquals(StateDelta.SetFlag("x"), migrated.delta?.single()?.toDomainOrNull())
+
+        val base = migrated.baseSnapshot
+        assertEquals("base", base?.currentSceneId)
+        assertEquals(emptyList<String>(), base?.flags)
+        assertEquals(emptyMap<String, Int>(), base?.stats)
+        assertEquals(emptySet<String>(), base?.appliedSceneEffects)
+        assertEquals(emptyList<String>(), base?.passedGates)
+
+        val previous = migrated.previousStepSnapshot
+        assertEquals("prev", previous?.sceneId)
+        assertEquals(emptyList<String>(), previous?.flags)
+        assertEquals(emptyMap<String, Int>(), previous?.stats)
+    }
+
+    @Test
     fun missingVersionInLegacyJsonReadsAsZero() {
         val json = """
             {"adventureFileName":"legacy.json","currentSceneId":"s",

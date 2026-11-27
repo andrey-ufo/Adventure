@@ -14,7 +14,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -29,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.myapp.adventure.R
 import com.myapp.adventure.data.StepBucket
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.ui.theme.AdventureTheme
 import com.myapp.adventure.utils.ruQuantityString
 import java.text.NumberFormat
@@ -42,7 +43,8 @@ private const val FIRST_RANK_THRESHOLD = 100_000L
 
 @Composable
 fun StatisticsScreen(
-    onNavigateToMenu: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
     modifier: Modifier = Modifier,
     viewModel: StatisticsViewModel = viewModel(),
 ) {
@@ -64,9 +66,11 @@ fun StatisticsScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onNavigateToMenu) {
-                Text(stringResource(R.string.stats_menu))
-            }
+            GlobalMenuButton(
+                current = AppSection.Statistics,
+                canOpenReader = canOpenReader,
+                onNavigate = onNavigateGlobal,
+            )
         }
 
         Column(

@@ -13,7 +13,7 @@ data class EditorScene(
     /**
      * Narrative chapter boundary. The reader does not use this field
      * for gates (Ф1.5.4 — chapters are pure narrative grouping); it
-     * is used by the editor's map / stats / validator to group scenes
+     * is used by the editor's stats / validator to group scenes
      * into chapters and to show the "🏁 Конец главы" badge.
      *
      * **Replaces the old "конец главы + requiredSteps" pair.** Before

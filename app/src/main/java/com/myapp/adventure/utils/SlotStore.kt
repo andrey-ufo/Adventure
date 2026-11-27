@@ -32,6 +32,7 @@ internal class SlotStore(private val storage: SaveStorage) {
         adventureKey: String,
         name: String,
         state: ProgressData,
+        now: Long = System.currentTimeMillis(),
     ): SaveSlot {
         val existing = storage.listDocuments(directory(adventureKey))
             .count(SaveSlotPaths::isSlotFileName)
@@ -42,7 +43,6 @@ internal class SlotStore(private val storage: SaveStorage) {
             )
         }
 
-        val now = System.currentTimeMillis()
         val slot = SaveSlot(
             id = SaveSlotCodec.newId(),
             name = name.trim().ifBlank { "Сохранение" },

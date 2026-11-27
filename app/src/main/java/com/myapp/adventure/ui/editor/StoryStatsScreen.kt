@@ -1,4 +1,4 @@
-package com.myapp.adventure.ui.editor
+﻿package com.myapp.adventure.ui.editor
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.data.ChapterStats
 import com.myapp.adventure.data.StoryStats
 import com.myapp.adventure.ui.theme.AdventureTheme
@@ -60,6 +61,7 @@ fun StoryStatsScreen(
                         .weight(1f)
                         .padding(horizontal = 8.dp),
                 )
+                GlobalMenuButton()
             }
         }
 

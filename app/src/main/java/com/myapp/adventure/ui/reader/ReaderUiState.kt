@@ -69,7 +69,11 @@ data class ReaderUiState(
     // ----- Ф5.2b operation log -----
     /** Base snapshot for [operationLog]; `null` until normal/persisted state is ready. */
     val saveBaseSnapshot: ProgressSnapshot? = null,
-    /** Player-state operations since [saveBaseSnapshot]. */
+    /**
+     * Player-state operations since [saveBaseSnapshot]. Ф5.8: capped at
+     * `OperationLogBuffer.MAX_DELTAS`; on overflow the log is folded into
+     * the base snapshot instead of growing with playtime.
+     */
     val operationLog: List<StateDelta> = emptyList(),
 
     // ----- Ф5.5 manual slots -----

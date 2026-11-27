@@ -7,13 +7,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.myapp.adventure.data.AdventureLoadResult
 import com.myapp.adventure.data.AdventureLoads
+import com.myapp.adventure.data.OperationLogBuffer
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
+import com.myapp.adventure.data.ProgressDataFactory
+import com.myapp.adventure.data.ProgressSaveInput
 import com.myapp.adventure.data.ProgressSnapshot
 import com.myapp.adventure.data.SaveSlotException
 import com.myapp.adventure.data.SaveSlotPaths
-import com.myapp.adventure.data.toDomainOrNull
-import com.myapp.adventure.data.toDto
+import com.myapp.adventure.data.SavedProgressApplier
 import com.myapp.adventure.engine.ChoiceState
 import com.myapp.adventure.engine.EffectsApplier
 import com.myapp.adventure.engine.Engine
@@ -21,7 +23,6 @@ import com.myapp.adventure.engine.Evaluator
 import com.myapp.adventure.engine.RejectReason
 import com.myapp.adventure.engine.StateDelta
 import com.myapp.adventure.engine.StepResult
-import com.myapp.adventure.engine.applyDeltas
 import com.myapp.adventure.engine.effectsToDeltas
 import com.myapp.adventure.engine.analyze.LintIssue
 import com.myapp.adventure.engine.analyze.LintKind
@@ -37,7 +38,6 @@ import com.myapp.adventure.engine.ir.TagCategory
 import com.myapp.adventure.engine.ir.types.TypeError
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ProgressManager
-import com.myapp.adventure.utils.ProgressMigration
 import com.myapp.adventure.utils.ProgressMigrationException
 import com.myapp.adventure.utils.SlotManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +70,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
     private val app: Application get() = getApplication()
+    private val operationLogBuffer = OperationLogBuffer()
 
     // ==================================================================
     // INIT (from 3.4-a-1) + loadCurrentScene at the end
@@ -200,18 +201,25 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             stepsInScene = stepsInScene,
         )) {
             is StepResult.Success -> {
-                val base = current.saveBaseSnapshot ?: captureProgressSnapshot(current)
                 var next = current.copy(
                     previousStepSnapshot = previous,
                     flags = result.state.flags.toList(),
                     stats = result.state.stats,
                     currentSceneId = result.currentScene.id.value,
-                    saveBaseSnapshot = base,
-                    operationLog = current.operationLog + result.appliedDeltas,
                 )
                 // Subroutine outputs (and choice effects) can change
                 // ITEM counts; keep the HUD acquisition order stable.
                 next = syncItemOrder(current, next)
+                val saveLog = operationLogBuffer.append(
+                    base = current.saveBaseSnapshot ?: captureProgressSnapshot(current),
+                    current = current.operationLog,
+                    newDeltas = result.appliedDeltas,
+                    compactedBase = { captureProgressSnapshot(next) },
+                )
+                next = next.copy(
+                    saveBaseSnapshot = saveLog.base,
+                    operationLog = saveLog.deltas,
+                )
 
                 _state.value = next
                 if (result.isDead) {
@@ -599,7 +607,31 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
     fun getInventoryCount(): Int =
         _state.value.itemOrder.count { (_state.value.stats[it] ?: 0) > 0 }
 
-    fun getJournalCount(): Int = getJournalItems().size
+    /**
+     * Ф5.8: count-only path for the HUD. [getJournalItems] is for the
+     * overlay; calling it from every recomposition allocated a throwaway
+     * list just to read `size`.
+     */
+    fun getJournalCount(): Int {
+        val state = _state.value
+        val adventure = state.adventure ?: return 0
+        var count = 0
+        for (i in state.flags.lastIndex downTo 0) {
+            val name = state.flags[i]
+            if (isVisible(name) && getCategory(name) == TagCategory.JOURNAL) {
+                count++
+            }
+        }
+        for (def in adventure.tags) {
+            if (def.category == TagCategory.JOURNAL && def.visible &&
+                !state.flags.contains(def.name) &&
+                (state.stats[def.name] ?: 0) != 0
+            ) {
+                count++
+            }
+        }
+        return count
+    }
 
     fun getHealthItems(): List<Pair<String, Int>> {
         val state = _state.value
@@ -672,24 +704,26 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
         val abs = if (com.myapp.adventure.service.StepCounterService.hasFirstEvent)
             com.myapp.adventure.service.StepCounterService.absoluteSteps else -1
 
-        return ProgressData(
-            version = ProgressMigration.CURRENT_VERSION,
-            adventureFileName = "",
-            baseSnapshot = state.saveBaseSnapshot ?: captureProgressSnapshot(state),
-            delta = state.operationLog.map { it.toDto() },
-            currentChapterIndex = compiled.chapterIndexBySceneId[SceneId(state.currentSceneId)] ?: 0,
-            currentSceneId = state.currentSceneId,
-            flags = state.flags,
-            stats = state.stats,
-            appliedSceneEffects = state.appliedSceneEffects,
-            itemOrder = state.itemOrder,
-            previousStepSnapshot = state.previousStepSnapshot,
-            chapterStartSnapshot = state.chapterStartSnapshot,
-            remainingSteps = state.remainingSteps,
-            isGateActive = state.isGateActive,
-            lastAbsoluteAtSave = abs,
-            warningsFingerprint = state.savedWarningsFingerprint,
-            passedGates = state.passedGates.toList(),
+        return ProgressDataFactory.create(
+            ProgressSaveInput(
+                adventureFileName = "",
+                baseSnapshot = state.saveBaseSnapshot ?: captureProgressSnapshot(state),
+                operationLog = state.operationLog,
+                currentChapterIndex =
+                    compiled.chapterIndexBySceneId[SceneId(state.currentSceneId)] ?: 0,
+                currentSceneId = state.currentSceneId,
+                flags = state.flags,
+                stats = state.stats,
+                appliedSceneEffects = state.appliedSceneEffects,
+                itemOrder = state.itemOrder,
+                previousStepSnapshot = state.previousStepSnapshot,
+                chapterStartSnapshot = state.chapterStartSnapshot,
+                remainingSteps = state.remainingSteps,
+                isGateActive = state.isGateActive,
+                lastAbsoluteAtSave = abs,
+                warningsFingerprint = state.savedWarningsFingerprint,
+                passedGates = state.passedGates.toList(),
+            ),
         )
     }
 
@@ -890,7 +924,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
 
     private fun applyEffectsToState(base: ReaderUiState, effects: List<Effect>): ReaderUiState {
         if (effects.isEmpty()) return base
-        val adventure = base.adventure ?: return base
+        base.adventure ?: return base
         val playerState = PlayerState(flags = base.flags.toSet(), stats = base.stats)
         val newPlayerState = EffectsApplier.apply(playerState, effects)
 
@@ -912,12 +946,20 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
-        return base.copy(
+        val next = base.copy(
             flags = newPlayerState.flags.toList(),
             stats = newPlayerState.stats,
             itemOrder = itemOrder,
-            saveBaseSnapshot = base.saveBaseSnapshot ?: captureProgressSnapshot(base),
-            operationLog = base.operationLog + effectsToDeltas(effects),
+        )
+        val saveLog = operationLogBuffer.append(
+            base = base.saveBaseSnapshot ?: captureProgressSnapshot(base),
+            current = base.operationLog,
+            newDeltas = effectsToDeltas(effects),
+            compactedBase = { captureProgressSnapshot(next) },
+        )
+        return next.copy(
+            saveBaseSnapshot = saveLog.base,
+            operationLog = saveLog.deltas,
         )
     }
 
@@ -1156,23 +1198,9 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
      */
     private fun applySavedProgress(base: ReaderUiState, saved: ProgressData): ReaderUiState {
         val adventure = requireNotNull(base.adventure)
-        val rawDelta = saved.delta
-        val savedDelta = rawDelta
-            ?.mapNotNull { it.toDomainOrNull() }
-            ?.takeIf { it.size == rawDelta.size }
-        val replayed = if (saved.baseSnapshot != null && savedDelta != null) {
-            applyDeltas(
-                PlayerState(
-                    flags = saved.baseSnapshot.flags.toSet(),
-                    stats = saved.baseSnapshot.stats,
-                ),
-                savedDelta,
-            )
-        } else {
-            null
-        }
-        val stats = replayed?.stats ?: saved.stats
-        val flags = replayed?.flags?.toList() ?: saved.flags
+        val replayed = SavedProgressApplier.replay(saved)
+        val stats = replayed?.state?.stats ?: saved.stats
+        val flags = replayed?.state?.flags?.toList() ?: saved.flags
         val itemOrder = if (saved.itemOrder.isNotEmpty()) {
             saved.itemOrder.filter { (stats[it] ?: 0) > 0 }
         } else {
@@ -1190,7 +1218,7 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             warningsFingerprint = saved.warningsFingerprint,
             passedGates = saved.passedGates,
         )
-        return base.copy(
+        val result = base.copy(
             currentSceneId = saved.currentSceneId,
             flags = flags,
             stats = stats,
@@ -1207,11 +1235,18 @@ class AdventureReaderViewModel(application: Application) : AndroidViewModel(appl
             savedWarningsFingerprint = saved.warningsFingerprint,
             storyEndedMessage = null,
             saveBaseSnapshot = baseSnapshot,
-            operationLog = if (savedDelta != null && saved.baseSnapshot != null) {
-                savedDelta
-            } else {
-                emptyList()
-            },
+            operationLog = replayed?.deltas ?: emptyList(),
+        )
+        // Older saves may carry a long log; fold it into the snapshot once
+        // so an open session never keeps a history-sized log in memory.
+        val saveLog = operationLogBuffer.compactIfNeeded(
+            base = baseSnapshot,
+            deltas = result.operationLog,
+            compactedBase = { captureProgressSnapshot(result) },
+        )
+        return result.copy(
+            saveBaseSnapshot = saveLog.base,
+            operationLog = saveLog.deltas,
         )
     }
 

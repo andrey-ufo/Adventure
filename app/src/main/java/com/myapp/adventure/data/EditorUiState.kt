@@ -1,6 +1,14 @@
 package com.myapp.adventure.data
 
 /** Visual state of the "💾 Save" indicator in the editor toolbar. */
+/** File state is independent from the draft autosave state. */
+enum class FileSaveStatus {
+    /** The JSON file matches the editor state (or no file exists yet). */
+    CLEAN,
+    /** The editor has changes that are not in the JSON file. */
+    DIRTY,
+}
+
 enum class SaveStatus {
     /** Nothing pending to save — the adventure was just opened / loaded. */
     SAVED,
@@ -46,7 +54,6 @@ data class EditorUiState(
     val expandedScenes: Set<String> = emptySet(),
     val expandedSceneSettings: Set<String> = emptySet(),
     val expandedChoices: Set<String> = emptySet(),
-    val expandedMapChapters: Set<Int> = emptySet(),
     val isHistoryInitialized: Boolean = false,
     val pendingJumpToSceneUid: String? = null,
     val variablesExpanded: Boolean = false,
@@ -54,6 +61,7 @@ data class EditorUiState(
 
     // ----- Toolbar state (3.1b) -----
     val saveStatus: SaveStatus = SaveStatus.SAVED,
+    val fileStatus: FileSaveStatus = FileSaveStatus.CLEAN,
     val hasUnsavedChanges: Boolean = false,
     val menuExpanded: Boolean = false,
     val undoEnabled: Boolean = false,

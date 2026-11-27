@@ -1,4 +1,4 @@
-package com.myapp.adventure.ui.editor
+﻿package com.myapp.adventure.ui.editor
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.GlobalMenuButton
 
 /**
  * Phase 3.1c-iv-a: "Edit adventure meta" as a full screen (previously a
@@ -79,6 +80,7 @@ fun EditMetaScreen(
                 ) {
                     Text(stringResource(R.string.dialog_apply))
                 }
+                GlobalMenuButton()
             }
         }
 

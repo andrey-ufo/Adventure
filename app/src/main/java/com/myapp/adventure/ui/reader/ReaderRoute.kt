@@ -38,6 +38,7 @@ import androidx.lifecycle.viewModelScope
 import com.myapp.adventure.R
 import com.myapp.adventure.engine.analyze.LintIssue
 import com.myapp.adventure.service.StepCounterConstants
+import com.myapp.adventure.ui.AppSection
 import com.myapp.adventure.utils.Logger
 import kotlinx.coroutines.launch
 
@@ -68,7 +69,8 @@ fun ReaderRoute(
     arguments: Bundle?,
     onExit: () -> Unit,
     onNavigateToMenu: () -> Unit,
-    onNavigateToSettings: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
 ) {
     val context = LocalContext.current
 
@@ -175,16 +177,15 @@ fun ReaderRoute(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> viewModel.saveProgress()
-                Lifecycle.Event.ON_STOP -> {
-                    val s = viewModel.state.value
-                    if (!s.previewMode && s.adventureFileUri != null) {
-                        viewModel.viewModelScope.launch { viewModel.flushProgress() }
-                    }
-                }
-                else -> Unit
-            }
+            val s = viewModel.state.value
+            ReaderLifecycle.handle(
+                event = event,
+                shouldFlush = !s.previewMode && s.adventureFileUri != null,
+                save = viewModel::saveProgress,
+                flush = {
+                    viewModel.viewModelScope.launch { viewModel.flushProgress() }
+                },
+            )
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -269,7 +270,8 @@ fun ReaderRoute(
         viewModel = viewModel,
         onPreviewExit = onExit,
         onNavigateToMenu = onNavigateToMenu,
-        onNavigateToSettings = onNavigateToSettings,
+        onNavigateGlobal = onNavigateGlobal,
+        canOpenReader = canOpenReader,
         onChoiceClick = { choice -> viewModel.onChoicePicked(choice) },
         onStepBackClick = { viewModel.onStepBack() },
         onChapterRestartClick = { viewModel.onChapterRestart() },

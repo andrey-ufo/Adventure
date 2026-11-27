@@ -21,6 +21,7 @@ From `progress-log-3.md` onward, **one log file per phase** — see
 | `progress-log-3.md` | Ф2.8 + Ф3 (all sub-steps) | English |
 | `progress-log-4.md` | Ф4 (from Ф4.1) | English |
 | `progress-log-5.md` | Ф5 | English |
+| `progress-log-6.md` | Ф6 | English |
 | … | … | … |
 
 **Rule (from `documentation-rules.md §2`).** Each `progress-log-N.md`

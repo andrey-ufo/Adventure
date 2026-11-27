@@ -3,6 +3,7 @@ package com.myapp.adventure.utils
 import com.myapp.adventure.data.PlayerStateSnapshot
 import com.myapp.adventure.data.ProgressData
 import com.myapp.adventure.data.ProgressSnapshot
+import com.myapp.adventure.data.StateDeltaDto
 
 /**
  * Ф5.3/Ф5.4 (S6): versioned progress migration.
@@ -60,7 +61,9 @@ object ProgressMigration {
         version = CURRENT_VERSION,
         adventureFileName = (data.adventureFileName as String?) ?: "",
         baseSnapshot = data.baseSnapshot?.let(::normalizeProgressSnapshot),
-        delta = data.delta,
+        // Gson can put a null into a List<StateDeltaDto>; drop it instead
+        // of letting replay hit a null receiver.
+        delta = (data.delta as List<StateDeltaDto?>?)?.filterNotNull(),
         currentChapterIndex = data.currentChapterIndex,
         currentSceneId = (data.currentSceneId as String?) ?: "",
         flags = (data.flags as List<String>?) ?: emptyList(),

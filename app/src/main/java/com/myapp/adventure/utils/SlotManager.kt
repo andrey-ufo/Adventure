@@ -7,6 +7,7 @@ import com.myapp.adventure.data.ProgressData
 import com.myapp.adventure.data.SaveSlot
 import com.myapp.adventure.data.SaveSlotException
 import com.myapp.adventure.data.SaveSlotPaths
+import com.myapp.adventure.data.SlotStateFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -54,12 +55,7 @@ object SlotManager {
         val (storage, key) = resolve(context, adventureFileUri)
             ?: throw SaveSlotException("Не удалось открыть папку сохранений.")
 
-        val normalized = ProgressMigration.migrate(state).copy(
-            adventureFileName = fileName,
-            // A manual save is an exact restore: do not deduct real-world
-            // steps walked after the save was created when it is loaded.
-            lastAbsoluteAtSave = -1,
-        )
+        val normalized = SlotStateFactory.prepare(state, fileName)
         val slot = SlotStore(storage).create(key, name, normalized)
         Logger.log(context, "Manual slot '${slot.id}' created for $key")
         slot

@@ -1,29 +1,42 @@
 package com.myapp.adventure.ui
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.myapp.adventure.R
 import com.myapp.adventure.ui.editor.AdventureEditorViewModel
 import com.myapp.adventure.ui.editor.EditMetaRoute
 import com.myapp.adventure.ui.editor.EditorDestination
 import com.myapp.adventure.ui.editor.EditorPreviewRequest
 import com.myapp.adventure.ui.editor.EditorRoute
 import com.myapp.adventure.ui.editor.HelpRoute
+import com.myapp.adventure.ui.editor.saveAdventureToFile
 import com.myapp.adventure.ui.editor.InitialStateRoute
 import com.myapp.adventure.ui.editor.VariablesRoute
-import com.myapp.adventure.ui.editor.SearchRoute
 import com.myapp.adventure.ui.editor.StoryStatsRoute
 import com.myapp.adventure.ui.editor.SubroutinesRoute
 import com.myapp.adventure.ui.editor.TemplateListScreen
 import com.myapp.adventure.ui.editor.ValidationIssuesRoute
+import com.myapp.adventure.ui.list.AdventureDetailsScreen
 import com.myapp.adventure.ui.list.AdventureListScreen
 import com.myapp.adventure.ui.logs.LogViewerScreen
 import com.myapp.adventure.ui.menu.MenuDestination
@@ -34,7 +47,9 @@ import com.myapp.adventure.ui.settings.SettingsScreen
 import com.myapp.adventure.ui.setup.SetupScreen
 import com.myapp.adventure.ui.statistics.StatisticsScreen
 import com.myapp.adventure.ui.theme.FontScopeProvider
+import com.myapp.adventure.data.FileSaveStatus
 import com.myapp.adventure.utils.FontScope
+import com.myapp.adventure.utils.LastAdventureStore
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -46,6 +61,9 @@ object AppRoutes {
     @Serializable @SerialName("setup") data object Setup
     @Serializable @SerialName("menu") data object Menu
     @Serializable @SerialName("library") data object Library
+    @Serializable @SerialName("adventure_details") data class AdventureDetails(
+        val fileUri: String,
+    )
     @Serializable @SerialName("statistics") data object Statistics
     @Serializable @SerialName("logs") data object Logs
     @Serializable @SerialName("settings") data object Settings
@@ -57,7 +75,6 @@ object AppRoutes {
     @Serializable @SerialName("editor_subroutines") data object Subroutines
     @Serializable @SerialName("editor_help") data object Help
     @Serializable @SerialName("editor_validation") data object Validation
-    @Serializable @SerialName("editor_search") data object Search
     @Serializable @SerialName("editor_stats") data object StoryStats
     @Serializable @SerialName("reader") data class Reader(
         val fileUri: String? = null,
@@ -81,6 +98,49 @@ object AppRoutes {
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
 ) {
+    val context = LocalContext.current
+    val editorViewModel = activityEditorViewModel()
+    var lastAdventureUri by remember {
+        mutableStateOf(LastAdventureStore.get(context))
+    }
+    var pendingEditorNavigation by remember { mutableStateOf<AppSection?>(null) }
+    var showEditorExitDialog by remember { mutableStateOf(false) }
+
+    fun openReader(uri: Uri) {
+        lastAdventureUri = uri
+        LastAdventureStore.set(context, uri)
+        navController.navigate(AppRoutes.Reader(fileUri = uri.toString()))
+    }
+
+    fun performGlobalNavigation(section: AppSection) {
+        when (section) {
+            AppSection.Library -> navController.navigate(AppRoutes.Library) {
+                launchSingleTop = true
+            }
+            AppSection.Editor -> navController.navigate(AppRoutes.Editor) {
+                launchSingleTop = true
+            }
+            AppSection.Reader -> lastAdventureUri?.let(::openReader)
+            AppSection.Statistics -> navController.navigate(AppRoutes.Statistics) {
+                launchSingleTop = true
+            }
+            AppSection.Settings -> navController.navigate(AppRoutes.Settings) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    fun navigateGlobal(section: AppSection) {
+        val route = navController.currentBackStackEntry?.destination?.route
+        val inEditor = route?.startsWith("editor") == true
+        if (inEditor && editorViewModel.uiState.value.fileStatus == FileSaveStatus.DIRTY) {
+            pendingEditorNavigation = section
+            showEditorExitDialog = true
+        } else {
+            performGlobalNavigation(section)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = AppRoutes.Setup,
@@ -102,7 +162,6 @@ fun AppNavHost(
                         MenuDestination.Library -> navController.navigate(AppRoutes.Library)
                         MenuDestination.Create -> navController.navigate(AppRoutes.Editor)
                         MenuDestination.Statistics -> navController.navigate(AppRoutes.Statistics)
-                        MenuDestination.Logs -> navController.navigate(AppRoutes.Logs)
                         MenuDestination.Settings -> navController.navigate(AppRoutes.Settings)
                     }
                 },
@@ -111,23 +170,48 @@ fun AppNavHost(
 
         composable<AppRoutes.Library> {
             AdventureListScreen(
-                onNavigateToMenu = { navigateBackOrMenu(navController) },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
                 onOpenAdventure = { uri ->
-                    navController.navigate(AppRoutes.Reader(fileUri = uri.toString()))
+                    navController.navigate(
+                        AppRoutes.AdventureDetails(fileUri = uri.toString()),
+                    )
                 },
             )
         }
 
+        composable<AppRoutes.AdventureDetails> { entry ->
+            val route: AppRoutes.AdventureDetails = entry.toRoute()
+            AdventureDetailsScreen(
+                onBack = { navController.popBackStack() },
+                onRead = { openReader(route.fileUri.toUri()) },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
+            )
+        }
+
         composable<AppRoutes.Statistics> {
-            StatisticsScreen(onNavigateToMenu = { navigateBackOrMenu(navController) })
+            StatisticsScreen(
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
+            )
         }
 
         composable<AppRoutes.Logs> {
-            LogViewerScreen()
+            LogViewerScreen(
+                onBack = { navigateBackOrMenu(navController) },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
+            )
         }
 
         composable<AppRoutes.Settings> {
-            SettingsScreen()
+            SettingsScreen(
+                onBack = { navigateBackOrMenu(navController) },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
+                onOpenLogs = { navController.navigate(AppRoutes.Logs) },
+            )
         }
 
         composable<AppRoutes.Editor> {
@@ -138,7 +222,6 @@ fun AppNavHost(
                     viewModel = editorViewModel,
                     onNavigate = { destination ->
                         when (destination) {
-                            EditorDestination.Menu -> navController.navigate(AppRoutes.Menu)
                             EditorDestination.Variables -> navController.navigate(AppRoutes.Variables)
                             EditorDestination.InitialState -> navController.navigate(AppRoutes.InitialState)
                             EditorDestination.Templates -> navController.navigate(AppRoutes.Templates)
@@ -146,10 +229,12 @@ fun AppNavHost(
                             EditorDestination.Help -> navController.navigate(AppRoutes.Help)
                             EditorDestination.Meta -> navController.navigate(AppRoutes.EditMeta)
                             EditorDestination.Validation -> navController.navigate(AppRoutes.Validation)
-                            EditorDestination.Search -> navController.navigate(AppRoutes.Search)
                             EditorDestination.Stats -> navController.navigate(AppRoutes.StoryStats)
                         }
                     },
+                    onNavigateGlobal = ::navigateGlobal,
+                    onExit = { navController.popBackStack() },
+                    canOpenReader = lastAdventureUri != null,
                     onPreviewRequest = { request ->
                         val id = previewViewModel.put(request)
                         navController.navigate(AppRoutes.Reader(previewId = id))
@@ -159,80 +244,87 @@ fun AppNavHost(
         }
 
         composable<AppRoutes.EditMeta> {
-            FontScopeProvider(FontScope.EDITOR) {
-                EditMetaRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    EditMetaRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.Templates> {
-            FontScopeProvider(FontScope.EDITOR) {
-                TemplateListScreen(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    TemplateListScreen(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.Variables> {
-            FontScopeProvider(FontScope.EDITOR) {
-                VariablesRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    VariablesRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.InitialState> {
-            FontScopeProvider(FontScope.EDITOR) {
-                InitialStateRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    InitialStateRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.Subroutines> {
-            FontScopeProvider(FontScope.EDITOR) {
-                SubroutinesRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    SubroutinesRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.Help> {
-            FontScopeProvider(FontScope.EDITOR) {
-                HelpRoute(onBack = { navController.popBackStack() })
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    HelpRoute(onBack = { navController.popBackStack() })
+                }
             }
         }
 
         composable<AppRoutes.Validation> {
-            FontScopeProvider(FontScope.EDITOR) {
-                ValidationIssuesRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-        }
-
-        composable<AppRoutes.Search> {
-            FontScopeProvider(FontScope.EDITOR) {
-                SearchRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    ValidationIssuesRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
         composable<AppRoutes.StoryStats> {
-            FontScopeProvider(FontScope.EDITOR) {
-                StoryStatsRoute(
-                    viewModel = activityEditorViewModel(),
-                    onBack = { navController.popBackStack() },
-                )
+            EditorChildScope(lastAdventureUri != null, ::navigateGlobal) {
+                FontScopeProvider(FontScope.EDITOR) {
+                    StoryStatsRoute(
+                        viewModel = activityEditorViewModel(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
@@ -248,10 +340,64 @@ fun AppNavHost(
                 arguments = arguments,
                 onExit = { navController.popBackStack() },
                 onNavigateToMenu = { navController.navigate(AppRoutes.Menu) },
-                onNavigateToSettings = { navController.navigate(AppRoutes.Settings) },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
             )
         }
     }
+
+    if (showEditorExitDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showEditorExitDialog = false
+                pendingEditorNavigation = null
+            },
+            title = { Text(stringResource(R.string.editor_exit_dialog_title)) },
+            text = { Text(stringResource(R.string.editor_exit_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (saveAdventureToFile(context, editorViewModel)) {
+                            showEditorExitDialog = false
+                            val target = pendingEditorNavigation
+                            pendingEditorNavigation = null
+                            target?.let(::performGlobalNavigation)
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.editor_exit_dialog_save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEditorExitDialog = false
+                        val target = pendingEditorNavigation
+                        pendingEditorNavigation = null
+                        target?.let(::performGlobalNavigation)
+                    },
+                ) {
+                    Text(stringResource(R.string.editor_exit_dialog_exit))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun EditorChildScope(
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(
+        LocalGlobalMenu provides GlobalMenuController(
+            current = AppSection.Editor,
+            canOpenReader = canOpenReader,
+            onNavigate = onNavigateGlobal,
+        ),
+        content = content,
+    )
 }
 
 // =====================================================================

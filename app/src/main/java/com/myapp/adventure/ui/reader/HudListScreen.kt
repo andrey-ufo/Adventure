@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.AppSection
 
 /**
  * One row of a HUD list. `value == null` → label only (journal);
@@ -36,6 +37,9 @@ fun HudListScreen(
     titleRes: Int,
     items: List<HudListItem>,
     onBack: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -45,6 +49,9 @@ fun HudListScreen(
         ReaderOverlayHeader(
             title = stringResource(titleRes),
             onBack = onBack,
+            currentSection = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
         )
 
         if (items.isEmpty()) {

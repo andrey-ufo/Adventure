@@ -201,6 +201,7 @@ these block acceptance.
 | S7 | Compact history | After S5 + P2 (i.e. after Ф5) |
 | P3 | Compact snapshots | After S5 + P2 |
 | U1 | Themes (dark / light, separately from system) | After U9.base (Ф6) |
+| U17 | Start-screen preference: Menu / Library / last-read scene | After U12 menu stabilizes |
 | U8 | Reduced motion (extended) | After U9.base |
 | U10 | Lint-choice | After A5 (Ф9) |
 | L5 | Plurals | After L1–L4; StringId already designed for plural forms |
@@ -387,8 +388,6 @@ chapter titles from editor state).
 | `ui/editor/EditorSceneAdapter.kt` | ~15 | `// --- Section ---` dividers |
 | `ui/editor/VariablesAdapter.kt` | ~4 | KDoc header (Ф2.7) + 3 notes |
 | `ui/editor/EditorHelpers.kt` | 1 | KDoc `/** Renders one tag row … */` |
-| `ui/editor/AdventureMapAdapter.kt` | 2 | KDoc + `// --- Model ---` |
-| `ui/editor/AdventureMapFragment.kt` | 1 | KDoc `/** Same algorithm as … */` |
 | `ui/editor/InitialStateAdapter.kt` | 1 | (already fixed to `// Tag rows` in 3b-6c — one left as example) |
 | `utils/StoryStatsService.kt` | 3 | `/** … */` + 3 `//` notes |
 | `data/ProgressData.kt`, `data/EditorModels.kt`, `data/Adventure.kt` | ~15 | KDoc referencing `Ф2.7` / `Ф1.7.5` |

@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -32,10 +33,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun LogViewerScreen(
+    onBack: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
     modifier: Modifier = Modifier,
     viewModel: LogViewerViewModel = viewModel(),
 ) {
@@ -58,6 +64,9 @@ fun LogViewerScreen(
     LogViewerContent(
         state = state,
         showClearDialog = showClearDialog,
+        onBack = onBack,
+        onNavigateGlobal = onNavigateGlobal,
+        canOpenReader = canOpenReader,
         onCopyClick = { copyLogToClipboard(context, state.content) },
         onClearClick = { showClearDialog = true },
         onClearConfirmed = {
@@ -73,6 +82,9 @@ fun LogViewerScreen(
 private fun LogViewerContent(
     state: LogViewerUiState,
     showClearDialog: Boolean,
+    onBack: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
     onCopyClick: () -> Unit,
     onClearClick: () -> Unit,
     onClearConfirmed: () -> Unit,
@@ -89,11 +101,10 @@ private fun LogViewerContent(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = stringResource(R.string.logs_title),
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.weight(1f),
-            )
+            TextButton(onClick = onBack) {
+                Text(stringResource(R.string.action_back))
+            }
+            Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = onCopyClick) {
                 Text(stringResource(R.string.logs_copy))
             }
@@ -103,6 +114,11 @@ private fun LogViewerContent(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            GlobalMenuButton(
+                current = null,
+                canOpenReader = canOpenReader,
+                onNavigate = onNavigateGlobal,
+            )
         }
 
         Text(

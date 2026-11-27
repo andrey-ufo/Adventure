@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.myapp.adventure"
     compileSdk = 37
+    compileSdkMinor = 2
 
     defaultConfig {
         applicationId = "com.myapp.adventure"
@@ -14,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -35,6 +37,20 @@ android {
         baseline = file("lint-baseline.xml")
         abortOnError = true
         checkReleaseBuilds = false
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs merged resources + manifest.
+            isIncludeAndroidResources = true
+            all {
+                // JDK 17/21 + Robolectric: avoid InaccessibleObjectException.
+                it.jvmArgs(
+                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                    "--add-opens=java.base/java.util=ALL-UNNAMED",
+                )
+            }
+        }
     }
 }
 
@@ -71,6 +87,20 @@ dependencies {
     // ---- Test-only ----
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // ---- Instrumented tests ----
+    androidTestImplementation(libs.androidx.test.core.ktx)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.uiautomator)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     // JVM variant of PreferenceDataStoreFactory (uses OkioStorage).
     // Overrides the Android artifact in unit tests so Windows file-rename
     // issues (b/203087070) do not affect the test run.

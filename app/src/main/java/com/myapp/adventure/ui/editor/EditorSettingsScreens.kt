@@ -1,4 +1,4 @@
-package com.myapp.adventure.ui.editor
+﻿package com.myapp.adventure.ui.editor
 
 import android.os.Handler
 import android.os.Looper
@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.data.SaveStatus
 
 private const val CHILD_SAVE_DEBOUNCE_MS = 400L
@@ -210,6 +211,7 @@ private fun ChildTopBar(title: String, onBack: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
+            GlobalMenuButton()
         }
     }
 }

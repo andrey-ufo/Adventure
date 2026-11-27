@@ -38,6 +38,8 @@ import com.myapp.adventure.engine.ir.Choice
 import com.myapp.adventure.engine.ir.CompareOp
 import com.myapp.adventure.engine.ir.SceneId
 import com.myapp.adventure.step.StepSourceManager
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.ui.theme.FontScopeProvider
 import com.myapp.adventure.utils.FontScope
 
@@ -73,7 +75,8 @@ fun AdventureReaderScreen(
     viewModel: AdventureReaderViewModel,
     onPreviewExit: () -> Unit,
     onNavigateToMenu: () -> Unit,
-    onNavigateToSettings: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
     onChoiceClick: (Choice) -> Unit,
     onStepBackClick: () -> Unit,
     onChapterRestartClick: () -> Unit,
@@ -84,6 +87,7 @@ fun AdventureReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scene = viewModel.currentScene()
+    val currentSection = if (state.previewMode) AppSection.Editor else AppSection.Reader
     val choiceStates = viewModel.getChoiceStates()
 
     var overlayKey by rememberSaveable { mutableStateOf("") }
@@ -122,17 +126,24 @@ fun AdventureReaderScreen(
                     ReaderOverlay.INVENTORY -> R.string.reader_inventory_dialog_title
                     else -> R.string.reader_journal_dialog_title
                 }
-                val items = when (overlay) {
-                    ReaderOverlay.HEALTH ->
-                        viewModel.getHealthItems().map { HudListItem(it.first, it.second) }
-                    ReaderOverlay.INVENTORY ->
-                        viewModel.getInventoryItems().map { HudListItem(it.first, it.second) }
-                    else -> viewModel.getJournalItems().map { HudListItem(it, null) }
+                // Ф5.8: build the overlay rows only when its data changes,
+                // not on every unrelated reader recomposition (gate ticks).
+                val items = remember(overlay, state.stats, state.itemOrder, state.flags) {
+                    when (overlay) {
+                        ReaderOverlay.HEALTH ->
+                            viewModel.getHealthItems().map { HudListItem(it.first, it.second) }
+                        ReaderOverlay.INVENTORY ->
+                            viewModel.getInventoryItems().map { HudListItem(it.first, it.second) }
+                        else -> viewModel.getJournalItems().map { HudListItem(it, null) }
+                    }
                 }
                 HudListScreen(
                     titleRes = titleRes,
                     items = items,
                     onBack = { overlayKey = "" },
+                    currentSection = currentSection,
+                    canOpenReader = canOpenReader,
+                    onNavigateGlobal = onNavigateGlobal,
                 )
             }
             ReaderOverlay.MENU -> {
@@ -160,10 +171,9 @@ fun AdventureReaderScreen(
                         onMenuRestartClick()
                     },
                     onWarnings = { overlayKey = ReaderOverlay.WARNINGS.key },
-                    onSettings = {
-                        viewModel.requestOverlayCloseOnNextResume()
-                        onNavigateToSettings()
-                    },
+                    currentSection = currentSection,
+                    canOpenReader = canOpenReader,
+                    onNavigateGlobal = onNavigateGlobal,
                 )
             }
             ReaderOverlay.SLOTS -> {
@@ -173,6 +183,9 @@ fun AdventureReaderScreen(
                     error = state.slotsError,
                     currentChapterNumber = viewModel.currentChapterNumber(),
                     onBack = { overlayKey = "" },
+                    currentSection = currentSection,
+                    canOpenReader = canOpenReader,
+                    onNavigateGlobal = onNavigateGlobal,
                     onCreate = viewModel::createSlot,
                     onLoad = viewModel::loadSlot,
                     onDelete = viewModel::deleteSlot,
@@ -183,6 +196,9 @@ fun AdventureReaderScreen(
                 WarningInfoScreen(
                     warnings = viewModel.getCachedWarnings(),
                     onBack = { overlayKey = "" },
+                    currentSection = currentSection,
+                    canOpenReader = canOpenReader,
+                    onNavigateGlobal = onNavigateGlobal,
                 )
             }
             ReaderOverlay.DEBUG -> {
@@ -193,6 +209,9 @@ fun AdventureReaderScreen(
                     gateRequiredSteps = if (state.isGateActive) scene?.gate?.requiredSteps else null,
                     remainingSteps = state.remainingSteps,
                     onBack = { overlayKey = "" },
+                    currentSection = currentSection,
+                    canOpenReader = canOpenReader,
+                    onNavigateGlobal = onNavigateGlobal,
                     onSetStat = viewModel::debugSetStat,
                     onDeleteStat = viewModel::debugDeleteStat,
                     onAddFlag = viewModel::debugAddFlag,
@@ -217,6 +236,9 @@ fun AdventureReaderScreen(
             health = viewModel.getHealthValue(),
             inventory = viewModel.getInventoryCount(),
             journal = viewModel.getJournalCount(),
+            currentSection = if (state.previewMode) AppSection.Editor else AppSection.Reader,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
             onMenuClick = {
                 if (state.previewMode) {
                     onPreviewExit()
@@ -320,6 +342,9 @@ private fun ReaderHud(
     health: Int,
     inventory: Int,
     journal: Int,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
     onMenuClick: () -> Unit,
     onHealthClick: () -> Unit,
     onInventoryClick: () -> Unit,
@@ -370,6 +395,11 @@ private fun ReaderHud(
                 )
             }
         }
+        GlobalMenuButton(
+            current = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigate = onNavigateGlobal,
+        )
     }
 }
 

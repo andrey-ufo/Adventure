@@ -15,6 +15,7 @@ import com.myapp.adventure.data.EditorSubroutineStep
 import com.myapp.adventure.data.EditorTag
 import com.myapp.adventure.data.EditorUiState
 import com.myapp.adventure.data.EditorVarDecl
+import com.myapp.adventure.data.FileSaveStatus
 import com.myapp.adventure.data.SaveStatus
 import com.myapp.adventure.data.PlayerState
 import com.myapp.adventure.data.VariableDto
@@ -107,10 +108,10 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
             expandedScenes = expandedScenes.toSet(),
             expandedSceneSettings = expandedSceneSettings.toSet(),
             expandedChoices = expandedChoices.toSet(),
-            expandedMapChapters = expandedMapChapters.toSet(),
             isHistoryInitialized = isHistoryInitialized(),
             pendingJumpToSceneUid = pendingJumpToSceneUid,
             saveStatus = prev.saveStatus,
+            fileStatus = prev.fileStatus,
             hasUnsavedChanges = prev.hasUnsavedChanges,
             menuExpanded = prev.menuExpanded,
             variablesExpanded = prev.variablesExpanded,
@@ -123,6 +124,10 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     /** Updates the toolbar's save-status text; never touches list contents. */
     fun setSaveStatus(status: SaveStatus) {
         _uiState.value = _uiState.value.copy(saveStatus = status)
+    }
+
+    fun setFileStatus(status: FileSaveStatus) {
+        _uiState.value = _uiState.value.copy(fileStatus = status)
     }
 
     /**
@@ -217,7 +222,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
 
     private val expandedScenes = mutableSetOf<String>()
     private val expandedChoices = mutableSetOf<String>()
-    private val expandedMapChapters = mutableSetOf<Int>()
 
     var pendingJumpToSceneUid: String? = null
 
@@ -306,28 +310,6 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
     private fun pruneExpandedChoices() {
         val currentUids = scenes.flatMap { it.choices.map { c -> c.uid } }.toSet()
         expandedChoices.retainAll(currentUids)
-    }
-
-    // ---------- Карта: аккордеон глав ----------
-
-    fun isMapChapterExpanded(index: Int): Boolean = index in expandedMapChapters
-
-    fun toggleMapChapterExpanded(index: Int) {
-        if (index in expandedMapChapters) expandedMapChapters.remove(index)
-        else expandedMapChapters.add(index)
-        commitState()
-    }
-
-    fun ensureFirstMapChapterExpanded(totalChapters: Int) {
-        if (expandedMapChapters.isEmpty() && totalChapters > 0) {
-            expandedMapChapters.add(0)
-            commitState()
-        }
-    }
-
-    fun collapseAllMapChapters() {
-        expandedMapChapters.clear()
-        commitState()
     }
 
     // ---------- История Undo/Redo ----------
@@ -1348,8 +1330,8 @@ class AdventureEditorViewModel(application: Application) : AndroidViewModel(appl
                 gate = sceneGate,
                 isEnding = scene.isEnding,
                 // Ф4.5: propagate merge metadata into the IR so
-                // `StoryValidator` (Ф4.6) and the editor's map view can
-                // see the declared convergence.
+                // `StoryValidator` (Ф4.6) and stats can see the declared
+                // convergence.
                 isMerge = scene.isMerge,
                 mergeSources = scene.mergeSources.map { IrSceneId(it) },
             )

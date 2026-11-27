@@ -62,12 +62,18 @@ import com.myapp.adventure.ui.theme.FontScopeProvider
 import com.myapp.adventure.utils.FontManager
 import com.myapp.adventure.utils.FontScope
 import com.myapp.adventure.utils.FontScopeSettings
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.utils.FontSettings
 import com.myapp.adventure.utils.ThemeManager
 import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
+    onBack: () -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    canOpenReader: Boolean,
+    onOpenLogs: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(),
 ) {
@@ -127,12 +133,27 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = stringResource(R.string.settings_title),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBack) {
+                Text(stringResource(R.string.action_back))
+            }
+            Text(
+                text = stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp, bottom = 8.dp),
+            )
+            GlobalMenuButton(
+                current = AppSection.Settings,
+                canOpenReader = canOpenReader,
+                onNavigate = onNavigateGlobal,
+            )
+        }
 
         // ----- Permissions -----
         SectionHeader(stringResource(R.string.settings_permissions_title))
@@ -254,6 +275,9 @@ fun SettingsScreen(
             enabled = true,
             onCheckedChange = { viewModel.setLoggingEnabled(it) },
         )
+        TextButton(onClick = onOpenLogs) {
+            Text(stringResource(R.string.settings_open_logs))
+        }
     }
 }
 

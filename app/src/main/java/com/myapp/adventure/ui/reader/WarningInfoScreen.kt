@@ -16,6 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
 import com.myapp.adventure.engine.analyze.LintIssue
+import com.myapp.adventure.ui.AppSection
 
 /**
  * Phase 3.4-d: read-only warning list, a Compose overlay inside
@@ -29,6 +30,9 @@ import com.myapp.adventure.engine.analyze.LintIssue
 fun WarningInfoScreen(
     warnings: List<LintIssue>,
     onBack: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -38,6 +42,9 @@ fun WarningInfoScreen(
         ReaderOverlayHeader(
             title = stringResource(R.string.reader_menu_warnings_fmt, warnings.size),
             onBack = onBack,
+            currentSection = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
         )
 
         if (warnings.isEmpty()) {

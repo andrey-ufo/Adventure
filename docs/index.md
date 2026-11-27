@@ -25,6 +25,8 @@ You extend the app, add features, or integrate new step sources.
 
 - [Getting started](./getting-started.md) — clone, build, run, folder layout.
 - [Architecture](./architecture.md) — high-level layers, data flow, invariants.
+- [UI screens](./ui-screens.md) — screen inventory, transitions, back stack
+  and the U11 navigation baseline.
 - [Engine architecture](./engine-architecture.md) — deep dive into the
   `:engine` module: IR, parser, runtime, analyzer.
 - [Engine types](./engine-types.md) — the variable type system (Ф2):

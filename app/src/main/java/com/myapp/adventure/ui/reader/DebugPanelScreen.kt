@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.myapp.adventure.ui.AppSection
 
 /**
  * Phase 3.4-e: developer debug panel, a Compose overlay inside
@@ -60,6 +61,9 @@ fun DebugPanelScreen(
     gateRequiredSteps: Int?,
     remainingSteps: Int,
     onBack: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
     onSetStat: (String, Int) -> Unit,
     onDeleteStat: (String) -> Unit,
     onAddFlag: (String) -> Unit,
@@ -78,7 +82,13 @@ fun DebugPanelScreen(
             .fillMaxSize()
             .safeDrawingPadding(),
     ) {
-        ReaderOverlayHeader(title = "Отладка", onBack = onBack)
+        ReaderOverlayHeader(
+            title = "Отладка",
+            onBack = onBack,
+            currentSection = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
+        )
 
         Column(
             modifier = Modifier

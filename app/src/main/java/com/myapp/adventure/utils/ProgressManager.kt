@@ -7,6 +7,7 @@ import com.myapp.adventure.data.ProgressData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,7 +33,7 @@ object ProgressManager {
 
     private const val SAVE_DEBOUNCE_MS = 2_000L
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val storeLock = Any()
 
     @Volatile private var store: ProgressStore? = null
@@ -61,7 +62,15 @@ object ProgressManager {
     fun saveProgress(context: Context, adventureFileUri: Uri, progress: ProgressData) {
         val fileName = getFileNameFromUri(adventureFileUri) ?: return
         val target = store(context) ?: return
-        if (!target.save(fileName, progress)) return
+        val saved = try {
+            target.save(fileName, progress)
+        } catch (e: ProgressMigrationException) {
+            // The reader init surfaces this as a blocking error; a later
+            // background save must not crash or overwrite the bad file.
+            Logger.log(context, "Progress save blocked: ${e.message}")
+            return
+        }
+        if (!saved) return
 
         Logger.log(
             context,
@@ -77,7 +86,13 @@ object ProgressManager {
     fun deleteProgress(context: Context, adventureFileUri: Uri) {
         val fileName = getFileNameFromUri(adventureFileUri) ?: return
         val target = store(context) ?: return
-        if (!target.delete(fileName)) return
+        val deleted = try {
+            target.delete(fileName)
+        } catch (e: ProgressMigrationException) {
+            Logger.log(context, "Progress delete blocked: ${e.message}")
+            return
+        }
+        if (!deleted) return
 
         Logger.log(context, "Progress deleted for $fileName")
         scheduleFlush(context.applicationContext)
@@ -98,10 +113,29 @@ object ProgressManager {
      */
     suspend fun warmUp(context: Context) {
         val appContext = context.applicationContext
-        withContext(Dispatchers.IO) { store(appContext)?.warmUp() }
+        withContext(Dispatchers.IO) {
+            try {
+                store(appContext)?.warmUp()
+            } catch (e: ProgressMigrationException) {
+                // The reader will show the blocking error when this
+                // adventure is opened; startup must not crash.
+                Logger.log(appContext, "Progress warm-up failed: ${e.message}")
+            }
+        }
     }
 
     // ==================== Internal ====================
+
+    /** Test-only: drops the process cache and cancels a pending debounce. */
+    internal fun resetForTests() {
+        scope.cancel()
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        synchronized(storeLock) {
+            store = null
+            storeTreeUri = null
+        }
+        flushScheduled.set(false)
+    }
 
     /**
      * Returns the cache for the currently selected adventure folder,

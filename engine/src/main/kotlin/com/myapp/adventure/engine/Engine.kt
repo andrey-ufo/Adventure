@@ -388,8 +388,10 @@ public object Engine {
             ?: return StepResult.Rejected(RejectReason.SceneNotFound(choice.nextScene))
 
         // 5. Apply choice effects (target scene's effects are reader's job).
+        // Ф5.8: write deltas straight into the result list; no map+copy.
         var stateAfterChoice = EffectsApplier.apply(state, choice.effects)
-        val appliedDeltas = effectsToDeltas(choice.effects).toMutableList()
+        val appliedDeltas = ArrayList<StateDelta>(choice.effects.size)
+        appendEffectsToDeltas(choice.effects, appliedDeltas)
 
         // 6. Ф4.7: atomic subroutine call. The call sees the state after
         //    choice effects and returns the post-call global state. A

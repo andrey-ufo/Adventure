@@ -14,6 +14,7 @@ import com.myapp.adventure.data.EditorChoice
 import com.myapp.adventure.data.EditorDraft
 import com.myapp.adventure.data.EditorScene
 import com.myapp.adventure.data.EditorTag
+import com.myapp.adventure.data.FileSaveStatus
 import com.myapp.adventure.data.SaveStatus
 import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
@@ -97,6 +98,7 @@ internal fun applyDraft(
 
     viewModel.setHasUnsavedChanges(false)
     viewModel.setSaveStatus(SaveStatus.SAVED)
+    viewModel.setFileStatus(FileSaveStatus.DIRTY)
     Logger.log(context, "Черновик восстановлен, сцен: ${draft.scenes.size}")
 }
 
@@ -105,6 +107,7 @@ internal fun saveDraftImmediate(
     viewModel: AdventureEditorViewModel,
 ) {
     viewModel.setSaveStatus(SaveStatus.SAVING)
+    viewModel.setFileStatus(FileSaveStatus.DIRTY)
     viewModel.commitSnapshot()
     EditorDraftManager.saveDraft(
         context,
@@ -301,6 +304,7 @@ internal fun loadAdventureFromUri(
         viewModel.commitState()
 
         viewModel.setSaveStatus(SaveStatus.LOADED)
+        viewModel.setFileStatus(FileSaveStatus.CLEAN)
 
         Logger.log(context, "Приключение загружено из файла: ${uri.lastPathSegment}")
         Toast.makeText(context, R.string.editor_toast_loaded, Toast.LENGTH_SHORT).show()
@@ -383,14 +387,14 @@ private fun buildTagList(
 internal fun saveAdventureToFile(
     context: Context,
     viewModel: AdventureEditorViewModel,
-) {
+): Boolean {
     if (viewModel.scenes.isEmpty()) {
         Toast.makeText(
             context,
             R.string.editor_toast_add_scene_first,
             Toast.LENGTH_SHORT,
         ).show()
-        return
+        return false
     }
 
     viewModel.freezeAllPendingIds()
@@ -407,9 +411,10 @@ internal fun saveAdventureToFile(
             R.string.editor_toast_folder_not_selected,
             Toast.LENGTH_SHORT,
         ).show()
-        return
+        return false
     }
     val folderUri = folderUriString.toUri()
+    viewModel.setFileStatus(FileSaveStatus.DIRTY)
 
     try {
         val newAdventuresDirUri = DocumentsContract.buildDocumentUriUsingTree(
@@ -454,7 +459,9 @@ internal fun saveAdventureToFile(
             EditorDraftManager.clearDraft(context)
             viewModel.setHasUnsavedChanges(false)
             viewModel.setSaveStatus(SaveStatus.SAVED_TO_FILE)
+            viewModel.setFileStatus(FileSaveStatus.CLEAN)
         }
+        return saved
     } catch (e: Exception) {
         Logger.log(context, "Ошибка сохранения: ${e.message}")
         Toast.makeText(
@@ -462,6 +469,8 @@ internal fun saveAdventureToFile(
             context.getString(R.string.editor_toast_save_error, e.message),
             Toast.LENGTH_LONG,
         ).show()
+        viewModel.setFileStatus(FileSaveStatus.DIRTY)
+        return false
     }
 }
 

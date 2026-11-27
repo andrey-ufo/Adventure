@@ -39,14 +39,21 @@
     <!-- ============================================================ -->
     <string name="menu_library">Библиотека</string>
     <string name="menu_statistics">Статистика</string>
+    <string name="menu_statistics_steps">Статистика шагов</string>
     <string name="menu_create">Редактор</string>
-    <string name="menu_logs">Логи игры</string>
+    <string name="menu_reader_continue">Читалка / Продолжить</string>
     <string name="menu_settings">Настройки</string>
 
     <!-- ============================================================ -->
     <!-- LIBRARY (AdventureListScreen)                                -->
     <!-- ============================================================ -->
     <string name="library_title">Мои приключения</string>
+    <string name="details_header">Приключение</string>
+    <string name="details_loading">Загрузка приключения…</string>
+    <string name="details_error">Не удалось загрузить приключение</string>
+    <string name="details_retry">Повторить</string>
+    <string name="details_read">Читать</string>
+    <string name="details_meta_fmt">Глав: %1$d · Сцен: %2$d</string>
     <string name="library_toast_folder_not_selected">Папка не выбрана</string>
     <string name="library_toast_folder_access_error_fmt">Ошибка доступа к папке: %1$s</string>
 
@@ -55,7 +62,7 @@
     <!-- ============================================================ -->
     <string name="editor_title_untitled">Без названия</string>
     <string name="editor_add_scene">+ Сцена</string>
-    <string name="editor_no_scenes_hint">Сцен пока нет. Нажмите «+ Сцена» в меню.</string>
+    <string name="editor_no_scenes_hint">Сцен пока нет. Нажмите, чтобы добавить первую</string>
     <string name="editor_scene_search_placeholder">Поиск сцены…</string>
     <string name="editor_scene_search_nothing">Ничего не найдено.</string>
     <string name="editor_scene_search_more_fmt">Ещё результатов: %1$d. Уточните запрос.</string>
@@ -68,14 +75,20 @@
     <string name="editor_load">Загрузить</string>
     <string name="editor_edit_meta">Название</string>
     <string name="editor_validate">Проверить</string>
-    <string name="editor_search">Поиск</string>
+    <string name="editor_actions">Действия</string>
+    <string name="editor_actions_scene">Сцена</string>
+    <string name="editor_actions_adventure">Приключение</string>
+    <string name="editor_actions_check">Проверка</string>
     <string name="editor_templates_button">Шаблоны</string>
 
-    <string name="editor_save_status_editing">Изменения…</string>
-    <string name="editor_save_status_saving">Сохранение…</string>
-    <string name="editor_save_status_saved">Сохранено</string>
-    <string name="editor_save_status_saved_to_file">Сохранено в файл</string>
-    <string name="editor_save_status_loaded">Загружено из файла</string>
+    <string name="editor_draft_saving">Черновик сохраняется</string>
+    <string name="editor_draft_saved">Черновик сохранён</string>
+    <string name="editor_file_dirty">Файл не сохранён</string>
+    <string name="editor_file_saved">Файл сохранён</string>
+    <string name="editor_exit_dialog_title">Файл не сохранён</string>
+    <string name="editor_exit_dialog_message">В файле нет последних изменений. Черновик уже сохранён, но JSON-файл нужно обновить отдельно.</string>
+    <string name="editor_exit_dialog_save">Сохранить</string>
+    <string name="editor_exit_dialog_exit">Выйти</string>
 
     <!-- Editor: toasts -->
     <string name="editor_toast_loaded">Приключение загружено</string>
@@ -98,7 +111,6 @@
     <string name="editor_dialog_types_missing_message">Файл без объявлений типов переменных. Type checking работает в fallback-режиме (по tags + initial_state).\n\nОбъявить типы сейчас?</string>
     <string name="editor_dialog_health_title">Здоровье истории</string>
     <string name="editor_dialog_health_no_issues_message">Проблем не найдено. История выглядит здоровой! ✅</string>
-    <string name="editor_dialog_search_title">Поиск по истории</string>
     <string name="editor_dialog_stats_title">Статистика истории</string>
     <string name="editor_draft_restore_message_fmt">Найден несохранённый черновик от %1$s\nСцен: %2$d\n\nВосстановить?</string>
 
@@ -138,10 +150,7 @@
     <string name="editor_tag_category_health">Здоровье</string>
     <string name="editor_tag_category_item">Предмет</string>
     <string name="editor_tag_category_journal">Журнал</string>
-    <!-- Editor: search dialog -->
-    <string name="editor_search_enter_query">Введите минимум 2 символа</string>
-    <string name="editor_search_nothing_found">Ничего не найдено</string>
-    <string name="editor_search_matches_fmt">Найдено %1$s</string>
+    <!-- Editor: inline scene search -->
     <string name="editor_search_more_fmt">  (ещё %1$d)</string>
 
     <!-- Editor: story stats dialog -->
@@ -220,9 +229,6 @@
     <string name="scene_picker_self_row_label">self — эта же сцена</string>
     <string name="scene_picker_start_typing">Начните вводить ID или название</string>
     <!-- ============================================================ -->
-    <!-- MAP (AdventureMapFragment / AdventureMapAdapter)             -->
-    <!-- ============================================================ -->
-    <!-- ============================================================ -->
     <!-- READER (ReaderRoute)                                         -->
     <!-- ============================================================ -->
     <!-- HUD: layout defaults; overwritten at runtime -->
@@ -243,7 +249,6 @@
     <string name="reader_menu_step_back">↩ Шаг назад</string>
     <string name="reader_menu_restart">Начать приключение заново</string>
     <string name="reader_menu_warnings_fmt">Предупреждения (%1$d)</string>
-    <string name="reader_menu_settings">Настройки</string>
 
     <!-- Manual slots (Ф5.5) -->
     <string name="reader_slots_title">Сохранения</string>
@@ -322,7 +327,6 @@
     <!-- STATISTICS (StatisticsScreen, Ф2.7 baseline)                 -->
     <!-- ============================================================ -->
     <string name="stats_title">Статистика шагов</string>
-    <string name="stats_menu">Меню</string>
     <string name="stats_total">Всего пройдено</string>
     <string name="stats_today">Сегодня</string>
     <string name="stats_last_7_days">За 7 дней</string>
@@ -341,6 +345,7 @@
     <!-- ============================================================ -->
     <string name="settings_title">Настройки</string>
     <string name="settings_logging">Включить запись лога в файл</string>
+    <string name="settings_open_logs">Открыть логи</string>
     <string name="settings_health_connect">Синхронизация с Health Connect</string>
     <string name="settings_fonts_title">Шрифты</string>
     <string name="settings_font_reader_label">Шрифт текста приключений:</string>
@@ -376,7 +381,6 @@
     <!-- ============================================================ -->
     <!-- LOG VIEWER                                                   -->
     <!-- ============================================================ -->
-    <string name="logs_title">Логи</string>
     <string name="logs_copy">Копировать</string>
     <string name="logs_loading">Загрузка…</string>
     <string name="logs_empty">Лог пуст</string>
@@ -496,12 +500,6 @@
 
     <!-- Shared: item list dialog -->
     <!-- Shared: new scene dialog -->
-    <!-- Shared: search dialog -->
-    <string name="dialog_search_query_hint">Введите запрос (минимум 2 символа)</string>
-    <string name="dialog_search_filter_titles">Заголовки</string>
-    <string name="dialog_search_filter_texts">Тексты</string>
-    <string name="dialog_search_filter_choices">Выборы</string>
-    <string name="dialog_search_filter_tags">Метки</string>
 
     <!-- Shared: story stats dialog sections -->
     <string name="dialog_story_stats_chapters_section">По главам</string>
@@ -511,6 +509,8 @@
     <!-- SHARED: action buttons                                       -->
     <!-- ============================================================ -->
     <string name="action_menu">Меню</string>
+    <string name="action_global_menu">Меню приложения</string>
+    <string name="action_global_menu_symbol">⋮</string>
     <string name="action_back">← Назад</string>
     <string name="action_undo">↶</string>
     <string name="action_redo">↷</string>
@@ -614,20 +614,6 @@
         <item quantity="few">%d минуты</item>
         <item quantity="many">%d минут</item>
         <item quantity="other">%d минут</item>
-    </plurals>
-
-    <!-- Editor search -->
-    <plurals name="word_matches">
-        <item quantity="one">%d совпадение</item>
-        <item quantity="few">%d совпадения</item>
-        <item quantity="many">%d совпадений</item>
-        <item quantity="other">%d совпадений</item>
-    </plurals>
-    <plurals name="word_scenes_in">
-        <item quantity="one">в %d сцене</item>
-        <item quantity="few">в %d сценах</item>
-        <item quantity="many">в %d сценах</item>
-        <item quantity="other">в %d сценах</item>
     </plurals>
 
     <!-- Map / template list -->

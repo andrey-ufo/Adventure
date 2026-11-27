@@ -1,5 +1,6 @@
 package com.myapp.adventure.engine
 
+import com.myapp.adventure.engine.ir.Effect
 import com.myapp.adventure.engine.ir.PlayerState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +43,23 @@ class StateDeltaTest {
             0,
             applyDelta(base, StateDelta.SetStat("health", -1)).stats["health"],
         )
+    }
+
+    @Test
+    fun `append effects form matches list form and preserves existing entries`() {
+        val effects = listOf(
+            Effect.SetFlag("a"),
+            Effect.RemoveFlag("b"),
+            Effect.ModifyStat("health", 5),
+            Effect.ModifyStat("health", -2),
+            Effect.Set("gold", 4),
+        )
+        val expected = effectsToDeltas(effects)
+        val out = mutableListOf<StateDelta>(StateDelta.SetFlag("existing"))
+
+        appendEffectsToDeltas(effects, out)
+
+        assertEquals(listOf(StateDelta.SetFlag("existing")) + expected, out)
     }
 
     @Test

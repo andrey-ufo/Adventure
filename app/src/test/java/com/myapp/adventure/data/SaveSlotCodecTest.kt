@@ -107,6 +107,69 @@ class SaveSlotCodecTest {
     }
 
     @Test
+    fun malformedJsonIsExplicitError() {
+        assertThrows(SaveSlotException::class.java) {
+            SaveSlotCodec.decode("{ not a slot")
+        }
+    }
+
+    @Test
+    fun missingIdIsExplicitError() {
+        val json = """
+            {
+              "format_version": 1,
+              "slot": {"name": "no id", "created_at": 1, "updated_at": 2},
+              "state": {"version": 1, "adventureFileName": "q.json"}
+            }
+        """.trimIndent()
+
+        assertThrows(SaveSlotException::class.java) {
+            SaveSlotCodec.decode(json)
+        }
+    }
+
+    @Test
+    fun futureEmbeddedStateVersionIsExplicitError() {
+        val json = """
+            {
+              "format_version": 1,
+              "slot": {"id": "s1", "name": "future", "created_at": 1, "updated_at": 2},
+              "state": {"version": 999, "adventureFileName": "q.json"}
+            }
+        """.trimIndent()
+
+        assertThrows(SaveSlotException::class.java) {
+            SaveSlotCodec.decode(json)
+        }
+    }
+
+    @Test
+    fun blankNameFallsBackToId() {
+        val json = """
+            {
+              "format_version": 1,
+              "slot": {"id": "s1", "name": "   ", "created_at": 1, "updated_at": 2},
+              "state": {"version": 1, "adventureFileName": "q.json"}
+            }
+        """.trimIndent()
+
+        assertEquals("s1", SaveSlotCodec.decode(json).name)
+    }
+
+    @Test
+    fun adventureKeyHandlesNoExtensionAndLongUnicodeNames() {
+        val noExtension = SaveSlotPaths.adventureKey("noext")
+        assertTrue(noExtension.startsWith("noext-"))
+
+        val longUnicode = SaveSlotPaths.adventureKey(
+            "Приключение с очень длинным названием, которое точно больше сорока символов.json",
+        )
+        assertTrue(longUnicode.substringBeforeLast('-').length <= 40)
+        assertTrue(longUnicode.matches(Regex("[a-z0-9_-]+")))
+        assertEquals(8, longUnicode.substringAfterLast('-').length)
+    }
+
+    @Test
     fun slotFileNameRoundTripsToId() {
         val id = SaveSlotCodec.newId()
         val fileName = SaveSlotPaths.slotFileName(id)

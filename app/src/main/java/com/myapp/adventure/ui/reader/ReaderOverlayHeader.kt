@@ -14,6 +14,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.AppSection
+import com.myapp.adventure.ui.GlobalMenuButton
 
 /**
  * Phase 3.4-d: shared header for full-screen reader overlays (HUD lists,
@@ -23,7 +25,13 @@ import com.myapp.adventure.R
  * is only the top bar.
  */
 @Composable
-internal fun ReaderOverlayHeader(title: String, onBack: () -> Unit) {
+internal fun ReaderOverlayHeader(
+    title: String,
+    onBack: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
+) {
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             modifier = Modifier
@@ -41,6 +49,11 @@ internal fun ReaderOverlayHeader(title: String, onBack: () -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp),
+            )
+            GlobalMenuButton(
+                current = currentSection,
+                canOpenReader = canOpenReader,
+                onNavigate = onNavigateGlobal,
             )
         }
     }

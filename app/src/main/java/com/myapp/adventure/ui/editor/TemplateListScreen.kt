@@ -1,4 +1,4 @@
-package com.myapp.adventure.ui.editor
+﻿package com.myapp.adventure.ui.editor
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.GlobalMenuButton
 import com.myapp.adventure.data.EditorTemplate
 import com.myapp.adventure.data.deepCopy
 import com.myapp.adventure.ui.theme.AdventureTheme
@@ -94,6 +95,7 @@ fun TemplateListScreen(
                 }) {
                     Text(stringResource(R.string.template_add))
                 }
+                GlobalMenuButton()
             }
         }
 

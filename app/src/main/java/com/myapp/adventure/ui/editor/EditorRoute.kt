@@ -2,6 +2,7 @@ package com.myapp.adventure.ui.editor
 
 import android.os.Handler
 import android.os.Looper
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -23,7 +24,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.R
+import com.myapp.adventure.data.FileSaveStatus
 import com.myapp.adventure.data.SaveStatus
+import com.myapp.adventure.ui.AppSection
 import com.myapp.adventure.utils.EditorDraftManager
 
 private const val DEBOUNCE_MS = 400L
@@ -49,6 +52,9 @@ private const val DEBOUNCE_MS = 400L
 fun EditorRoute(
     viewModel: AdventureEditorViewModel,
     onNavigate: (EditorDestination) -> Unit,
+    onNavigateGlobal: (AppSection) -> Unit,
+    onExit: () -> Unit,
+    canOpenReader: Boolean,
     onPreviewRequest: (EditorPreviewRequest) -> Unit,
 ) {
     val context = LocalContext.current
@@ -61,6 +67,19 @@ fun EditorRoute(
 
     var pendingDraft by remember { mutableStateOf<DraftRestore?>(null) }
     var showTypesMissing by rememberSaveable { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    var pendingExit by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun requestExit(action: () -> Unit) {
+        if (state.fileStatus == FileSaveStatus.DIRTY) {
+            pendingExit = action
+            showExitDialog = true
+        } else {
+            action()
+        }
+    }
+
+    BackHandler { requestExit(onExit) }
 
     // One-shot setup: publish the initial snapshot, offer a draft restore,
     // then initialize history. Mirrors the old onViewCreated order.
@@ -119,6 +138,12 @@ fun EditorRoute(
         }
     }
 
+    val onAddScene: () -> Unit = {
+        viewModel.addScene()
+        viewModel.commitSnapshot()
+        markDirty()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -126,15 +151,12 @@ fun EditorRoute(
     ) {
         EditorToolbar(
             state = state,
-            onMenuClick = { onNavigate(EditorDestination.Menu) },
+            onNavigateGlobal = onNavigateGlobal,
+            canOpenReader = canOpenReader,
             onToggleActions = { viewModel.toggleMenuExpanded() },
             onUndo = onUndo,
             onRedo = onRedo,
-            onAddScene = {
-                viewModel.addScene()
-                viewModel.commitSnapshot()
-                markDirty()
-            },
+            onAddScene = onAddScene,
             onVariables = { onNavigate(EditorDestination.Variables) },
             onInitialState = { onNavigate(EditorDestination.InitialState) },
             onSave = {
@@ -156,7 +178,45 @@ fun EditorRoute(
             onPreviewScene = { uid ->
                 buildPreviewRequest(context, viewModel, uid)?.let(onPreviewRequest)
             },
+            onAddScene = onAddScene,
             modifier = Modifier.weight(1f),
+        )
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showExitDialog = false
+                pendingExit = null
+            },
+            title = { Text(stringResource(R.string.editor_exit_dialog_title)) },
+            text = { Text(stringResource(R.string.editor_exit_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (saveAdventureToFile(context, viewModel)) {
+                            showExitDialog = false
+                            val action = pendingExit
+                            pendingExit = null
+                            action?.invoke()
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.editor_exit_dialog_save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showExitDialog = false
+                        val action = pendingExit
+                        pendingExit = null
+                        action?.invoke()
+                    },
+                ) {
+                    Text(stringResource(R.string.editor_exit_dialog_exit))
+                }
+            },
         )
     }
 

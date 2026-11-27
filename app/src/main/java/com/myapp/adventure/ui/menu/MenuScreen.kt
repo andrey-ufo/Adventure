@@ -43,9 +43,6 @@ fun MenuScreen(
         MenuItem(stringResource(R.string.menu_statistics)) {
             onNavigate(MenuDestination.Statistics)
         }
-        MenuItem(stringResource(R.string.menu_logs)) {
-            onNavigate(MenuDestination.Logs)
-        }
         MenuItem(stringResource(R.string.menu_settings)) {
             onNavigate(MenuDestination.Settings)
         }

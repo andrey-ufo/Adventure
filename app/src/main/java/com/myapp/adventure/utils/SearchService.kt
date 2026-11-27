@@ -12,7 +12,7 @@ object SearchService {
 
     /**
      * @param titleFallback displayed title for scenes whose `title` is
-     *   blank. The caller (`SearchRoute`) passes
+     *   blank. The caller (`SceneSearchBlock`) passes
      *   `stringResource(R.string.label_without_title)`; `:utils` stays free
      *   of `Context` and free of user-facing strings.
      */

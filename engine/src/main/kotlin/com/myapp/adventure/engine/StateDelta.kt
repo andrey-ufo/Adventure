@@ -101,8 +101,21 @@ public fun applyDeltas(
  * `AddStat` or `SubStat`; `Set` becomes `SetStat`; flags map directly.
  */
 public fun effectsToDeltas(effects: List<Effect>): List<StateDelta> =
-    effects.map { effect ->
-        when (effect) {
+    ArrayList<StateDelta>(effects.size).also { out ->
+        appendEffectsToDeltas(effects, out)
+    }
+
+/**
+ * Append form of [effectsToDeltas], used by `Engine.step` so the hot path
+ * can write directly into its result list instead of allocating a second
+ * copy (`map(...).toMutableList()`).
+ */
+public fun appendEffectsToDeltas(
+    effects: List<Effect>,
+    out: MutableList<StateDelta>,
+) {
+    for (effect in effects) {
+        out += when (effect) {
             is Effect.SetFlag -> StateDelta.SetFlag(effect.name)
             is Effect.RemoveFlag -> StateDelta.RemoveFlag(effect.name)
             is Effect.Set -> StateDelta.SetStat(effect.name, effect.value)
@@ -113,3 +126,4 @@ public fun effectsToDeltas(effects: List<Effect>): List<StateDelta> =
             }
         }
     }
+}

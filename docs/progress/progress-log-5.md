@@ -512,5 +512,227 @@ Entry format is the same as in
 - Ф5.8: bounded-аллокации в горячем пути (`step`/render).
 - Ф5.9–Ф5.10: CI-интеграция и stable-документ.
 
-**Next — Ф5.8:** убрать необязательные аллокации в горячем пути
-перехода/рендера и проверить отсутствие роста памяти на 1000 переходах.
+## Ф5.8 — bounded-аллокации в горячем пути (P2), 2026-11-27
+
+**Статус:** реализовано; нужен ручной smoke сохранения после >32 шагов.
+
+**Что сделано.**
+
+- `data/OperationLogBuffer.kt` (new): журнал операций ограничен
+  **32** delta. При переполнении журнал сворачивается в текущий
+  `saveBaseSnapshot`, `delta` очищается. Восстановление остаётся точным
+  (текущее состояние = новый base); undo не затронут — он использует
+  `previousStepSnapshot`/`chapterStartSnapshot`, а не этот журнал.
+- `AdventureReaderViewModel` использует буфер для choice-delta и
+  scene-effect-delta; длинный журнал из старого сохранения сворачивается
+  один раз при загрузке. Размер сохранения больше не растёт с длиной
+  прохождения: ≤32 delta + один snapshot.
+- `Engine.step`: `appendEffectsToDeltas` пишет delta сразу в итоговый
+  список, убрана копия `map(...).toMutableList()`.
+- Рендер: `getJournalCount()` больше не строит throwaway-список ради
+  `size`; строки HUD-оверлея запоминаются по `stats`/`itemOrder`/`flags`
+  и не пересобираются на тиках шагомера.
+- `docs/engine-saves.md`: зафиксирован порог 32 и точная семантика
+  сворачивания.
+
+**Тесты.**
+
+- `OperationLogBufferTest` +4:
+  - 1000 накоплений: журнал всегда ≤32, replay точен на каждом шаге;
+  - 1000 **реальных** `Engine.step` на self-loop: state растёт, журнал
+    ограничен, replay совпадает;
+  - пустой append не копирует и не сворачивает;
+  - загрузка journal >32 сворачивает его в текущий snapshot;
+  - journal ≤32 сохраняется как есть.
+- `StateDeltaTest` +1: append-форма совпадает с list-формой и сохраняет
+  уже накопленные записи.
+- `:app:testDebugUnitTest` — **78/78 PASSED**.
+- `:engine:test` — **386/386 PASSED**.
+- `:app:lintDebug` — BUILD SUCCESSFUL, 9 старых `UnusedResources`-warnings,
+  новых нет.
+- `:app:assembleDebug` — BUILD SUCCESSFUL.
+
+**Ручной smoke (нужен).**
+
+1. Пройти >32 шага с эффектами, сохранить ручной слот, выйти и загрузить
+   его: сцена/флаги/статы/предметы/гейт совпадают.
+2. После загрузки `progress.json` и слот должны содержать `delta` ≤32
+   (или пустой `delta` сразу после сворачивания) и полный `baseSnapshot`.
+3. «Шаг назад» и «Начать главу заново» после сворачивания работают как
+   раньше.
+4. Открыть HUD (здоровье/инвентарь/журнал) во время тиков шагомера:
+   содержимое не мигает и не пересобирается.
+
+**Не сделано.**
+
+- Ф5.9–Ф5.10: CI-интеграция и stable-документ.
+
+## Ф5.9 — integration-тесты сохранений в CI, 2026-11-27
+
+**Статус:** реализовано; автоматическая проверка, ручной smoke не нужен.
+
+**Что сделано.**
+
+- `InMemorySaveStorage` вынесен в общий test-helper: слоты и автосейв
+  в тестах используют те же пути, что production SAF.
+- `SaveRoundTripIntegrationTest` (new):
+  - 45 реальных `Engine.step` по скомпилированному приключению, включая
+    first-entry scene effects и сворачивание журнала;
+  - автосейв через `ProgressStore` → Gson → `progress.json` → flush;
+  - ручной слот через `SlotStore` в `saves/<key>/`;
+  - продолжение игры после слота: автосейв меняется, **байты слота — нет**
+    (S2 на полном JSON, не только на путях);
+  - загрузка автосейва новым `ProgressStore` (эмуляция нового процесса):
+    flags/stats/сцена/предметы/applied effects/passed gates совпадают,
+    `base + delta` replay точен;
+  - загрузка ручного слота даёт то же состояние.
+- CI: существующий `.github/workflows/ci.yml` уже запускает
+  `:app:testDebugUnitTest`, `:engine:test` и `:app:lintDebug` на push/PR;
+  новые тесты входят в app-джобу автоматически, отчёты уходят в artifacts.
+  Отдельная правка workflow не потребовалась.
+
+**Тесты.**
+
+- `:app:testDebugUnitTest` — **79/79 PASSED**.
+- `:engine:test` — **386/386 PASSED**.
+- `:app:lintDebug` — BUILD SUCCESSFUL (9 старых `UnusedResources`).
+- `:app:assembleDebug` — BUILD SUCCESSFUL.
+
+**Не сделано.**
+
+- Ф5.10: перевести `docs/engine-saves.md` в stable, дополнить примерами
+  схемы/дельт/версий/слотов.
+
+## Инфраструктура тестов — Robolectric, 2026-11-27
+
+**Статус:** подключено; smoke-тест зелёный.
+
+**Что сделано.**
+
+- `gradle/libs.versions.toml`:
+  - `robolectric = 4.18.1`;
+  - `androidx.test:core-ktx = 1.7.0` (новее предложенной 1.6.1,
+    lint подтвердил актуальную);
+  - `androidx.test.ext:junit = 1.3.0`.
+- `app/build.gradle.kts`:
+  - `testOptions.unitTests.isIncludeAndroidResources = true`;
+  - `--add-opens` для JDK 17/21 (Robolectric);
+  - `testImplementation` для Robolectric и AndroidX Test.
+- `RobolectricSmokeTest`: реальный `ApplicationProvider`-контекст,
+  `SharedPreferences` и `SafSaveStorage.forBaseFolder` (пустой/заданный
+  URI). Тест в `src/test/java`, не `androidTest`.
+
+**Проверка.**
+
+- `:app:testDebugUnitTest` — **80/80 PASSED** (Robolectric smoke: 2.3 s
+  после прогрева).
+- `:app:lintDebug` — 9 старых `UnusedResources`-warnings, новых нет.
+- `:app:assembleDebug` — BUILD SUCCESSFUL.
+
+## Тесты сохранений — P0/P1, 2026-11-27
+
+**Статус:** P0, P1 (Robolectric + Compose UI + instrumented) реализованы;
+`150/150` app-тестов и `5/5` instrumented-тестов зелёные.
+Benchmark вынесен в отдельный блокер (см. ниже).
+
+**Что добавлено.**
+
+- Политика битого `progress.json`: вместо молчаливого `emptyMap()` —
+  `ProgressMigrationException` с блокирующим диалогом. `save/delete/warmUp`
+  в `ProgressManager` не падают на повреждённом файле и не перезаписывают
+  его; остальные записи при одном плохом entry остаются доступны.
+- `ProgressStoreTest` (11): corrupt/null root, invalid/null entry,
+  no-op save, flush без изменений, ошибка записи + retry, несколько
+  приключений, v0-entry, delete, однократное чтение кэша.
+- `SlotStoreTest` (7): create/load/delete, missing, cap 20 + 21-й,
+  сортировка/фильтр файлов, corrupt slot, blank name, write failure.
+- `SaveSlotCodecTest` (12): malformed/missing id/future state, blank name,
+  no-extension/длинные Unicode-имена.
+- `SlotStateFactoryTest` (2): `adventureFileName`, `lastAbsoluteAtSave=-1`,
+  миграция.
+- `SavedProgressApplierTest` (5): base+delta, empty delta, legacy fallback,
+  unknown delta fallback.
+- `ProgressDataFactoryTest` (1): все поля `ProgressSaveInput` → `ProgressData`.
+- `SaveRoundTripIntegrationTest` (3): все поля, слот/автосейв, 1000 шагов
+  с ограниченным JSON.
+- Robolectric SAF: `FakeSafProvider` + `SafSaveStorageTest` (5),
+  `SlotManagerTest` (5), `ProgressManagerTest` (6).
+- `AdventureReaderViewModelTest` (7): init normal/legacy/future/corrupt,
+  step→save→reload, undo, restart, oversized log.
+- `ReaderLifecycleTest` (4): ON_PAUSE→save, ON_STOP→flush, preview/no URI.
+- `OperationLogBufferTest` + boundary 32/33 + 500 сцен / 1000 шагов.
+- Compose UI: `ReaderSlotsScreenTest` (7) на Robolectric;
+  `ui-test-junit4`/`ui-test-manifest` 1.13.0, `compileSdkMinor = 2`
+  (SDK 37.2).
+- Instrumented: `SafPersistenceInstrumentedTest` (3) на реальном
+  `ContentResolver` через debug-провайдер + `ReaderSlotsScreenInstrumentedTest`
+  (2) — **5/5 PASSED на Realme и Xiaomi**.
+- Test tags в `ReaderSlotsScreen` (`ReaderSlotsTestTags`) для
+  Robolectric/instrumented UI.
+
+**Проверка.**
+
+- `:app:testDebugUnitTest` — **150/150 PASSED**.
+- `:app:connectedDebugAndroidTest` — **5/5 PASSED на Realme и Xiaomi**.
+- `:engine:test` — **386/386 PASSED**.
+- `:app:lintDebug` — 9 старых `UnusedResources`-warnings, новых нет.
+- `:app:assembleDebug` — BUILD SUCCESSFUL.
+
+**Приостановлено — benchmark и CI.**
+
+- Jetpack microbenchmark `OperationLogBuffer` отложен по решению
+  владельца. Для корректного запуска нужен отдельный benchmark-вариант:
+  `AndroidBenchmarkRunner`, `debuggable=false`, AOT `speed` и
+  benchmark-плагин; на debug-варианте BenchmarkRule даёт
+  `DEBUGGABLE/NOT-AOT-COMPILED`.
+- CI emulator/instrumented job: патч для `.github/workflows/ci.yml`
+  передан в чате и применён владельцем. Добавлен job `instrumented`
+  (`needs: build`) с `reactivecircus/android-emulator-runner@v2`, API 34,
+  `:app:connectedDebugAndroidTest` и upload отчётов.
+
+## Ф5.10 — stable-документ и гейт Ф5, 2026-11-27
+
+**Статус:** `docs/engine-saves.md` переведён в **stable**; гейт Ф5
+закрыт. Benchmark отложен по решению владельца и не блокирует гейт.
+
+**Что обновлено в документе.**
+
+- Статус `draft` → `stable`.
+- Схема приведена к фактическому коду: `ProgressData` (envelope) и
+  `ProgressSnapshot` (base), реальные типы `List`/`Set`, camelCase-поля
+  Gson, `StateDeltaDto.type = set_flag/remove_flag/set_stat/add_stat/sub_stat`.
+- Уточнено, что map key в `progress.json` — идентичность автосейва,
+  `adventureFileName` может быть пустым; слоты заполняют его.
+- `adventureKey` — санитизированное **имя файла приключения** + хеш,
+  а не display name.
+- Убран несуществующий `MigrationRegistry`; точка миграции —
+  `ProgressMigration.migrate/normalize`.
+- Зафиксированы: replay только flags/stats, cursor/flow из top-level
+  полей; лимит лога 32; explicit errors для corrupt/future version;
+  all-or-nothing список слотов; cap 20; `lastAbsoluteAtSave=-1` для слота.
+- Добавлены примеры v1 progress.json и slot-файла, раздел tests,
+  known limitations (S3/S4/S7, orphan cleanup, deferred benchmark).
+
+**Гейт Ф5 — проверка.**
+
+- История/сохранения: `SaveRoundTripIntegrationTest` (45 шагов, все
+  поля, 1000 шагов bounded JSON) + `OperationLogBufferTest`.
+- Автосейв не перезаписывает слот: `AutosaveSlotIsolationTest` +
+  `SaveRoundTripIntegrationTest` + `ProgressManagerTest`/`SlotManagerTest`.
+- Версии/миграции: `ProgressMigrationTest`, `ProgressStoreTest`,
+  `AdventureReaderViewModelTest` (legacy/future/corrupt).
+- IR cache: `AdventureLoaderTest` + ручной замер (cache miss → hit).
+- Bounded-аллокации: 1000-шаговые тесты, лог ≤32, ручной smoke;
+  device-macrobenchmark отложен.
+- `S3/S4/S7` остаются Nice (`→`).
+
+**Итоговые проверки.**
+
+- `:app:testDebugUnitTest` — **150/150 PASSED**.
+- `:app:connectedDebugAndroidTest` — **5/5 PASSED** на Realme и Xiaomi.
+- `:engine:test` — **386/386 PASSED**.
+- `:app:lintDebug` — 0 errors, 9 старых warnings.
+- `:app:assembleDebug` — BUILD SUCCESSFUL.
+
+**Фаза 5 закрыта.** Следующая фаза — Ф6 (UI/доступность), старт после
+отдельного решения владельца.

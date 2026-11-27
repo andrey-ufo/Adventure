@@ -12,6 +12,5 @@ sealed interface MenuDestination {
     data object Library : MenuDestination
     data object Create : MenuDestination
     data object Statistics : MenuDestination
-    data object Logs : MenuDestination
     data object Settings : MenuDestination
 }

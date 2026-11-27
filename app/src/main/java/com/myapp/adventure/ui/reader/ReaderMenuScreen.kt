@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.myapp.adventure.R
+import com.myapp.adventure.ui.AppSection
 
 /**
  * Phase 3.4-d: full-screen reader menu, a Compose overlay inside
@@ -33,8 +34,9 @@ import com.myapp.adventure.R
  *  1. main menu (navigation),
  *  2. step back (normal mode, not dead, snapshot available),
  *  3. restart with confirmation,
- *  4. warnings (only when the cached list is non-empty),
- *  5. settings (navigation).
+ *  4. warnings (only when the cached list is non-empty).
+ *
+ * Settings lives in the global kebab, not in this local menu.
  */
 @Composable
 fun ReaderMenuScreen(
@@ -46,7 +48,9 @@ fun ReaderMenuScreen(
     onStepBack: () -> Unit,
     onRestart: () -> Unit,
     onWarnings: () -> Unit,
-    onSettings: () -> Unit,
+    currentSection: AppSection,
+    canOpenReader: Boolean,
+    onNavigateGlobal: (AppSection) -> Unit,
 ) {
     var showRestartConfirm by rememberSaveable { mutableStateOf(false) }
 
@@ -58,6 +62,9 @@ fun ReaderMenuScreen(
         ReaderOverlayHeader(
             title = stringResource(R.string.reader_menu_title),
             onBack = onBack,
+            currentSection = currentSection,
+            canOpenReader = canOpenReader,
+            onNavigateGlobal = onNavigateGlobal,
         )
 
         ReaderMenuItem(
@@ -84,10 +91,6 @@ fun ReaderMenuScreen(
                 onClick = onWarnings,
             )
         }
-        ReaderMenuItem(
-            text = stringResource(R.string.reader_menu_settings),
-            onClick = onSettings,
-        )
     }
 
     if (showRestartConfirm) {
