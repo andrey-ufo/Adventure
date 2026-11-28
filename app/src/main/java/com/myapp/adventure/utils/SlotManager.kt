@@ -50,12 +50,10 @@ object SlotManager {
         name: String,
         state: ProgressData,
     ): SaveSlot = withContext(Dispatchers.IO) {
-        val fileName = getFileNameFromUri(adventureFileUri)
-            ?: throw SaveSlotException("Не удалось определить имя приключения.")
         val (storage, key) = resolve(context, adventureFileUri)
             ?: throw SaveSlotException("Не удалось открыть папку сохранений.")
 
-        val normalized = SlotStateFactory.prepare(state, fileName)
+        val normalized = SlotStateFactory.prepare(state, key)
         val slot = SlotStore(storage).create(key, name, normalized)
         Logger.log(context, "Manual slot '${slot.id}' created for $key")
         slot
@@ -83,13 +81,24 @@ object SlotManager {
         deleted
     }
 
+    /** Deletes every manual slot for [adventureFileUri]; returns the count. */
+    suspend fun deleteAllSlots(context: Context, adventureFileUri: Uri): Int =
+        withContext(Dispatchers.IO) {
+            val (storage, key) = resolve(context, adventureFileUri) ?: return@withContext 0
+            val deleted = SlotStore(storage).deleteAll(key)
+            Logger.log(context, "Deleted $deleted manual slots for $key")
+            deleted
+        }
+
     private fun resolve(
         context: Context,
         adventureFileUri: Uri,
     ): Pair<SaveStorage, String>? {
-        val fileName = getFileNameFromUri(adventureFileUri) ?: return null
+        val questId = QuestStorage.questIdForFile(context, adventureFileUri)
+            ?: getFileNameFromUri(adventureFileUri)
+            ?: return null
         val storage = SafSaveStorage.forBaseFolder(context) ?: return null
-        return storage to SaveSlotPaths.adventureKey(fileName)
+        return storage to SaveSlotPaths.adventureKey(questId)
     }
 
     private fun getFileNameFromUri(uri: Uri): String? = try {

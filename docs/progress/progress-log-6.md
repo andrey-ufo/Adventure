@@ -311,3 +311,217 @@ Entry format is the same as in
 
   **Still open.** U16 detail actions and U18 project manager; neither is
   implemented yet.
+
+---
+
+- **2026-11-28 · Floppy save button + empty-editor hint**
+
+  - The dirty-file floppy is now an `IconButton` with a 48dp target;
+    tapping it calls `saveAdventureToFile`. Its content description is
+    just «Сохранить файл», without a persistent warning.
+  - The clean-file state remains a non-clickable green file check.
+  - Empty editor adds the hint «Чтобы сохранить свои правки в файл,
+    нажмите на значок дискеты.» under the add-first-scene action.
+  - `design/icons/README.md`, U19/Ф6.15 wording updated.
+
+  **Verified.**
+
+  - `:app:compileDebugKotlin` — BUILD SUCCESSFUL.
+  - `:app:testDebugUnitTest` — **150/150 PASSED**.
+  - `:app:lintDebug` — BUILD SUCCESSFUL; unused `editor_file_dirty`
+    string removed.
+  - `:app:assembleDebug` — BUILD SUCCESSFUL.
+  - USB smoke: adding a scene switches the file icon to «Сохранить файл»;
+    tapping it changes it to «Файл сохранён» without leaving the editor.
+
+---
+
+- **2026-11-28 · U16 details actions complete**
+
+  **What changed.**
+
+  1. `AdventureDetailsScreen` now has «Читать», «Начать заново»,
+     «Загрузить слот» and «Удалить приключение»; content scrolls.
+  2. «Начать заново» confirms, deletes autosave progress, flushes the
+     progress store, keeps manual slots, and opens the reader.
+  3. «Загрузить слот» opens the reader with the slots overlay already
+     visible (`Reader(openSlots = true)`), reusing `ReaderSlotsScreen`.
+  4. «Удалить приключение» confirms, deletes the JSON document, autosave
+     and all slots, clears the last-adventure URI if it matches, and
+     rebuilds the Library entry so the deleted row disappears.
+  5. `SlotStore.deleteAll` + `SlotManager.deleteAllSlots` added for a
+     direct, non-decoding cleanup.
+  6. `AppRoutes.Reader` gained `openSlots`; `ReaderRoute` /
+     `AdventureReaderScreen` initialize the slots overlay from it.
+  7. U16/Ф6.2a marked `☑`; UI map updated.
+
+  **Verified.**
+
+  - `:app:compileDebugKotlin` — BUILD SUCCESSFUL.
+  - `:app:testDebugUnitTest` — **150/150 PASSED**.
+  - `:app:lintDebug` — BUILD SUCCESSFUL, 0 errors, 8 warnings.
+  - `:app:assembleDebug` — BUILD SUCCESSFUL.
+  - USB smoke: details shows all four actions; restart and delete
+    confirmations open with the expected text; «Загрузить слот» opens the
+    reader directly on «Сохранения». Delete was cancelled in smoke to
+    keep the test adventure.
+
+---
+
+- **2026-11-28 · U18 project manager (A, C-ready seams)**
+
+  **What changed.**
+
+  1. `projects/ProjectRef` — stable project handle: id, file URI, file
+     name, title, author, modified time.
+  2. `projects/ProjectRepository` — C-facing seam: list/create/duplicate/
+     delete; no SAF in UI.
+  3. `projects/SafProjectRepository` — `NewAdventures` implementation:
+     JSON list, title/author metadata, sorted by modification, template
+     creation with one start scene, unique filenames, duplicate copy,
+     delete.
+  4. `projects/ProjectDraftManager` — drafts keyed by `ProjectRef.id`.
+  5. `projects/EditorProjectSession` — current bound project persisted
+     across process recreation.
+  6. `EditorRouteSupport` — project-aware draft save/restore; direct save
+     writes to the bound file; new/unbound saves bind to the created file;
+     unrelated loads can preserve the previous project draft.
+  7. `ProjectManagerViewModel` + `ProjectManagerScreen` — list, create,
+     duplicate, delete confirmation, loading/empty/error messages, open.
+  8. Navigation: Menu → Projects, Editor «Действия» → Projects; opening a
+     project replaces an existing editor entry; deleting the current
+     project clears the session and its draft.
+  9. `docs/roadmap.md` — U18-C workspace (metadata/versions/history/
+     backups) added as the successor; A supplies the repository/session
+     seams.
+  10. Checklist U18/Ф6.14 `☑`; `docs/ui-screens.md` updated.
+
+  **Known limitations (deferred to U18-C or a follow-up).**
+
+  - The old single editor draft is not automatically migrated into a
+    project; it still works for unbound editing.
+  - Changing the adventure title does not rename the project file.
+  - No publish-to-Library flow, version history, backup or trash.
+  - The project manager is a list, not a richer workspace.
+
+  **Verified.**
+
+  - `:app:compileDebugKotlin` — BUILD SUCCESSFUL.
+  - `:app:testDebugUnitTest` — **150/150 PASSED**.
+  - `:app:lintDebug` — BUILD SUCCESSFUL, 0 errors, 8 warnings.
+  - `:app:assembleDebug` — BUILD SUCCESSFUL.
+  - USB smoke: Menu → Projects; create «Новый квест» opens a bound editor;
+    editing + floppy saves back to that project; duplicate creates
+    «Новый квест (копия)» and opens it; delete confirmation removes the
+    copy and refreshes the list.
+
+---
+
+- **2026-11-28 · Closure pass before U13**
+
+  - U18 restore hardened: if the editor ViewModel is empty and a
+    persisted project session exists, the editor now loads that project's
+    draft or file instead of leaving a blank editor bound to the project.
+    Menu → Create clears the session; opening an unrelated file via SAF
+    also clears the project binding.
+  - U16 destructive smoke completed on disposable copies:
+    «Начать заново» opened the reader at the start; «Удалить
+    приключение» removed the copied JSON, its progress/slots, refreshed
+    Library, and left the original `test_adventure.json` intact. Test
+    copies were removed.
+  - U18 process-death/draft smoke: added a scene to a bound project,
+    force-stopped the app, reopened Editor via Library → kebab, and got
+    the project draft back with «Сохранить файл» pending.
+  - `:app:testDebugUnitTest` — **150/150 PASSED**.
+  - `:app:lintDebug` — 0 errors, 8 warnings; the two baseline notices are
+    still informational only.
+
+---
+
+- **2026-11-28 · U13 theming specification stable**
+
+  **Decisions.**
+
+  - 2-tier flat semantic tokens: app tokens + reader tokens; no
+    component-token tier.
+  - Quest theme is a `theme.json` sidecar in the quest folder; transitional
+    locator also accepts `<quest-file>.theme.json` for the current flat
+    storage.
+  - Quest packaging is folder-first; ZIP is import/export transport, not
+    live runtime.
+  - User themes stay app-private (DataStore) with explicit JSON
+    import/export; quest themes are read-only sidecars.
+  - Reader modes: Author / Adaptive (default) / Override; user
+    accessibility always wins.
+  - App chrome is not author-themeable; author themes apply to the reader
+    and its editor preview only.
+  - JSON contract: `data/theme/QuestThemeConfig` with `schema_version`,
+    `light`/`dark` reader colours, reader typography, shapes, spacing and
+    relative assets.
+  - `docs/theming.md` stable; linked from `docs/index.md`; U13/Ф6.3 `☑`.
+
+  **What changed.**
+
+  1. `docs/theming.md` — storage, token lists, may/may-not-change tables,
+     priority matrix, modes, schema/example, fallback/accessibility rules,
+     implementation split, out-of-scope.
+  2. `data/theme/QuestThemeConfig.kt` — U13 contract types (reader
+     colours, typography, local assets) using `HexColorSerializer`.
+  3. `QuestThemeConfigTest` — parses the documented example and validates
+     schema/version/colours/typography/assets.
+  4. `docs/index.md` — theming link.
+  5. Checklist U13/Ф6.3 `☑`.
+
+  **Verified.**
+
+  - `QuestThemeConfigTest` — PASSED.
+  - Full app test suite: **151/151 PASSED**.
+  - `:app:lintDebug` — BUILD SUCCESSFUL, 0 errors, 8 warnings.
+  - U14 runtime is not implemented yet.
+
+---
+
+- **2026-11-28 · U20 folder-first quest storage**
+
+  **Decision:** migrate now, no flat legacy; alpha has no users.
+
+  **What changed.**
+
+  1. `QuestStorage` — canonical folder helpers: `Adventures/<quest>/`
+     and `NewAdventures/<project>/`, `quest.json`, `theme.json`, assets;
+     stable quest id = folder document id; recursive delete/copy.
+  2. `SetupViewModel` seeds `Adventures/test_adventure/quest.json`.
+  3. `AdventureListViewModel` enumerates quest folders and reads
+     `quest.json`; `AdventureListItem` carries questId/folderUri.
+  4. `AdventureImportHelper` creates a quest folder instead of a flat
+     JSON file.
+  5. `ProgressManager` and `SlotManager` key progress/slots by quest
+     folder id, not `quest.json`/file name. `SaveSlotPaths` remains a
+     pure key helper.
+  6. `AdventureDetailsScreen` deletes the quest folder recursively,
+     including theme/assets, then cleans progress/slots.
+  7. `SafProjectRepository`/Project Manager operate on project folders:
+     list, create, duplicate (folder copy), delete; `ProjectRef.id` is
+     the folder id.
+  8. `EditorRouteSupport` creates a project folder when saving an
+     unbound editor and writes into the bound `<project>/quest.json`.
+  9. `docs/theming.md` now has only the canonical locator (no flat
+     fallback); `docs/engine-saves.md` documents folder keys; checklist
+     U20/Ф6.16 `☑`.
+
+  **Verified.**
+
+  - `:app:testDebugUnitTest` — **151/151 PASSED**.
+  - `:app:lintDebug` — BUILD SUCCESSFUL, 0 errors, 8 warnings (4 stale
+    baseline notices are informational).
+  - `:app:assembleDebug` — BUILD SUCCESSFUL.
+  - USB smoke: Library reads `Adventures/test_adventure/quest.json`;
+    Reader opens it; project manager creates `NewAdventures/Новый
+    квест/quest.json`; deleting a disposable `Adventures/test_delete2/`
+    removed its `quest.json` and `assets/` recursively, leaving the
+    original intact.
+
+  **Notes.** Existing flat dev files are intentionally ignored; no
+  migration code. `NewAdventures` flat files from alpha testing remain
+  ignored until manually removed. U13's storage section was updated to
+  the canonical folder path.

@@ -40,6 +40,9 @@ fun MenuScreen(
         MenuItem(stringResource(R.string.menu_create)) {
             onNavigate(MenuDestination.Create)
         }
+        MenuItem(stringResource(R.string.menu_projects)) {
+            onNavigate(MenuDestination.Projects)
+        }
         MenuItem(stringResource(R.string.menu_statistics)) {
             onNavigate(MenuDestination.Statistics)
         }

@@ -73,6 +73,7 @@ private enum class ReaderOverlay(val key: String) {
 @Composable
 fun AdventureReaderScreen(
     viewModel: AdventureReaderViewModel,
+    openSlotsInitially: Boolean,
     onPreviewExit: () -> Unit,
     onNavigateToMenu: () -> Unit,
     onNavigateGlobal: (AppSection) -> Unit,
@@ -90,7 +91,9 @@ fun AdventureReaderScreen(
     val currentSection = if (state.previewMode) AppSection.Editor else AppSection.Reader
     val choiceStates = viewModel.getChoiceStates()
 
-    var overlayKey by rememberSaveable { mutableStateOf("") }
+    var overlayKey by rememberSaveable {
+        mutableStateOf(if (openSlotsInitially) ReaderOverlay.SLOTS.key else "")
+    }
 
     // One-shot: the menu navigated away and the reader is being shown again.
     // Suppress the restored overlay on the very first frame (no menu flash on

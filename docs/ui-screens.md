@@ -1,6 +1,6 @@
 # UI screens and navigation
 
-**Status:** evolving (U11 baseline + U12 menu work, 2026-11-27).
+**Status:** evolving (U11 baseline, U12 menu, U16 details, U18 projects, 2026-11-28).
 
 This document maps the screens that exist **today**, how they connect, and
 how Back behaves. It is a navigation baseline, not a visual redesign brief.
@@ -46,8 +46,8 @@ Rules:
 - `Читалка / Продолжить` is disabled when `LastAdventureStore` has no URI.
 - The global menu uses the same anchored `DropdownMenu` pattern as the
   editor's local actions; it is not a separate screen.
-- Kebab is present on Library, Statistics, Logs, Settings, Editor, Reader
-  and Adventure Details. It is absent on Menu (the hub) and Setup.
+- Kebab is present on Library, Statistics, Logs, Settings, Editor, Reader,
+  Adventure Details and Projects. It is absent on Menu (the hub) and Setup.
 
 ### Current kebab coverage
 
@@ -60,6 +60,7 @@ Rules:
 | Statistics | yes | Statistics |
 | Logs | yes | none (Settings remains enabled) |
 | Settings | yes | Settings |
+| Projects | yes | Editor |
 | Editor main | yes | Editor |
 | Editor child routes | yes (via `EditorChildScope`) | Editor |
 | Reader scene | yes | Reader (preview: Editor) |
@@ -75,7 +76,8 @@ their Back action; the kebab is additive.
 | `setup` | `SetupScreen` | Folder selection and first-run permissions | App start / no saved folder |
 | `menu` | `MenuScreen` | Default hub: library, editor, statistics, settings | Setup; Back from primary screens |
 | `library` | `AdventureListScreen` | Import and select adventures | Menu or global kebab |
-| `adventure_details` | `AdventureDetailsScreen` | Full adventure description, author, chapter/scene counts, «Читать» | Library row |
+| `projects` | `ProjectManagerScreen` | List/create/duplicate/delete `NewAdventures` projects | Menu or Editor actions |
+| `adventure_details` | `AdventureDetailsScreen` | Full description, author, counts, «Читать», «Начать заново», «Загрузить слот», «Удалить приключение» | Library row |
 | `statistics` | `StatisticsScreen` | Step statistics | Menu or global kebab |
 | `logs` | `LogViewerScreen` | View/copy/clear the app log | Settings only |
 | `settings` | `SettingsScreen` | Permissions, Health Connect, theme, fonts, logging/logs | Menu or global kebab |
@@ -131,10 +133,14 @@ warnings, clear-log, draft restore) are transient and have no route.
 ```text
 Setup ──(folder + permissions)──> Menu          [Setup removed]
 Menu ──> Library
+Menu ──> Projects ──> open/create/duplicate ──> Editor
+Editor ──> Projects ──> open/create/duplicate ──> Editor
 Menu ──> Editor ──> editor child routes          [child Back → Editor]
 Menu ──> Statistics
 Menu ──> Settings ──> Logs
 Library ──> Adventure Details ──> Reader          [Reader exit → Details]
+Library ──> Adventure Details ──> Reader(slots)   [slots overlay opens]
+Adventure Details ──delete──> Library (fresh)     [file + progress + slots removed]
 Library ──> Adventure Details ──Back──> Library
 Editor  ──> Reader(previewId)                    [preview exit → Editor]
 Editor  ──> Menu                                 [Back → Editor]
@@ -171,6 +177,10 @@ Reader overlay ──Back──> Reader scene
 8. **Preview reader returns to the editor.** Its exit action pops the
    reader entry; the editor ViewModel is Activity-scoped and keeps the
    working draft.
+9. **Projects open a bound editor.** From Menu or Editor actions, opening
+   a project replaces an existing editor entry and binds the editor to
+   that file. Back from the editor returns to Projects; deleting the
+   current project clears the binding and its project draft.
 
 ### Example stacks
 
@@ -209,12 +219,11 @@ Reader overlay ──Back──> Reader scene
   richer local-menu grouping; current kebab coverage is complete.
 - **Start screen preference:** Menu / Library / last-read scene. Not
   implemented; decide persistence and startup routing first.
-- **Project Manager (U18, planned):** list JSON files in `NewAdventures`,
-  create a blank project, duplicate, delete, and open in the editor. It
-  needs a project-file binding in the editor before implementation.
-- **Adventure Details actions (U16, partial):** «Начать заново»,
-  «Загрузить слот», «Удалить приключение» are planned; the current screen
-  only shows the description/counts and «Читать».
+- **U18-C future workspace:** project metadata/versions/history/backups
+  and a durable draft store. U18-A already separates
+  `ProjectRepository`, `ProjectRef`, `ProjectDraftManager` and
+  `EditorProjectSession` so this can extend the current project manager.
+  Publish-to-Library and title-driven file renaming are not implemented.
 - **Achievements/other screens:** add to the global flat menu and this map
   when they exist.
 - **U14:** theme selection in Settings; no new top-level screen expected.

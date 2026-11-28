@@ -70,6 +70,13 @@ internal class SlotStore(private val storage: SaveStorage) {
             directory(adventureKey) + SaveSlotPaths.slotFileName(slotId),
         )
 
+    fun deleteAll(adventureKey: String): Int {
+        val directory = directory(adventureKey)
+        return storage.listDocuments(directory)
+            .filter(SaveSlotPaths::isSlotFileName)
+            .count { fileName -> storage.deleteDocument(directory + fileName) }
+    }
+
     private fun decode(fileName: String, json: String): SaveSlot =
         try {
             SaveSlotCodec.decode(json)

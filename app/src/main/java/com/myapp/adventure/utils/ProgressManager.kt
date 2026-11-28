@@ -51,8 +51,8 @@ object ProgressManager {
      * Prefer [warmUp] during app startup so this fast path is already primed.
      */
     fun loadProgress(context: Context, adventureFileUri: Uri): ProgressData? {
-        val fileName = getFileNameFromUri(adventureFileUri) ?: return null
-        return store(context)?.load(fileName)
+        val questKey = questKey(context, adventureFileUri) ?: return null
+        return store(context)?.load(questKey)
     }
 
     /**
@@ -60,10 +60,10 @@ object ProgressManager {
      * synchronously; a batched flush happens within [SAVE_DEBOUNCE_MS] or at the next [flush].
      */
     fun saveProgress(context: Context, adventureFileUri: Uri, progress: ProgressData) {
-        val fileName = getFileNameFromUri(adventureFileUri) ?: return
+        val questKey = questKey(context, adventureFileUri) ?: return
         val target = store(context) ?: return
         val saved = try {
-            target.save(fileName, progress)
+            target.save(questKey, progress)
         } catch (e: ProgressMigrationException) {
             // The reader init surfaces this as a blocking error; a later
             // background save must not crash or overwrite the bad file.
@@ -74,7 +74,7 @@ object ProgressManager {
 
         Logger.log(
             context,
-            "Progress saved for $fileName: chapter ${progress.currentChapterIndex + 1}, " +
+            "Progress saved for $questKey: chapter ${progress.currentChapterIndex + 1}, " +
                     "scene '${progress.currentSceneId}', gate=${progress.isGateActive}, " +
                     "remaining=${progress.remainingSteps}, lastAbsAtSave=${progress.lastAbsoluteAtSave}"
         )
@@ -84,17 +84,17 @@ object ProgressManager {
 
     /** Removes progress for [adventureFileUri]. No-op if nothing was saved. */
     fun deleteProgress(context: Context, adventureFileUri: Uri) {
-        val fileName = getFileNameFromUri(adventureFileUri) ?: return
+        val questKey = questKey(context, adventureFileUri) ?: return
         val target = store(context) ?: return
         val deleted = try {
-            target.delete(fileName)
+            target.delete(questKey)
         } catch (e: ProgressMigrationException) {
             Logger.log(context, "Progress delete blocked: ${e.message}")
             return
         }
         if (!deleted) return
 
-        Logger.log(context, "Progress deleted for $fileName")
+        Logger.log(context, "Progress deleted for $questKey")
         scheduleFlush(context.applicationContext)
     }
 
@@ -170,11 +170,14 @@ object ProgressManager {
         }
     }
 
-    private fun getFileNameFromUri(uri: Uri): String? = try {
-        DocumentsContract.getDocumentId(uri)
-            .substringAfterLast("/")
-            .substringAfterLast(":")
-    } catch (e: Exception) {
-        null
+    private fun questKey(context: Context, uri: Uri): String? {
+        QuestStorage.questIdForFile(context, uri)?.let { return it }
+        return try {
+            DocumentsContract.getDocumentId(uri)
+                .substringAfterLast("/")
+                .substringAfterLast(":")
+        } catch (e: Exception) {
+            null
+        }
     }
 }

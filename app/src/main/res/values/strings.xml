@@ -41,6 +41,7 @@
     <string name="menu_statistics">Статистика</string>
     <string name="menu_statistics_steps">Статистика шагов</string>
     <string name="menu_create">Редактор</string>
+    <string name="menu_projects">Проекты</string>
     <string name="menu_reader_continue">Читалка / Продолжить</string>
     <string name="menu_settings">Настройки</string>
 
@@ -48,11 +49,33 @@
     <!-- LIBRARY (AdventureListScreen)                                -->
     <!-- ============================================================ -->
     <string name="library_title">Мои приключения</string>
+    <string name="projects_title">Проекты</string>
+    <string name="projects_create">Создать новый проект</string>
+    <string name="projects_create_error">Не удалось создать проект</string>
+    <string name="projects_duplicate">Дублировать</string>
+    <string name="projects_duplicate_error">Не удалось дублировать проект</string>
+    <string name="projects_delete">Удалить</string>
+    <string name="projects_delete_error">Не удалось удалить проект</string>
+    <string name="projects_delete_title">Удалить проект?</string>
+    <string name="projects_delete_message">Проект «%1$s» будет удалён вместе с черновиком. Это действие нельзя отменить.</string>
+    <string name="projects_delete_confirm">Удалить</string>
+    <string name="projects_empty">Проектов пока нет. Создайте первый.</string>
+    <string name="projects_loading">Загрузка проектов…</string>
     <string name="details_header">Приключение</string>
     <string name="details_loading">Загрузка приключения…</string>
     <string name="details_error">Не удалось загрузить приключение</string>
     <string name="details_retry">Повторить</string>
     <string name="details_read">Читать</string>
+    <string name="details_restart">Начать заново</string>
+    <string name="details_load_slot">Загрузить слот</string>
+    <string name="details_delete">Удалить приключение</string>
+    <string name="details_restart_title">Начать заново?</string>
+    <string name="details_restart_message">Автосохранение будет сброшено. Ручные сохранения останутся.</string>
+    <string name="details_restart_confirm">Начать</string>
+    <string name="details_delete_title">Удалить приключение?</string>
+    <string name="details_delete_message">Файл приключения, автосохранение и все ручные сохранения будут удалены. Это действие нельзя отменить.</string>
+    <string name="details_delete_confirm">Удалить</string>
+    <string name="details_delete_error">Не удалось удалить приключение</string>
     <string name="details_meta_fmt">Глав: %1$d · Сцен: %2$d</string>
     <string name="library_toast_folder_not_selected">Папка не выбрана</string>
     <string name="library_toast_folder_access_error_fmt">Ошибка доступа к папке: %1$s</string>
@@ -63,6 +86,7 @@
     <string name="editor_title_untitled">Без названия</string>
     <string name="editor_add_scene">+ Сцена</string>
     <string name="editor_no_scenes_hint">Сцен пока нет. Нажмите, чтобы добавить первую</string>
+    <string name="editor_no_scenes_save_hint">Чтобы сохранить свои правки в файл, нажмите на значок дискеты.</string>
     <string name="editor_scene_search_placeholder">Поиск сцены…</string>
     <string name="editor_scene_search_nothing">Ничего не найдено.</string>
     <string name="editor_scene_search_more_fmt">Ещё результатов: %1$d. Уточните запрос.</string>
@@ -83,8 +107,8 @@
 
     <string name="editor_draft_saving">Черновик сохраняется</string>
     <string name="editor_draft_saved">Черновик сохранён</string>
-    <string name="editor_file_dirty">Файл не сохранён</string>
     <string name="editor_file_saved">Файл сохранён</string>
+    <string name="editor_file_save_action">Сохранить файл</string>
     <string name="editor_exit_dialog_title">Файл не сохранён</string>
     <string name="editor_exit_dialog_message">В файле нет последних изменений. Черновик уже сохранён, но JSON-файл нужно обновить отдельно.</string>
     <string name="editor_exit_dialog_save">Сохранить</string>

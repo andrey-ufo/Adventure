@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +55,7 @@ fun EditorToolbar(
     onStats: () -> Unit,
     onTemplates: () -> Unit,
     onSubroutines: () -> Unit,
+    onProjects: () -> Unit,
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -76,7 +78,7 @@ fun EditorToolbar(
                 Text(stringResource(R.string.editor_actions) + " ▾")
             }
             Spacer(modifier = Modifier.weight(1f))
-            SaveIndicators(state)
+            SaveIndicators(state = state, onSaveFile = onSave)
             GlobalMenuButton(
                 current = AppSection.Editor,
                 canOpenReader = canOpenReader,
@@ -124,6 +126,10 @@ fun EditorToolbar(
                 stringResource(R.string.editor_subroutines_button),
                 onAction(onSubroutines),
             )
+            ActionItem(
+                stringResource(R.string.menu_projects),
+                onAction(onProjects),
+            )
 
             ActionSection(stringResource(R.string.editor_actions_check))
             ActionItem(stringResource(R.string.editor_validate), onAction(onValidate))
@@ -160,7 +166,10 @@ private fun ActionItem(
 }
 
 @Composable
-private fun SaveIndicators(state: EditorUiState) {
+private fun SaveIndicators(
+    state: EditorUiState,
+    onSaveFile: () -> Unit,
+) {
     val draftSaving = state.saveStatus == SaveStatus.SAVING ||
         state.saveStatus == SaveStatus.EDITING
     Icon(
@@ -183,23 +192,30 @@ private fun SaveIndicators(state: EditorUiState) {
     )
     Spacer(modifier = Modifier.size(6.dp))
     val fileDirty = state.fileStatus == FileSaveStatus.DIRTY
-    Icon(
-        painter = painterResource(
-            if (fileDirty) {
-                R.drawable.ic_editor_file_dirty
-            } else {
-                R.drawable.ic_editor_file_saved
-            }
-        ),
-        contentDescription = stringResource(
-            if (fileDirty) R.string.editor_file_dirty else R.string.editor_file_saved
-        ),
-        tint = if (fileDirty) {
-            AdventureTheme.extendedColors.statusWarning
-        } else {
-            AdventureTheme.extendedColors.statusSuccess
-        },
-        modifier = Modifier.size(24.dp),
-    )
+    if (fileDirty) {
+        IconButton(
+            onClick = onSaveFile,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_editor_file_dirty),
+                contentDescription = stringResource(R.string.editor_file_save_action),
+                tint = AdventureTheme.extendedColors.statusWarning,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    } else {
+        Box(
+            modifier = Modifier.size(48.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_editor_file_saved),
+                contentDescription = stringResource(R.string.editor_file_saved),
+                tint = AdventureTheme.extendedColors.statusSuccess,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
     Spacer(modifier = Modifier.size(4.dp))
 }

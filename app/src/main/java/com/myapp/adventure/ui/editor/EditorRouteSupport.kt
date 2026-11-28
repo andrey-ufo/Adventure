@@ -1,8 +1,7 @@
-package com.myapp.adventure.ui.editor
+﻿package com.myapp.adventure.ui.editor
 
 import android.content.Context
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.core.net.toUri
 import com.google.gson.Gson
@@ -20,8 +19,12 @@ import com.myapp.adventure.data.Scene
 import com.myapp.adventure.data.TagCategory
 import com.myapp.adventure.data.TagDefinition
 import com.myapp.adventure.data.deepCopy
+import com.myapp.adventure.projects.EditorProjectSession
+import com.myapp.adventure.projects.ProjectDraftManager
+import com.myapp.adventure.projects.ProjectRef
 import com.myapp.adventure.utils.EditorDraftManager
 import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.utils.QuestStorage
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
@@ -56,9 +59,18 @@ internal fun readDraftForRestore(
         return null
     }
 
-    val draft = EditorDraftManager.loadDraft(context) ?: return null
+    val project = EditorProjectSession.current(context)
+    val draft = if (project != null) {
+        ProjectDraftManager.load(context, project.id)
+    } else {
+        EditorDraftManager.loadDraft(context)
+    } ?: return null
     if (draft.scenes.isEmpty() && draft.title.isEmpty() && draft.initialStateTags.isEmpty()) {
-        EditorDraftManager.clearDraft(context)
+        if (project != null) {
+            ProjectDraftManager.clear(context, project.id)
+        } else {
+            EditorDraftManager.clearDraft(context)
+        }
         return null
     }
 
@@ -102,6 +114,42 @@ internal fun applyDraft(
     Logger.log(context, "Черновик восстановлен, сцен: ${draft.scenes.size}")
 }
 
+private fun snapshotDraft(viewModel: AdventureEditorViewModel): EditorDraft = EditorDraft(
+    title = viewModel.title,
+    author = viewModel.author,
+    description = viewModel.description,
+    variables = viewModel.variables.map { it.copy() },
+    templates = viewModel.templates.map { it.deepCopy() },
+    subroutines = viewModel.subroutines.map { it.deepCopy() },
+    initialStateTags = viewModel.initialStateTags.map { it.copy() },
+    scenes = viewModel.scenes.map { it.deepCopy() },
+    activeSceneUid = viewModel.activeSceneUid,
+    savedAt = System.currentTimeMillis(),
+)
+
+private fun saveDraftForCurrentProject(
+    context: Context,
+    viewModel: AdventureEditorViewModel,
+) {
+    val project = EditorProjectSession.current(context)
+    if (project != null) {
+        ProjectDraftManager.save(context, project.id, snapshotDraft(viewModel))
+    } else {
+        EditorDraftManager.saveDraft(
+            context,
+            viewModel.title,
+            viewModel.author,
+            viewModel.description,
+            viewModel.variables,
+            viewModel.templates,
+            viewModel.subroutines,
+            viewModel.initialStateTags,
+            viewModel.scenes,
+            viewModel.activeSceneUid,
+        )
+    }
+}
+
 internal fun saveDraftImmediate(
     context: Context,
     viewModel: AdventureEditorViewModel,
@@ -109,18 +157,7 @@ internal fun saveDraftImmediate(
     viewModel.setSaveStatus(SaveStatus.SAVING)
     viewModel.setFileStatus(FileSaveStatus.DIRTY)
     viewModel.commitSnapshot()
-    EditorDraftManager.saveDraft(
-        context,
-        viewModel.title,
-        viewModel.author,
-        viewModel.description,
-        viewModel.variables,
-        viewModel.templates,
-        viewModel.subroutines,
-        viewModel.initialStateTags,
-        viewModel.scenes,
-        viewModel.activeSceneUid,
-    )
+    saveDraftForCurrentProject(context, viewModel)
     viewModel.setHasUnsavedChanges(false)
     viewModel.setSaveStatus(SaveStatus.SAVED)
     Logger.log(context, "Черновик автосохранён, сцен: ${viewModel.scenes.size}")
@@ -135,18 +172,7 @@ internal fun saveDraftSilently(
     viewModel: AdventureEditorViewModel,
 ) {
     if (!viewModel.uiState.value.hasUnsavedChanges || viewModel.scenes.isEmpty()) return
-    EditorDraftManager.saveDraft(
-        context,
-        viewModel.title,
-        viewModel.author,
-        viewModel.description,
-        viewModel.variables,
-        viewModel.templates,
-        viewModel.subroutines,
-        viewModel.initialStateTags,
-        viewModel.scenes,
-        viewModel.activeSceneUid,
-    )
+    saveDraftForCurrentProject(context, viewModel)
 }
 
 /**
@@ -158,6 +184,7 @@ internal fun loadAdventureFromUri(
     context: Context,
     viewModel: AdventureEditorViewModel,
     uri: Uri,
+    clearDraft: Boolean = true,
 ): Boolean {
     return try {
         val inputStream = context.contentResolver.openInputStream(uri)
@@ -166,7 +193,14 @@ internal fun loadAdventureFromUri(
         reader.close()
         val adventure = Gson().fromJson(json, Adventure::class.java)
 
-        EditorDraftManager.clearDraft(context)
+        if (clearDraft) {
+            val project = EditorProjectSession.current(context)
+            if (project != null) {
+                ProjectDraftManager.clear(context, project.id)
+            } else {
+                EditorDraftManager.clearDraft(context)
+            }
+        }
         viewModel.setHasUnsavedChanges(false)
 
         viewModel.title = adventure.title
@@ -404,8 +438,7 @@ internal fun saveAdventureToFile(
     val json = gson.toJson(adventure)
 
     val prefs = context.getSharedPreferences("adventure_prefs", 0)
-    val folderUriString = prefs.getString("adventure_folder_uri", null)
-    if (folderUriString == null) {
+    if (prefs.getString("adventure_folder_uri", null) == null) {
         Toast.makeText(
             context,
             R.string.editor_toast_folder_not_selected,
@@ -413,55 +446,69 @@ internal fun saveAdventureToFile(
         ).show()
         return false
     }
-    val folderUri = folderUriString.toUri()
     viewModel.setFileStatus(FileSaveStatus.DIRTY)
 
     try {
-        val newAdventuresDirUri = DocumentsContract.buildDocumentUriUsingTree(
-            folderUri,
-            DocumentsContract.getTreeDocumentId(folderUri) + "/NewAdventures",
-        )
-        val fileName = viewModel.transliterate(adventure.title.ifBlank { "adventure" }) + ".json"
-        val existingFileUri = findFileInFolder(context, newAdventuresDirUri, fileName)
+        val currentProject = EditorProjectSession.current(context)
+        var savedUri: Uri? = null
+        var savedProjectId = currentProject?.id
+        var savedFileName = currentProject?.fileName.orEmpty()
+        var updated = false
 
-        var saved = false
-        if (existingFileUri != null) {
-            context.contentResolver.openOutputStream(existingFileUri, "wt")?.use {
+        if (currentProject != null) {
+            val target = currentProject.fileUri.toUri()
+            context.contentResolver.openOutputStream(target, "wt")?.use {
                 it.write(json.toByteArray())
-            }
-            Toast.makeText(
-                context,
-                context.getString(R.string.editor_toast_updated, fileName),
-                Toast.LENGTH_LONG,
-            ).show()
-            saved = true
-        } else {
-            val newUri = DocumentsContract.createDocument(
-                context.contentResolver,
-                newAdventuresDirUri,
-                "application/json",
-                fileName,
-            )
-            if (newUri != null) {
-                context.contentResolver.openOutputStream(newUri)?.use {
-                    it.write(json.toByteArray())
-                }
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.editor_toast_saved, fileName),
-                    Toast.LENGTH_LONG,
-                ).show()
-                saved = true
+                savedUri = target
+                savedFileName = currentProject.fileName
+                updated = true
             }
         }
 
-        if (saved) {
+        if (savedUri == null) {
+            val folder = QuestStorage.createQuestFolder(
+                context = context,
+                baseName = QuestStorage.NEW_ADVENTURES_DIR,
+                desiredName = adventure.title.ifBlank { "Новый квест" },
+                questJson = json,
+            )
+            if (folder != null) {
+                savedUri = folder.questFileUri
+                savedProjectId = folder.id
+                savedFileName = folder.name
+            }
+        }
+
+        val target = savedUri
+        val projectId = savedProjectId
+        if (target != null && projectId != null) {
+            EditorProjectSession.setCurrent(
+                context,
+                ProjectRef(
+                    id = projectId,
+                    fileUri = target.toString(),
+                    fileName = savedFileName,
+                    title = adventure.title,
+                    author = adventure.author,
+                    modifiedAt = System.currentTimeMillis(),
+                ),
+            )
+            ProjectDraftManager.clear(context, projectId)
             EditorDraftManager.clearDraft(context)
             viewModel.setHasUnsavedChanges(false)
             viewModel.setSaveStatus(SaveStatus.SAVED_TO_FILE)
             viewModel.setFileStatus(FileSaveStatus.CLEAN)
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (updated) R.string.editor_toast_updated else R.string.editor_toast_saved,
+                    savedFileName,
+                ),
+                Toast.LENGTH_LONG,
+            ).show()
+            return true
         }
-        return saved
+        return false
     } catch (e: Exception) {
         Logger.log(context, "Ошибка сохранения: ${e.message}")
         Toast.makeText(
@@ -472,31 +519,6 @@ internal fun saveAdventureToFile(
         viewModel.setFileStatus(FileSaveStatus.DIRTY)
         return false
     }
-}
-
-private fun findFileInFolder(
-    context: Context,
-    folderUri: Uri,
-    fileName: String,
-): Uri? {
-    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-        folderUri,
-        DocumentsContract.getDocumentId(folderUri),
-    )
-    context.contentResolver.query(childrenUri, null, null, null, null)?.use {
-        while (it.moveToNext()) {
-            val displayName = it.getString(
-                it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            )
-            if (displayName == fileName) {
-                val docId = it.getString(
-                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                )
-                return DocumentsContract.buildDocumentUriUsingTree(folderUri, docId)
-            }
-        }
-    }
-    return null
 }
 
 /**

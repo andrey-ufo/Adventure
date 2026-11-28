@@ -22,18 +22,19 @@ they can be added without changing the v1 file shape.
 | D2 | **Version first, then delta** | The envelope can evolve without guessing how old shapes map. |
 | D3 | **One file per manual slot** | Autosave cannot physically overwrite a slot; list/delete is independent. |
 | D4 | **Slots under `saves/<adventureKey>/`** | Avoids hundreds of files in the adventure root. |
-| D5 | **Autosave stays `progress.json`** in the root adventure folder | Backward compatibility; S2 writes only this file. |
+| D5 | **Autosave stays `progress.json`** in the root adventure folder | Keeps all quests' autosaves in one cache/file; S2 writes only this file. |
 | D6 | **Slot id is an opaque UUID**; the name is metadata | Renaming cannot break references or create filename collisions. |
 | D7 | **No `manualSlots` list inside every save** | The slot directory is the catalog; duplicating it would drift. |
 | D8 | **`StateDelta` is player-state only** | `apply` stays a simple `PlayerState` fold; cursor/flow state lives in the snapshot. |
 
 ## On-disk shape (v1)
 
-`progress.json` is a map keyed by adventure file name:
+`progress.json` is a map keyed by **quest folder document id** (not by
+`quest.json`, which every quest now uses):
 
 ```json
 {
-  "my_adventure.json": {
+  "primary:Adventure/Adventures/my-quest": {
     "version": 1,
     "adventureFileName": "",
     "baseSnapshot": {
@@ -71,9 +72,9 @@ they can be added without changing the v1 file shape.
 
 Field notes:
 
-- The **map key is the autosave identity**. `adventureFileName` exists
-  for compatibility and is usually empty in autosave entries; slots fill
-  it with their source adventure file name.
+- The **map key is the autosave identity** — the quest folder document
+  id. `adventureFileName` is informational and is usually empty in
+  autosave entries; slots store the derived quest key there.
 - `baseSnapshot` and `delta` are additive v1 fields. `null` means the
   entry predates the delta model (legacy fallback).
 - Current cursor/flow fields (`currentSceneId`, applied effects, gate,
@@ -154,20 +155,26 @@ compacts it once. Undo/restart use `previousStepSnapshot` /
 ### Layout
 
 ```text
-<base adventure folder>/
-  my_adventure.json
-  other_adventure.json
+<selected root>/
+  Adventures/
+    my-quest/
+      quest.json
+      theme.json
+      assets/
+  NewAdventures/
+    my-project/
+      quest.json
   progress.json
   saves/
-    my_adventure-8f3a1c2b/
+    my-quest-8f3a1c2b/
       slot-4f6c....json
       slot-a19e....json
 ```
 
-`adventureKey` is the sanitized **adventure file name** plus a short
-SHA-256 suffix, e.g. `my_adventure-8f3a1c2b`. The hash prevents
-collisions between names that sanitize identically and limits path
-length/illegal characters. Nested directories are created through SAF.
+`adventureKey` is derived from the **quest folder document id**, not
+`quest.json` (which is identical for every quest). A readable slug plus a
+short SHA-256 suffix prevents collisions, e.g. `my-quest-8f3a1c2b`.
+Nested directories are created through SAF.
 
 Autosave writes only `progress.json`; slots write only under
 `saves/<adventureKey>/`. S2 is structural, not a runtime check.
@@ -217,8 +224,9 @@ Autosave writes only `progress.json`; slots write only under
   name. The current list is all-or-nothing: one unreadable slot prevents
   listing until it is removed manually. This is intentional to avoid
   silently hiding saves.
-- Orphan `saves/<key>/` folders after adventure deletion are not removed
-  automatically; cleanup is a future maintenance action.
+- Deleting an adventure removes its quest folder and calls the slots
+  cleanup; orphan `saves/<key>/` folders from older alpha data may remain
+  until a maintenance pass.
 
 ## Compatibility and tests
 

@@ -202,6 +202,7 @@ these block acceptance.
 | P3 | Compact snapshots | After S5 + P2 |
 | U1 | Themes (dark / light, separately from system) | After U9.base (Ф6) |
 | U17 | Start-screen preference: Menu / Library / last-read scene | After U12 menu stabilizes |
+| U18-C | Full project workspace: metadata, versions, history/backups, draft DB; successor to U18-A | After U18-A; optional |
 | U8 | Reduced motion (extended) | After U9.base |
 | U10 | Lint-choice | After A5 (Ф9) |
 | L5 | Plurals | After L1–L4; StringId already designed for plural forms |

@@ -11,6 +11,7 @@ import com.myapp.adventure.service.StepCounterConstants
 import com.myapp.adventure.service.StepCounterService
 import com.myapp.adventure.utils.Logger
 import com.myapp.adventure.utils.ProgressManager
+import com.myapp.adventure.utils.QuestStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -162,7 +163,7 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
         val parentDocId = DocumentsContract.getTreeDocumentId(parentUri)
         createSubFolder(app, parentUri, parentDocId, "Adventures")
         createSubFolder(app, parentUri, parentDocId, "NewAdventures")
-        copyTestAdventure(app, parentUri, "test_adventure.json", R.raw.test_adventure)
+        seedTestQuest(app)
     }
 
     private fun createSubFolder(
@@ -184,46 +185,24 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun copyTestAdventure(
-        app: Application,
-        parentUri: Uri,
-        fileName: String,
-        rawResId: Int,
-    ) {
+    private fun seedTestQuest(app: Application) {
         try {
-            val adventuresDirUri = DocumentsContract.buildDocumentUriUsingTree(
-                parentUri,
-                DocumentsContract.getTreeDocumentId(parentUri) + "/Adventures",
+            val exists = QuestStorage.listQuestFolders(app, QuestStorage.ADVENTURES_DIR)
+                .any { it.name == "test_adventure" }
+            if (exists) return
+            val json = app.resources.openRawResource(R.raw.test_adventure)
+                .bufferedReader()
+                .use { it.readText() }
+            QuestStorage.createQuestFolder(
+                context = app,
+                baseName = QuestStorage.ADVENTURES_DIR,
+                desiredName = "test_adventure",
+                questJson = json,
             )
-            if (getFileNamesInFolder(app, adventuresDirUri).contains(fileName)) return
-            val fileUri = DocumentsContract.createDocument(
-                app.contentResolver, adventuresDirUri, "application/json", fileName,
-            ) ?: return
-            val jsonString = app.resources.openRawResource(rawResId)
-                .bufferedReader().use { it.readText() }
-            app.contentResolver.openOutputStream(fileUri)?.use { out ->
-                out.write(jsonString.toByteArray())
-            }
-            Logger.log(app, "Тестовое приключение $fileName скопировано")
+            Logger.log(app, "Тестовое приключение создано в test_adventure/quest.json")
         } catch (e: Exception) {
-            Logger.log(app, "Ошибка копирования $fileName: ${e.message}")
+            Logger.log(app, "Ошибка создания тестового приключения: ${e.message}")
         }
-    }
-
-    private fun getFileNamesInFolder(app: Application, folderUri: Uri): List<String> {
-        val names = mutableListOf<String>()
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            folderUri,
-            DocumentsContract.getDocumentId(folderUri),
-        )
-        app.contentResolver.query(childrenUri, null, null, null, null)?.use { cursor ->
-            while (cursor.moveToNext()) {
-                names += cursor.getString(
-                    cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                )
-            }
-        }
-        return names
     }
 
     private fun startStepCounterService(app: Application) {

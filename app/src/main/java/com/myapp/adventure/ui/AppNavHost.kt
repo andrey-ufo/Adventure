@@ -23,8 +23,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.myapp.adventure.R
+import com.myapp.adventure.projects.EditorProjectSession
+import com.myapp.adventure.projects.ProjectDraftManager
+import com.myapp.adventure.projects.ProjectRef
 import com.myapp.adventure.ui.editor.AdventureEditorViewModel
 import com.myapp.adventure.ui.editor.EditMetaRoute
+import com.myapp.adventure.ui.editor.applyDraft
+import com.myapp.adventure.ui.editor.loadAdventureFromUri
 import com.myapp.adventure.ui.editor.EditorDestination
 import com.myapp.adventure.ui.editor.EditorPreviewRequest
 import com.myapp.adventure.ui.editor.EditorRoute
@@ -41,6 +46,7 @@ import com.myapp.adventure.ui.list.AdventureListScreen
 import com.myapp.adventure.ui.logs.LogViewerScreen
 import com.myapp.adventure.ui.menu.MenuDestination
 import com.myapp.adventure.ui.menu.MenuScreen
+import com.myapp.adventure.ui.projects.ProjectManagerScreen
 import com.myapp.adventure.ui.reader.AdventureReaderViewModel
 import com.myapp.adventure.ui.reader.ReaderRoute
 import com.myapp.adventure.ui.settings.SettingsScreen
@@ -61,6 +67,7 @@ object AppRoutes {
     @Serializable @SerialName("setup") data object Setup
     @Serializable @SerialName("menu") data object Menu
     @Serializable @SerialName("library") data object Library
+    @Serializable @SerialName("projects") data object Projects
     @Serializable @SerialName("adventure_details") data class AdventureDetails(
         val fileUri: String,
     )
@@ -79,6 +86,7 @@ object AppRoutes {
     @Serializable @SerialName("reader") data class Reader(
         val fileUri: String? = null,
         val previewId: String? = null,
+        val openSlots: Boolean = false,
     )
 }
 
@@ -106,10 +114,12 @@ fun AppNavHost(
     var pendingEditorNavigation by remember { mutableStateOf<AppSection?>(null) }
     var showEditorExitDialog by remember { mutableStateOf(false) }
 
-    fun openReader(uri: Uri) {
+    fun openReader(uri: Uri, openSlots: Boolean = false) {
         lastAdventureUri = uri
         LastAdventureStore.set(context, uri)
-        navController.navigate(AppRoutes.Reader(fileUri = uri.toString()))
+        navController.navigate(
+            AppRoutes.Reader(fileUri = uri.toString(), openSlots = openSlots),
+        )
     }
 
     fun performGlobalNavigation(section: AppSection) {
@@ -127,6 +137,25 @@ fun AppNavHost(
             AppSection.Settings -> navController.navigate(AppRoutes.Settings) {
                 launchSingleTop = true
             }
+        }
+    }
+
+    fun openProject(project: ProjectRef) {
+        val draft = ProjectDraftManager.load(context, project.id)
+        if (draft != null) {
+            applyDraft(context, editorViewModel, draft)
+        } else {
+            loadAdventureFromUri(
+                context,
+                editorViewModel,
+                project.fileUri.toUri(),
+                clearDraft = false,
+            )
+        }
+        EditorProjectSession.setCurrent(context, project)
+        navController.navigate(AppRoutes.Editor) {
+            popUpTo<AppRoutes.Editor> { inclusive = true }
+            launchSingleTop = true
         }
     }
 
@@ -160,7 +189,11 @@ fun AppNavHost(
                 onNavigate = { destination ->
                     when (destination) {
                         MenuDestination.Library -> navController.navigate(AppRoutes.Library)
-                        MenuDestination.Create -> navController.navigate(AppRoutes.Editor)
+                        MenuDestination.Create -> {
+                            EditorProjectSession.clear(context)
+                            navController.navigate(AppRoutes.Editor)
+                        }
+                        MenuDestination.Projects -> navController.navigate(AppRoutes.Projects)
                         MenuDestination.Statistics -> navController.navigate(AppRoutes.Statistics)
                         MenuDestination.Settings -> navController.navigate(AppRoutes.Settings)
                     }
@@ -180,11 +213,40 @@ fun AppNavHost(
             )
         }
 
+        composable<AppRoutes.Projects> {
+            ProjectManagerScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = ::openProject,
+                onDeleted = { project ->
+                    ProjectDraftManager.clear(context, project.id)
+                    if (EditorProjectSession.current(context)?.id == project.id) {
+                        EditorProjectSession.clear(context)
+                    }
+                },
+                onNavigateGlobal = ::navigateGlobal,
+                canOpenReader = lastAdventureUri != null,
+            )
+        }
+
         composable<AppRoutes.AdventureDetails> { entry ->
             val route: AppRoutes.AdventureDetails = entry.toRoute()
+            val uri = route.fileUri.toUri()
             AdventureDetailsScreen(
+                fileUri = route.fileUri,
                 onBack = { navController.popBackStack() },
-                onRead = { openReader(route.fileUri.toUri()) },
+                onRead = { openReader(uri) },
+                onRestart = { openReader(uri) },
+                onLoadSlot = { openReader(uri, openSlots = true) },
+                onDeleted = {
+                    if (lastAdventureUri == uri) {
+                        lastAdventureUri = null
+                        LastAdventureStore.set(context, null)
+                    }
+                    navController.navigate(AppRoutes.Library) {
+                        popUpTo<AppRoutes.Library> { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateGlobal = ::navigateGlobal,
                 canOpenReader = lastAdventureUri != null,
             )
@@ -222,6 +284,7 @@ fun AppNavHost(
                     viewModel = editorViewModel,
                     onNavigate = { destination ->
                         when (destination) {
+                            EditorDestination.Projects -> navController.navigate(AppRoutes.Projects)
                             EditorDestination.Variables -> navController.navigate(AppRoutes.Variables)
                             EditorDestination.InitialState -> navController.navigate(AppRoutes.InitialState)
                             EditorDestination.Templates -> navController.navigate(AppRoutes.Templates)
@@ -338,6 +401,7 @@ fun AppNavHost(
             ReaderRoute(
                 viewModel = readerViewModel(),
                 arguments = arguments,
+                openSlotsInitially = route.openSlots,
                 onExit = { navController.popBackStack() },
                 onNavigateToMenu = { navController.navigate(AppRoutes.Menu) },
                 onNavigateGlobal = ::navigateGlobal,

@@ -1,4 +1,4 @@
-package com.myapp.adventure.ui.list
+﻿package com.myapp.adventure.ui.list
 
 import android.app.Application
 import android.net.Uri
@@ -11,6 +11,7 @@ import com.myapp.adventure.engine.ir.Adventure
 import com.myapp.adventure.engine.parse.ParseResult
 import com.myapp.adventure.utils.AdventureImportHelper
 import com.myapp.adventure.utils.Logger
+import com.myapp.adventure.utils.QuestStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,8 @@ import kotlinx.coroutines.withContext
 data class AdventureListItem(
     val adventure: Adventure,
     val uri: Uri,
+    val questId: String,
+    val folderUri: Uri,
 )
 
 data class AdventureListUiState(
@@ -92,42 +95,25 @@ class AdventureListViewModel(application: Application) : AndroidViewModel(applic
     private fun loadAdventuresFromDisk(): LoadResult {
         val app = getApplication<Application>()
         val prefs = app.getSharedPreferences("adventure_prefs", 0)
-        val folderUriString = prefs.getString("adventure_folder_uri", null)
-            ?: return LoadResult(
+        if (prefs.getString("adventure_folder_uri", null) == null) {
+            return LoadResult(
                 items = emptyList(),
                 errorMessage = app.getString(R.string.library_toast_folder_not_selected),
             )
+        }
 
         return try {
-            val folderUri = Uri.parse(folderUriString)
-            val adventuresDirUri = DocumentsContract.buildDocumentUriUsingTree(
-                folderUri,
-                DocumentsContract.getTreeDocumentId(folderUri) + "/Adventures",
-            )
-            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-                adventuresDirUri,
-                DocumentsContract.getDocumentId(adventuresDirUri),
-            )
-
             val items = mutableListOf<AdventureListItem>()
-            app.contentResolver.query(childrenUri, null, null, null, null)?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val documentId = cursor.getString(
-                        cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            for (folder in QuestStorage.listQuestFolders(app, QuestStorage.ADVENTURES_DIR)) {
+                val adventure = parseAdventureFromUri(app, folder.questFileUri) ?: continue
+                items.add(
+                    AdventureListItem(
+                        adventure = adventure,
+                        uri = folder.questFileUri,
+                        questId = folder.id,
+                        folderUri = folder.folderUri,
                     )
-                    val mimeType = cursor.getString(
-                        cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-                    )
-                    if (mimeType == "application/json") {
-                        val fileUri = DocumentsContract.buildDocumentUriUsingTree(
-                            adventuresDirUri, documentId
-                        )
-                        val adventure = parseAdventureFromUri(app, fileUri)
-                        if (adventure != null) {
-                            items.add(AdventureListItem(adventure, fileUri))
-                        }
-                    }
-                }
+                )
             }
             Logger.log(app, "Загружено приключений: ${items.size}")
             LoadResult(items = items)

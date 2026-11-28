@@ -22,10 +22,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myapp.adventure.R
 import com.myapp.adventure.data.FileSaveStatus
 import com.myapp.adventure.data.SaveStatus
+import com.myapp.adventure.projects.EditorProjectSession
+import com.myapp.adventure.projects.ProjectDraftManager
 import com.myapp.adventure.ui.AppSection
 import com.myapp.adventure.utils.EditorDraftManager
 
@@ -84,6 +87,25 @@ fun EditorRoute(
     // One-shot setup: publish the initial snapshot, offer a draft restore,
     // then initialize history. Mirrors the old onViewCreated order.
     LaunchedEffect(viewModel) {
+        val editorEmpty = viewModel.scenes.isEmpty() &&
+            viewModel.title.isEmpty() &&
+            viewModel.author.isEmpty() &&
+            viewModel.description.isEmpty() &&
+            viewModel.initialStateTags.isEmpty()
+        val project = EditorProjectSession.current(context)
+        if (editorEmpty && project != null) {
+            val draft = ProjectDraftManager.load(context, project.id)
+            if (draft != null) {
+                applyDraft(context, viewModel, draft)
+            } else {
+                loadAdventureFromUri(
+                    context,
+                    viewModel,
+                    project.fileUri.toUri(),
+                    clearDraft = false,
+                )
+            }
+        }
         viewModel.commitState()
         pendingDraft = readDraftForRestore(context, viewModel)
         if (!viewModel.isHistoryInitialized()) {
@@ -104,6 +126,7 @@ fun EditorRoute(
     ) { uri ->
         if (uri != null) {
             debounceHandler.removeCallbacks(saveRunnable)
+            EditorProjectSession.clear(context)
             showTypesMissing = loadAdventureFromUri(context, viewModel, uri)
         }
     }
@@ -169,6 +192,7 @@ fun EditorRoute(
             onStats = { onNavigate(EditorDestination.Stats) },
             onTemplates = { onNavigate(EditorDestination.Templates) },
             onSubroutines = { onNavigate(EditorDestination.Subroutines) },
+            onProjects = { requestExit { onNavigate(EditorDestination.Projects) } },
             onHelp = { onNavigate(EditorDestination.Help) },
         )
 
@@ -229,7 +253,12 @@ fun EditorRoute(
                 pendingDraft = null
             },
             onDelete = {
-                EditorDraftManager.clearDraft(context)
+                val project = EditorProjectSession.current(context)
+                if (project != null) {
+                    ProjectDraftManager.clear(context, project.id)
+                } else {
+                    EditorDraftManager.clearDraft(context)
+                }
                 pendingDraft = null
             },
             onDismiss = { pendingDraft = null },

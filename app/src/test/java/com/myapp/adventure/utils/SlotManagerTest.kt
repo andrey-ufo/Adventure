@@ -1,4 +1,4 @@
-package com.myapp.adventure.utils
+﻿package com.myapp.adventure.utils
 
 import android.content.Context
 import android.net.Uri
@@ -61,7 +61,10 @@ class SlotManagerTest {
     fun createListLoadDeleteRoundTrip() = runBlocking {
         val slot = SlotManager.createSlot(context, adventureUri, "checkpoint", state())
 
-        assertEquals("adventure.json", slot.state.adventureFileName)
+        assertEquals(
+            SaveSlotPaths.adventureKey("adventure.json"),
+            slot.state.adventureFileName,
+        )
         assertEquals(-1, slot.state.lastAbsoluteAtSave)
         assertEquals(1, SlotManager.listSlots(context, adventureUri).size)
 

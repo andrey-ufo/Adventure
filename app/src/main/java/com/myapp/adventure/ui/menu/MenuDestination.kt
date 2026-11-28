@@ -11,6 +11,7 @@ package com.myapp.adventure.ui.menu
 sealed interface MenuDestination {
     data object Library : MenuDestination
     data object Create : MenuDestination
+    data object Projects : MenuDestination
     data object Statistics : MenuDestination
     data object Settings : MenuDestination
 }

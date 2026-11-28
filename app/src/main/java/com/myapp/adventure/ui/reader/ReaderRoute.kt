@@ -67,6 +67,7 @@ private const val MAX_ITEMS_SHOWN = 5
 fun ReaderRoute(
     viewModel: AdventureReaderViewModel,
     arguments: Bundle?,
+    openSlotsInitially: Boolean,
     onExit: () -> Unit,
     onNavigateToMenu: () -> Unit,
     onNavigateGlobal: (AppSection) -> Unit,
@@ -268,6 +269,7 @@ fun ReaderRoute(
 
     AdventureReaderScreen(
         viewModel = viewModel,
+        openSlotsInitially = openSlotsInitially,
         onPreviewExit = onExit,
         onNavigateToMenu = onNavigateToMenu,
         onNavigateGlobal = onNavigateGlobal,

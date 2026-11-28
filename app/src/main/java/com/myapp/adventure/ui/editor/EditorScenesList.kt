@@ -1,6 +1,7 @@
 package com.myapp.adventure.ui.editor
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
@@ -83,11 +85,16 @@ fun EditorScenesList(
         }
         if (active == null) {
             item(key = "__no_scenes__") {
-                TextButton(
-                    onClick = onAddScene,
-                    modifier = Modifier.padding(24.dp),
-                ) {
-                    Text(stringResource(R.string.editor_no_scenes_hint))
+                Column(modifier = Modifier.padding(24.dp)) {
+                    TextButton(onClick = onAddScene) {
+                        Text(stringResource(R.string.editor_no_scenes_hint))
+                    }
+                    Text(
+                        text = stringResource(R.string.editor_no_scenes_save_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                 }
             }
         } else {

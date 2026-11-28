@@ -6,6 +6,7 @@ package com.myapp.adventure.ui.editor
  * maps the destinations to typed Navigation Compose routes.
  */
 sealed interface EditorDestination {
+    data object Projects : EditorDestination
     data object Variables : EditorDestination
     data object InitialState : EditorDestination
     data object Templates : EditorDestination

@@ -19,7 +19,7 @@ Source SVGs live here; they are **not** compiled by Android. Convert them to
 |---|---|---|
 | `ic_editor_draft_syncing.svg` | Two circular arrows | Draft autosave in progress |
 | `ic_editor_draft_saved.svg` | Check mark (optionally circular) | Draft saved |
-| `ic_editor_file_dirty.svg` | Floppy disk | File is older than the draft |
+| `ic_editor_file_dirty.svg` | Floppy disk; also the tap target for saving the file | File is older than the draft |
 | `ic_editor_file_saved.svg` | Check with underline (distinct from the draft check) | File matches the draft |
 
 The draft and file states are independent: a draft can be saved while the

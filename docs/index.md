@@ -27,6 +27,8 @@ You extend the app, add features, or integrate new step sources.
 - [Architecture](./architecture.md) — high-level layers, data flow, invariants.
 - [UI screens](./ui-screens.md) — screen inventory, transitions, back stack
   and the U11 navigation baseline.
+- [Theming](./theming.md) — app/reader/author token contract, storage,
+  reader modes and accessibility priority (U13).
 - [Engine architecture](./engine-architecture.md) — deep dive into the
   `:engine` module: IR, parser, runtime, analyzer.
 - [Engine types](./engine-types.md) — the variable type system (Ф2):
